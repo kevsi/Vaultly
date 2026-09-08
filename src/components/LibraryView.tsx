@@ -456,16 +456,21 @@ export function LibraryView() {
     return items;
   }, [visibleFolders, resources]);
 
+  // respiration entre la barre de filtres et la première ligne de tuiles :
+  // le conteneur virtualisé a un padding-top ÉGAL à cette valeur, et le
+  // virtualizer la compense via scrollMargin (sinon la 1ʳᵉ tuile colle
+  // au bord haut).
+  const GRID_TOP_PAD = 16;
   // lignes virtuelles : hauteur estimée puis MESURÉE (measureElement) —
   // les tuiles sont fluides (minmax 9rem), l'estimation seule suffit pas.
-  // Sans padding-top sur le conteneur : la première ligne doit démarrer
-  // exactement à l'origine du contenu, sinon le calcul de plage est décalé.
+  // scrollMargin = le décalage du contenu dans le conteneur de scroll.
   const rowCount = virtualizing ? Math.ceil(gridItems.length / columns) : 0;
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => virtualScrollRef.current,
     estimateSize: () => 176, // tuile carrée ~144px + gap 12 + marge hover
     overscan: 4,
+    scrollMargin: GRID_TOP_PAD,
   });
 
   function toggleCaptures() {
@@ -1188,7 +1193,7 @@ export function LibraryView() {
       {virtualizing ? (
         <div
           ref={virtualScrollRef}
-          className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
+          className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-6"
         >
           <div
             style={{
