@@ -272,7 +272,11 @@ export function LibraryView() {
   // --- virtualisation de la grille (seuil réglable dans Réglages → Général) ---
   // virtualise PAR LIGNES (n tuiles/ligne calculé à la largeur) : le drag
   // natif HTML5 continue de fonctionner, la mémoire DOM reste bornée.
-  const gridViewportRef = useRef<HTMLDivElement | null>(null);
+  // En mode virtualisé, on n'utilise PAS le ScrollArea : TanStack Virtual
+  // exige un conteneur de scroll dont IL connaît la géométrie (le viewport
+  // Base UI ajoute ses propres couches, les mesures deviennent fausses) —
+  // un simple div overflow-y-auto est le pattern documenté.
+  const virtualScrollRef = useRef<HTMLDivElement | null>(null);
   const [virtualMode, setVirtualModeState] = useState(getVirtualMode);
   useEffect(() => {
     // le réglage changé dans Réglages s'applique sans remontage de la vue
@@ -283,11 +287,13 @@ export function LibraryView() {
   }, []);
   const threshold = virtualThresholdFor(virtualMode);
   const tileCount = (resources ?? []).length + visibleFolders.length;
-  const virtualizing = tileCount >= threshold;
+  // jamais pendant le chargement ni sur une grille vide : les états
+  // squelette/vide vivent dans la branche ScrollArea
+  const virtualizing = !isLoading && tileCount > 0 && tileCount >= threshold;
   const [columns, setColumns] = useState(4);
   useEffect(() => {
     if (!virtualizing) return;
-    const el = gridViewportRef.current;
+    const el = virtualScrollRef.current;
     if (!el) return;
     // colonnes = floor(largeur / (144px tuile + 12px gap)) — min 2, max 12
     const compute = () =>
@@ -313,11 +319,13 @@ export function LibraryView() {
   }, [visibleFolders, resources]);
 
   // lignes virtuelles : hauteur estimée puis MESURÉE (measureElement) —
-  // les tuiles sont fluides (minmax 9rem), l'estimation seule suffit pas
+  // les tuiles sont fluides (minmax 9rem), l'estimation seule suffit pas.
+  // Sans padding-top sur le conteneur : la première ligne doit démarrer
+  // exactement à l'origine du contenu, sinon le calcul de plage est décalé.
   const rowCount = virtualizing ? Math.ceil(gridItems.length / columns) : 0;
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
-    getScrollElement: () => gridViewportRef.current,
+    getScrollElement: () => virtualScrollRef.current,
     estimateSize: () => 176, // tuile carrée ~144px + gap 12 + marge hover
     overscan: 4,
   });
@@ -997,70 +1005,23 @@ export function LibraryView() {
         </div>
       )}
 
-      {/* grille : dossiers puis ressources. Au-delà de 120 tuiles, les
-          lignes sont virtualisées (seules les lignes visibles + marge sont
-          rendues) : la grille reste fluide à 500 ressources. En dessous,
-          rendu natif (le drag inter-tuiles n'a rien à gagner). */}
-      <ScrollArea className="min-h-0 flex-1" viewportRef={gridViewportRef}>
-        <div className="p-4 pt-3">
-          {isError && (
-            <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
-              <span>
-                Le chargement de la bibliothèque a échoué (base verrouillée ou erreur interne).
-              </span>
-              <Button size="sm" variant="outline" onClick={() => void refetch()}>
-                Réessayer
-              </Button>
-            </div>
-          )}
-          {isLoading ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="aspect-square animate-pulse rounded-xl bg-muted/60" />
-              ))}
-            </div>
-          ) : (resources ?? []).length === 0 &&
-            !isError &&
-            !openFolder &&
-            (folders ?? []).length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
-              <Search className="size-8 opacity-40" />
-              <p className="font-medium text-foreground">
-                {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
-                  ? "Aucun résultat"
-                  : "Ta bibliothèque est vide"}
-              </p>
-              <p className="max-w-sm text-sm">
-                {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
-                  ? "Essaie une autre recherche ou retire des filtres."
-                  : "Ajoute ta première ressource, ou importe tes favoris depuis l'onglet Importer."}
-              </p>
-              {!debounced && !favOnly && !category && !typeFilter && !tagFilter && !statusFilter && (
-                <Button
-                  className="mt-2"
-                  onClick={() => {
-                    setEditing(null);
-                    setPrefillUrl(null);
-                    setDialogOpen(true);
-                  }}
-                >
-                  <Plus />
-                  Ajouter une ressource
-                </Button>
-              )}
-            </div>
-          ) : virtualizing ? (
-            /* --- grille virtualisée : seules les lignes visibles (+ marge)
-                existent dans le DOM. La hauteur des lignes est MESURÉE
-                (measureElement) : les tuiles fluides restent correctes. --- */
-            <div
-              style={{
-                height: rowVirtualizer.getTotalSize(),
-                position: "relative",
-                width: "100%",
-              }}
-            >
-              {rowVirtualizer.getVirtualItems().map((vi) => (
+      {/* grille : dossiers puis ressources. Virtualisation par lignes au
+         -delà du seuil réglé (Réglages → Général) : conteneur de scroll
+          dédié (PAS le ScrollArea — voir le commentaire du hook). En
+          dessous du seuil, rendu natif dans le ScrollArea habituel. */}
+      {virtualizing ? (
+        <div
+          ref={virtualScrollRef}
+          className="min-h-0 flex-1 overflow-y-auto px-4 pb-4"
+        >
+          <div
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              position: "relative",
+              width: "100%",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((vi) => (
                 <div
                   key={vi.key}
                   data-index={vi.index}
@@ -1210,7 +1171,57 @@ export function LibraryView() {
                 </div>
               ))}
             </div>
-          ) : (
+        </div>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-4 pt-3">
+            {isError && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
+                <span>
+                  Le chargement de la bibliothèque a échoué (base verrouillée ou erreur interne).
+                </span>
+                <Button size="sm" variant="outline" onClick={() => void refetch()}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
+            {isLoading ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div key={i} className="aspect-square animate-pulse rounded-xl bg-muted/60" />
+                ))}
+              </div>
+            ) : (resources ?? []).length === 0 &&
+              !isError &&
+              !openFolder &&
+              (folders ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
+                <Search className="size-8 opacity-40" />
+                <p className="font-medium text-foreground">
+                  {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
+                    ? "Aucun résultat"
+                    : "Ta bibliothèque est vide"}
+                </p>
+                <p className="max-w-sm text-sm">
+                  {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
+                    ? "Essaie une autre recherche ou retire les filtres."
+                    : "Ajoute ta première ressource, ou importe tes favoris depuis l'onglet Importer."}
+                </p>
+                {!debounced && !favOnly && !category && !typeFilter && !tagFilter && !statusFilter && (
+                  <Button
+                    className="mt-2"
+                    onClick={() => {
+                      setEditing(null);
+                      setPrefillUrl(null);
+                      setDialogOpen(true);
+                    }}
+                  >
+                    <Plus />
+                    Ajouter une ressource
+                  </Button>
+                )}
+              </div>
+            ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
               {/* dossiers : racine sur l'accueil, sous-dossiers dans un dossier */}
               {visibleFolders.map((f, i) => (
@@ -1369,9 +1380,10 @@ export function LibraryView() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      </ScrollArea>
+            )}
+          </div>
+        </ScrollArea>
+      )}
 
       {/* barre d'actions de la sélection */}
       {selectMode && selectedIds.size > 0 && (
