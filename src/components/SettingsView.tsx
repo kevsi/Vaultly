@@ -80,6 +80,12 @@ import {
   VIRTUAL_MODES,
   type VirtualMode,
 } from "@/lib/gridVirtualization";
+import {
+  setTileSize as persistTileSize,
+  getTileSize,
+  TILE_SIZES,
+  type TileSize,
+} from "@/lib/tileSize";
 
 function CopyBlock({ label, code }: { label: string; code: string }) {
   const [copied, setCopied] = useState(false);
@@ -142,6 +148,8 @@ export function SettingsView() {
   const [importing, setImporting] = useState(false);
   // virtualisation de la grille (Réglages → Général → Rendu de la grille)
   const [virtualMode, setVirtualModeState] = useState<VirtualMode>(getVirtualMode);
+  // taille des tuiles (réglage visuel)
+  const [tileSize, setTileSizeState] = useState<TileSize>(getTileSize);
   const [checking, setChecking] = useState(false);
   const [deadLinks, setDeadLinks] = useState<DeadLink[] | null>(null);
   const [waybackBusy, setWaybackBusy] = useState<number | null>(null);
@@ -782,6 +790,39 @@ export function SettingsView() {
           <p className="text-xs text-muted-foreground">
             {VIRTUAL_MODES.find((m) => m.value === virtualMode)?.description}
           </p>
+        </div>
+
+        <Separator />
+
+        {/* taille des tuiles (réglage visuel) */}
+        <div className="space-y-3">
+          <div>
+            <h3 className="font-medium">Taille des tuiles</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Change la densité de la bibliothèque : plus les tuiles sont
+              petites, plus tu en vois à l'écran. La grille reste fluide
+              (les tuiles s'élargissent pour remplir la fenêtre).
+            </p>
+          </div>
+          <Select
+            value={tileSize}
+            onValueChange={(v) => {
+              const next = v as TileSize;
+              setTileSizeState(next);
+              persistTileSize(next);
+            }}
+          >
+            <SelectTrigger className="w-full max-w-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TILE_SIZES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label} ({s.minPx} px)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <Separator />

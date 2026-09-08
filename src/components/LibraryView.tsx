@@ -46,6 +46,7 @@ import {
   getVirtualMode,
   virtualThresholdFor,
 } from "@/lib/gridVirtualization";
+import { getTileSize, tileMinPx } from "@/lib/tileSize";
 import type { DriveFile, Folder, Resource, SortBy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
@@ -269,6 +270,20 @@ export function LibraryView() {
     [foldersList, openFolder],
   );
 
+  // --- taille des tuiles (réglage visuel, Réglages → Général) ---
+  const [tileSize, setTileSizeState] = useState(getTileSize);
+  useEffect(() => {
+    const onChange = () => setTileSizeState(getTileSize());
+    window.addEventListener("vaultly:tile-size-changed", onChange);
+    return () =>
+      window.removeEventListener("vaultly:tile-size-changed", onChange);
+  }, []);
+  const tileMin = tileMinPx(tileSize);
+  // grille native fluide : largeur min par tuile, le navigateur remplit
+  const nativeGridStyle = {
+    gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`,
+  } as const;
+
   // --- virtualisation de la grille (seuil réglable dans Réglages → Général) ---
   // virtualise PAR LIGNES (n tuiles/ligne calculé à la largeur) : le drag
   // natif HTML5 continue de fonctionner, la mémoire DOM reste bornée.
@@ -295,16 +310,16 @@ export function LibraryView() {
     if (!virtualizing) return;
     const el = virtualScrollRef.current;
     if (!el) return;
-    // colonnes = floor(largeur / (144px tuile + 12px gap)) — min 2, max 12
+    // colonnes = floor(largeur / (tuile min + gap 12px)) — min 2, max 12
     const compute = () =>
       setColumns(
-        Math.min(12, Math.max(2, Math.floor(el.clientWidth / 156))),
+        Math.min(12, Math.max(2, Math.floor(el.clientWidth / (tileMin + 12)))),
       );
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [virtualizing]);
+  }, [virtualizing, tileMin]);
 
   // items de la grille dans l'ordre : dossiers, tuile « créer », ressources
   const gridItems = useMemo(() => {
@@ -1186,7 +1201,7 @@ export function LibraryView() {
               </div>
             )}
             {isLoading ? (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
+              <div className="grid gap-3" style={nativeGridStyle}>
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div key={i} className="aspect-square animate-pulse rounded-xl bg-muted/60" />
                 ))}
@@ -1222,7 +1237,7 @@ export function LibraryView() {
                 )}
               </div>
             ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
+            <div className="grid gap-3" style={nativeGridStyle}>
               {/* dossiers : racine sur l'accueil, sous-dossiers dans un dossier */}
               {visibleFolders.map((f, i) => (
                   <div
