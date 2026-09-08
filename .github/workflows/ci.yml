@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend (tsc + vite build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  backend:
+    name: Backend Rust (clippy + tests)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # cache cargo : les dépendances Tauri compilent ~15 min sans
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # le binaire tauri-build a besoin des headers webview2 sur windows-runner :
+      # fournis par le runner. La config frontend dist/ n'est pas requise
+      # pour cargo test (le contexte generate_context! est compilé à partir
+      # de tauri.conf.json + ../dist — on fabrique un dist minimal si absent).
+      - name: Fabriquer un dist minimal (génération du contexte Tauri)
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Set-Content -Path dist/index.html -Value "<!doctype html><title>ci</title>"
+      - run: cargo test --lib
+      - run: cargo clippy --lib -- -D warnings

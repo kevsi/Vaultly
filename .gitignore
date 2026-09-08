@@ -38,3 +38,5 @@ src-tauri/target/
 .zcode/
 tauri-dev.log
 tauri-build.log
+# zip de publication Chrome Web Store (artefact, régénéré localement)
+vaultly-extension-*.zip
