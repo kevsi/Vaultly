@@ -1188,7 +1188,7 @@ export function LibraryView() {
       {virtualizing ? (
         <div
           ref={virtualScrollRef}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pb-4"
+          className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
         >
           <div
             style={{
@@ -1354,7 +1354,7 @@ export function LibraryView() {
            type · host, meta, ouverture, favori. Même DnD inter-lignes que
            la grille en tri manuel, même menu via ⋯. Dossiers en tête. */
         <ScrollArea className="min-h-0 flex-1">
-          <div className="p-4 pt-3">
+          <div className="px-6 pt-4 pb-6">
             {isError && (
               <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
                 <span>
@@ -1510,7 +1510,7 @@ export function LibraryView() {
         </ScrollArea>
       ) : (
         <ScrollArea className="min-h-0 flex-1">
-          <div className="p-4 pt-3">
+          <div className="px-6 pt-4 pb-6">
             {isError && (
               <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
                 <span>
