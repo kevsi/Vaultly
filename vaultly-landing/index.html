@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vaultly — ton hub personnel de ressources</title>
+  <meta name="description" content="Sites, apps, fichiers, notes : tout organisé en tuiles, connecté à ton assistant IA. 100 % local. Gratuit pour Windows." />
+  <link rel="icon" type="image/png" href="logo-256.png" />
+  <style>
+    :root {
+      --bg: oklch(0.975 0.012 85);
+      --card: oklch(0.99 0.006 85);
+      --primary: oklch(0.63 0.13 45);
+      --primary-soft: oklch(0.63 0.13 45 / 0.12);
+      --text: oklch(0.32 0.03 50);
+      --muted: oklch(0.52 0.03 55);
+      --border: oklch(0.88 0.02 80);
+      --radius: 1.25rem;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background:
+        radial-gradient(60rem 30rem at 80% -10%, oklch(0.63 0.13 45 / 0.07), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .wrap { max-width: 64rem; margin: 0 auto; padding: 0 1.25rem; }
+
+    /* --- header --- */
+    header {
+      position: sticky; top: 0; z-index: 10;
+      backdrop-filter: blur(8px);
+      background: oklch(0.975 0.012 85 / 0.85);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav { display: flex; align-items: center; gap: 1rem; padding: 0.7rem 0; }
+    .nav img { width: 2.1rem; height: 2.1rem; border-radius: 0.6rem; }
+    .nav .name { font-weight: 700; font-size: 1.05rem; margin-right: auto; }
+    .nav a.link {
+      color: var(--muted); text-decoration: none; font-size: 0.92rem;
+      padding: 0.35rem 0.6rem; border-radius: 0.5rem;
+    }
+    .nav a.link:hover { color: var(--text); background: var(--primary-soft); }
+
+    /* --- hero --- */
+    .hero { display: grid; gap: 2.5rem; padding: 4rem 0 3rem; align-items: center; }
+    @media (min-width: 48rem) { .hero { grid-template-columns: 1.2fr 0.8fr; } }
+    .badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-size: 0.8rem; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 0.25rem 0.8rem; margin-bottom: 1rem; background: var(--card);
+    }
+    .badge .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--primary); }
+    h1 { font-size: clamp(1.9rem, 5vw, 2.9rem); line-height: 1.15; letter-spacing: -0.02em; }
+    h1 em { font-style: normal; color: var(--primary); }
+    .hero p.sub { margin: 1.1rem 0 1.6rem; font-size: 1.08rem; color: var(--muted); max-width: 34rem; }
+    .cta { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: center; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.8rem 1.4rem; border-radius: 0.9rem;
+      font-weight: 600; font-size: 1rem; text-decoration: none; cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn.primary { background: var(--primary); color: oklch(0.99 0.005 85); }
+    .btn.primary:hover { filter: brightness(1.06); }
+    .btn.ghost { border-color: var(--border); color: var(--text); background: var(--card); }
+    .btn.ghost:hover { border-color: var(--primary); }
+    .btn svg { width: 1.1rem; height: 1.1rem; }
+
+    /* mini maquette de tuiles */
+    .mock {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem;
+      max-width: 20rem; margin: 0 auto;
+    }
+    .tile {
+      aspect-ratio: 1; border-radius: 1rem;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.15rem; font-size: 1.7rem; border: 1px solid var(--border);
+      box-shadow: 0 1px 3px oklch(0.32 0.03 50 / 0.08);
+      background: var(--card);
+    }
+    .tile small { font-size: 0.62rem; color: var(--muted); max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tile.folder { background: oklch(0.9 0.05 80); }
+    .tile.note { background: oklch(0.93 0.07 90); font-size: 1rem; padding: 0.5rem; text-align: center; font-weight: 600; }
+    .tile.blue { background: oklch(0.92 0.04 250); }
+    .tile.green { background: oklch(0.92 0.06 150); }
+
+    /* --- sections --- */
+    section { padding: 3.2rem 0; }
+    h2 { font-size: 1.55rem; letter-spacing: -0.01em; margin-bottom: 0.4rem; }
+    .kicker { color: var(--primary); font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    .lead { color: var(--muted); max-width: 40rem; margin-bottom: 1.8rem; }
+
+    .grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.15rem 1.25rem;
+    }
+    .card .ico { font-size: 1.5rem; }
+    .card h3 { font-size: 1rem; margin: 0.45rem 0 0.25rem; }
+    .card p { font-size: 0.9rem; color: var(--muted); }
+
+    /* --- MCP --- */
+    .mcp { display: grid; gap: 1.5rem; align-items: start; }
+    @media (min-width: 48rem) { .mcp { grid-template-columns: 1fr 1fr; } }
+    pre {
+      background: oklch(0.28 0.03 50); color: oklch(0.93 0.02 85);
+      border-radius: var(--radius); padding: 1.1rem 1.25rem;
+      font-size: 0.82rem; overflow-x: auto; line-height: 1.55;
+    }
+    pre .c { color: oklch(0.75 0.05 70); }
+
+    /* --- download --- */
+    .dl {
+      text-align: center; background: var(--card);
+      border: 1px solid var(--border); border-radius: calc(var(--radius) + 0.3rem);
+      padding: 2.6rem 1.5rem;
+    }
+    .dl img { width: 4.5rem; height: 4.5rem; border-radius: 1.1rem; margin-bottom: 0.9rem; }
+    .dl .meta { color: var(--muted); font-size: 0.85rem; margin: 0.8rem 0 1.4rem; }
+    details { margin-top: 1.1rem; font-size: 0.85rem; color: var(--muted); }
+    details summary { cursor: pointer; }
+    details code, .inline-code {
+      background: var(--primary-soft); border-radius: 0.4rem; padding: 0.1rem 0.4rem;
+      font-size: 0.8rem; word-break: break-all;
+    }
+    footer {
+      border-top: 1px solid var(--border); padding: 1.6rem 0 2.2rem;
+      color: var(--muted); font-size: 0.85rem; text-align: center;
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="logo-256.png" alt="Logo Vaultly" />
+    <span class="name">Vaultly</span>
+    <a class="link" href="#features">Fonctionnalités</a>
+    <a class="link" href="#ia">Assistant IA</a>
+    <a class="link" href="#download">Télécharger</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div>
+      <span class="badge"><span class="dot"></span> v0.2.0 · Windows 10/11 · gratuit · données 100 % locales</span>
+      <h1>Toutes tes bonnes ressources. <em>Au même endroit.</em></h1>
+      <p class="sub">
+        Sites, apps, fichiers, notes — organisés en tuiles comme un écran d'accueil,
+        reliés à ton assistant IA. Rien dans le cloud sans ton accord.
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="download/vaultly_0.2.0_x64-setup.exe" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Télécharger pour Windows
+        </a>
+        <a class="btn ghost" href="#features">Voir ce qu'il fait</a>
+      </div>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="tile folder">📂<small>Design</small></div>
+      <div class="tile">🎨<small>Canva</small></div>
+      <div class="tile note">Idée : palette chaude…</div>
+      <div class="tile blue">🐙<small>GitHub</small></div>
+      <div class="tile green">📁<small>Devis.pdf</small></div>
+      <div class="tile">🤖<small>Mon IA</small></div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <span class="kicker">Fonctionnalités</span>
+    <h2>Pensé comme un launcher, pas comme un gestionnaire</h2>
+    <p class="lead">Tu poses, tu ranges, tu retrouves. Pas de formulaire interminable, pas d'arborescence à apprivoiser.</p>
+    <div class="grid">
+      <div class="card"><div class="ico">🗂️</div><h3>Tuiles & dossiers</h3><p>Glisse une carte sur une autre pour créer un dossier, dans l'interstice pour la placer. Imbrique, dissous, tout reste simple.</p></div>
+      <div class="card"><div class="ico">⌨️</div><h3>Palette instantanée</h3><p>Ctrl+Alt+Espace où que tu sois : cherche et ouvre n'importe quoi en deux frappes.</p></div>
+      <div class="card"><div class="ico">📝</div><h3>Notes post-it</h3><p>Notes riches colorées (titres, listes, liens), posées directement dans la grille.</p></div>
+      <div class="card"><div class="ico">📷</div><h3>Captures automatiques</h3><p>Aperçu d'écran de chaque site, sans ouvrir le navigateur.</p></div>
+      <div class="card"><div class="ico">🔗</div><h3>Liens morts & suivi</h3><p>Détection des 404, statuts « à traiter / archivé », rappel « à revisiter ».</p></div>
+      <div class="card"><div class="ico">☁️</div><h3>Sauvegarde Drive</h3><p>Backup automatique de ta bibliothèque vers ton Google Drive, restaurable en un clic.</p></div>
+      <div class="card"><div class="ico">🧩</div><h3>Extension navigateur</h3><p>Ajoute la page courante à ta bibliothèque en un clic, depuis Chrome, Brave ou Edge — avec un token dédié limité à l'ajout.</p></div>
+      <div class="card"><div class="ico">📥</div><h3>Import favoris</h3><p>Récupère tes favoris Chrome, Edge, Brave et Firefox en quelques secondes.</p></div>
+    </div>
+  </section>
+
+  <!-- IA / MCP -->
+  <section id="ia">
+    <span class="kicker">Assistant IA</span>
+    <h2>Ta bibliothèque devient un outil pour ton IA</h2>
+    <p class="lead">
+      Vaultly embarque un serveur MCP local : ton assistant (ZCode, Claude, …)
+      peut chercher, ajouter, organiser — et même lancer tes applications Windows.
+      Tout reste sur 127.0.0.1, protégé par des tokens dédiés (accès complet
+      pour l'IA, ajout seul pour l'extension).
+    </p>
+    <div class="mcp">
+      <div class="card">
+        <div class="ico">💬</div><h3>« Ajoute le logiciel Chrome »</h3>
+        <p>Tu parles, ton assistant range. Il utilise les 12 outils MCP : recherche,
+        ajout, mise à jour, dossiers, liens morts, lancement d'apps, statistiques…</p>
+      </div>
+      <pre><span class="c">// config de ton assistant (token dans Réglages → MCP)</span>
+{
+  "mcpServers": {
+    "vaultly": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp",
+      "headers": {
+        "Authorization": "Bearer TON_TOKEN"
+      }
+    }
+  }
+}</pre>
+    </div>
+  </section>
+
+  <!-- DOWNLOAD -->
+  <section id="download">
+    <div class="dl">
+      <img src="logo-256.png" alt="" />
+      <h2>Télécharger Vaultly</h2>
+      <p class="meta">
+        v0.2.0 · 7 septembre 2026 · Windows 10/11 · 64 bits · 5,4 Mo<br />
+        Installateur : raccourci menu Démarrer, désinstallation propre, tes données restent locales.
+      </p>
+      <a class="btn primary" href="download/vaultly_0.2.0_x64-setup.exe" download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        vaultly_0.2.0_x64-setup.exe
+      </a>
+      <details>
+        <summary>Alternative MSI & vérification d'intégrité</summary>
+        <p style="margin-top:0.6rem">
+          MSI (déploiement entreprise) :
+          <a href="download/vaultly_0.2.0_x64_en-US.msi" download class="inline-code">vaultly_0.2.0_x64_en-US.msi</a>
+        </p>
+        <p style="margin-top:0.6rem">
+          SHA-256 du setup :<br />
+          <code>ba8dea582cb8713f414f12dfb7da0ee762f595cbd30304f42f23262d5af89ffd</code>
+        </p>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Vaultly · fait avec Tauri 2 · tes données restent sur ta machine —
+  les seules requêtes externes sont les favicons, les captures de sites et,
+  si tu l'actives, la connexion Google Drive (sauvegarde optionnelle).
+</footer>
+
+</body>
+</html>

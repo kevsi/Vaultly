@@ -1,0 +1,56 @@
+[package]
+name = "vaultly"
+version = "0.2.0"
+description = "Vaultly - hub de ressources avec acces IA"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue from https://github.com/rust-lang/cargo/issues/8519
+name = "vaultly_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# "tray-icon" : icône plateau Windows (menu Ouvrir/Quitter, rester actif fenêtre fermée)
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+rmcp = { version = "3", features = ["server", "macros", "transport-streamable-http-server", "schemars"] }
+axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+rand = "0.8"
+directories = "6"
+base64 = "0.22"
+sha2 = "0.10"
+futures-util = "0.3"
+
+[target."cfg(windows)".dependencies]
+# DPAPI (CryptProtectData/CryptUnprotectData) pour chiffrer les jetons au repos
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
+
+[dev-dependencies]
+# oneshot des Router axum dans les tests (server.rs)
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+codegen-units = 1
+lto = true

@@ -1,0 +1,2 @@
+ba8dea582cb8713f414f12dfb7da0ee762f595cbd30304f42f23262d5af89ffd *download/vaultly_0.2.0_x64-setup.exe
+775876167dfadd1b723f9d31daf547152234412b3798ab4ca807e71080111541 *download/vaultly_0.2.0_x64_en-US.msi
