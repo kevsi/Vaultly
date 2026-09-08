@@ -67,6 +67,19 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  setVirtualMode as persistVirtualMode,
+  getVirtualMode,
+  VIRTUAL_MODES,
+  type VirtualMode,
+} from "@/lib/gridVirtualization";
 
 function CopyBlock({ label, code }: { label: string; code: string }) {
   const [copied, setCopied] = useState(false);
@@ -127,6 +140,8 @@ export function SettingsView() {
 
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  // virtualisation de la grille (Réglages → Général → Rendu de la grille)
+  const [virtualMode, setVirtualModeState] = useState<VirtualMode>(getVirtualMode);
   const [checking, setChecking] = useState(false);
   const [deadLinks, setDeadLinks] = useState<DeadLink[] | null>(null);
   const [waybackBusy, setWaybackBusy] = useState<number | null>(null);
@@ -729,6 +744,44 @@ export function SettingsView() {
               </Button>
             ))}
           </div>
+        </div>
+
+        <Separator />
+
+        {/* rendu de la grille : seuil de virtualisation */}
+        <div className="space-y-3">
+          <div>
+            <h3 className="font-medium">Rendu de la grille</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Au-delà du seuil choisi, les lignes de la bibliothèque sont
+              virtualisées (seules les lignes visibles existent à l'écran) :
+              la grille reste fluide quelle que soit la taille de ta
+              bibliothèque. En dessous, rendu natif — plus « vivant » pour
+              le glisser-déposer sur de petites collections.
+            </p>
+          </div>
+          <Select
+            value={virtualMode}
+            onValueChange={(v) => {
+              const next = v as VirtualMode;
+              setVirtualModeState(next);
+              persistVirtualMode(next);
+            }}
+          >
+            <SelectTrigger className="w-full max-w-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {VIRTUAL_MODES.map((m) => (
+                <SelectItem key={m.value} value={m.value}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {VIRTUAL_MODES.find((m) => m.value === virtualMode)?.description}
+          </p>
         </div>
 
         <Separator />

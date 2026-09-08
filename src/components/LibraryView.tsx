@@ -42,6 +42,10 @@ import {
   setResourceStatus,
 } from "@/lib/api";
 import { RESOURCE_TYPES } from "@/lib/resources";
+import {
+  getVirtualMode,
+  virtualThresholdFor,
+} from "@/lib/gridVirtualization";
 import type { DriveFile, Folder, Resource, SortBy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
@@ -265,13 +269,21 @@ export function LibraryView() {
     [foldersList, openFolder],
   );
 
-  // --- virtualisation de la grille (au-delà de 120 tuiles) ---
+  // --- virtualisation de la grille (seuil réglable dans Réglages → Général) ---
   // virtualise PAR LIGNES (n tuiles/ligne calculé à la largeur) : le drag
   // natif HTML5 continue de fonctionner, la mémoire DOM reste bornée.
   const gridViewportRef = useRef<HTMLDivElement | null>(null);
-  const VIRTUALIZE_ABOVE = 120;
+  const [virtualMode, setVirtualModeState] = useState(getVirtualMode);
+  useEffect(() => {
+    // le réglage changé dans Réglages s'applique sans remontage de la vue
+    const onChange = () => setVirtualModeState(getVirtualMode());
+    window.addEventListener("vaultly:virtualization-changed", onChange);
+    return () =>
+      window.removeEventListener("vaultly:virtualization-changed", onChange);
+  }, []);
+  const threshold = virtualThresholdFor(virtualMode);
   const tileCount = (resources ?? []).length + visibleFolders.length;
-  const virtualizing = tileCount > VIRTUALIZE_ABOVE;
+  const virtualizing = tileCount >= threshold;
   const [columns, setColumns] = useState(4);
   useEffect(() => {
     if (!virtualizing) return;
