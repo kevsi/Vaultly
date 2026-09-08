@@ -261,7 +261,7 @@ export function ResourceGrid(props: ResourceGridProps) {
 
   // respiration entre la barre de filtres et la première ligne : le
   // conteneur virtualisé a un padding-top ÉGAL, compensé via scrollMargin
-  const GRID_TOP_PAD = 16;
+  const GRID_TOP_PAD = 12;
 
   // colonnes du mode virtualisé : recalculées à la largeur du conteneur
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
@@ -357,21 +357,25 @@ export function ResourceGrid(props: ResourceGridProps) {
 
   function renderCreateFolderTile() {
     return (
-      <button
-        onClick={() => {
-          setFolderName("");
-          setFolderDialog({ mode: "create" });
-        }}
-        title={
-          openFolder
-            ? `Nouveau sous-dossier dans « ${openFolder.name} »`
-            : "Nouveau dossier"
-        }
-        className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed p-3 text-muted-foreground transition-colors outline-none hover:border-primary/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-      >
-        <FolderPlus className="size-7 opacity-70" />
-        <span className="text-center text-xs font-medium">Nouveau dossier</span>
-      </button>
+      <div className="animate-tile-in relative rounded-xl">
+        <button
+          onClick={() => {
+            setFolderName("");
+            setFolderDialog({ mode: "create" });
+          }}
+          title={
+            openFolder
+              ? `Nouveau sous-dossier dans « ${openFolder.name} »`
+              : "Nouveau dossier"
+          }
+          className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed bg-card p-3 text-muted-foreground transition-all duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-primary/50 hover:text-foreground hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
+        >
+          <FolderPlus className="size-8 opacity-70" />
+          <span className="line-clamp-2 min-h-8 text-center text-xs font-medium leading-tight">
+            Nouveau dossier
+          </span>
+        </button>
+      </div>
     );
   }
 
@@ -459,7 +463,7 @@ export function ResourceGrid(props: ResourceGridProps) {
   if (viewMode === "list") {
     return (
       <ScrollArea className="min-h-0 flex-1">
-        <div className="px-6 pt-4 pb-6">
+        <div className="px-4 pt-3 pb-4">
           <div className="overflow-hidden rounded-xl border">
             {/* en-tête de colonnes */}
             <div
@@ -612,7 +616,7 @@ export function ResourceGrid(props: ResourceGridProps) {
     return (
       <div
         ref={virtualScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-6"
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4"
       >
         <div
           style={{
@@ -633,7 +637,7 @@ export function ResourceGrid(props: ResourceGridProps) {
                 left: 0,
                 width: "100%",
                 gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                transform: `translateY(${vi.start}px)`,
+                transform: `translateY(${vi.start - GRID_TOP_PAD}px)`,
               }}
             >
               {gridItems
@@ -664,7 +668,7 @@ export function ResourceGrid(props: ResourceGridProps) {
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <div className="px-6 pt-4 pb-6">
+      <div className="px-4 pt-3 pb-4">
         <div className="grid gap-3" style={nativeGridStyle}>
           {/* dossiers : racine sur l'accueil, sous-dossiers dans un dossier */}
           {visibleFolders.map((f, i) => (
