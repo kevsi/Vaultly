@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import {
   addResource,
   fetchMetadata,
+  fetchRepoDetails,
   listResources,
   readImageDataUrl,
   updateResource,
+  type RepoDetails,
 } from "@/lib/api";
 import { metaFieldsFor } from "@/lib/metaFields";
 import { hostOf, RESOURCE_TYPES } from "@/lib/resources";
@@ -180,6 +182,14 @@ export function ResourceDialog({
     }
     setFetching(true);
     try {
+      // dépôt GitHub : récupère la fiche complète (description, langage,
+      // étoiles, topics, licence) au-delà du titre/favicon
+      if (form.resourceType === "repo" && /github\.com\/[^/]+\/[^/]/.test(url)) {
+        const d = await fetchRepoDetails(url);
+        applyRepoDetails(d);
+        toast.success("Fiche du dépôt récupérée depuis GitHub");
+        return;
+      }
       const m = await fetchMetadata(url);
       if (!form.title.trim()) set("title", m.title);
       if (!favicon) setFavicon(m.favicon);
@@ -188,6 +198,31 @@ export function ResourceDialog({
       toast.error(String(e));
     } finally {
       setFetching(false);
+    }
+  }
+
+  /** Applique les détails GitHub au formulaire : titre par défaut, favicon
+   *  GitHub, description, et les champs meta marqués « auto ». */
+  function applyRepoDetails(d: RepoDetails) {
+    setForm((f) => ({
+      ...f,
+      title: f.title.trim() ? f.title : d.name,
+      description: f.description.trim() ? f.description : d.description,
+      meta: {
+        ...f.meta,
+        language: d.language || f.meta.language || "",
+        owner: d.owner || f.meta.owner || "",
+        stars: d.stars ? String(d.stars.toLocaleString("fr-FR")) : f.meta.stars || "",
+        license: d.license || f.meta.license || "",
+        topics: d.topics.length > 0 ? d.topics.join(", ") : f.meta.topics || "",
+      },
+      // topics officiels proposés en tags (sans écraser une saisie)
+      tags: f.tags.trim()
+        ? f.tags
+        : d.topics.slice(0, 4).join(", "),
+    }));
+    if (!favicon) {
+      setFavicon(`https://github.com/${d.owner}.png?size=128`);
     }
   }
 

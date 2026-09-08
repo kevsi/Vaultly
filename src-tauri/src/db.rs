@@ -680,6 +680,94 @@ pub async fn empty_trash(pool: &SqlitePool) -> Result<usize, String> {
     Ok(r.rows_affected() as usize)
 }
 
+/// Restaure plusieurs entrées de la corbeille EN UNE TRANSACTION (tout ou
+/// rien : si une URL est déjà enregistrée, rien n'est restauré et l'erreur
+/// nomme la ressource fautive). Le retour liste les ids de corbeille
+/// introuvables entre-temps (restaurés dans un autre onglet…) — sans échouer.
+pub async fn restore_trash_bulk(
+    pool: &SqlitePool,
+    trash_ids: &[i64],
+) -> Result<Vec<i64>, String> {
+    if trash_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut missing: Vec<i64> = Vec::new();
+    for &trash_id in trash_ids {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT resource FROM deleted_resources WHERE id = ?")
+                .bind(trash_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+        let Some((json,)) = row else {
+            missing.push(trash_id);
+            continue;
+        };
+        let res: Resource =
+            serde_json::from_str(&json).map_err(|e| format!("corbeille illisible : {e}"))?;
+
+        // même logique que restore_trash : URL libre exigée, dossier
+        // d'origine conservé seulement s'il existe encore
+        let dup: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM resources WHERE url = ? COLLATE NOCASE")
+                .bind(&res.url)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+        if let Some(existing) = dup {
+            tx.rollback().await.ok();
+            return Err(format!(
+                "« {} » : URL déjà enregistrée (ressource {existing}) — rien n'a été restauré",
+                res.title
+            ));
+        }
+        let folder_ok: Option<i64> = match res.folder_id {
+            Some(fid) => {
+                sqlx::query_scalar("SELECT id FROM folders WHERE id = ?")
+                    .bind(fid)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| e.to_string())?
+            }
+            None => Some(0),
+        };
+        let folder_id = if folder_ok.is_some() { res.folder_id } else { None };
+        let tags = serde_json::to_string(&res.tags).map_err(|e| e.to_string())?;
+        let meta = serde_json::to_string(&res.meta).map_err(|e| e.to_string())?;
+        sqlx::query(
+            "INSERT INTO resources (url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&res.url)
+        .bind(&res.title)
+        .bind(&res.description)
+        .bind(&res.resource_type)
+        .bind(&res.category)
+        .bind(&tags)
+        .bind(&res.notes)
+        .bind(&res.favicon)
+        .bind(res.favorite as i64)
+        .bind(res.open_count)
+        .bind(&res.last_opened_at)
+        .bind(res.position)
+        .bind(&meta)
+        .bind(folder_id)
+        .bind(&res.status)
+        .bind(&res.created_at)
+        .bind(&res.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM deleted_resources WHERE id = ?")
+            .bind(trash_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(missing)
+}
+
 /// Supprime les entrées de plus de `days` jours. Appelé au démarrage.
 pub async fn purge_expired_trash(pool: &SqlitePool, days: i64) -> Result<usize, String> {
     let r = sqlx::query("DELETE FROM deleted_resources WHERE deleted_at < datetime('now', ?)")
@@ -1149,7 +1237,7 @@ pub async fn get_setting(pool: &SqlitePool, key: &str) -> Option<String> {
     {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("lecture du réglage {key} échouée : {e}");
+            tracing::warn!("lecture du réglage {key} échouée : {e}");
             None
         }
     }
@@ -1216,6 +1304,13 @@ pub struct DbStats {
     pub never_opened: i64,
     pub by_type: Vec<(String, i64)>,
     pub top_used: Vec<Resource>,
+    /// top 10 tags avec leur nombre (tags = colonne JSON → json_each)
+    pub by_tag: Vec<(String, i64)>,
+    /// ressources créées par mois sur 12 mois (« YYYY-MM », mois présents
+    /// uniquement — le front comble les trous)
+    pub activity: Vec<(String, i64)>,
+    /// les plus anciennes ressources jamais ouvertes (max 8)
+    pub never_opened_list: Vec<Resource>,
 }
 
 pub async fn stats(pool: &SqlitePool) -> Result<DbStats, String> {
@@ -1239,6 +1334,32 @@ pub async fn stats(pool: &SqlitePool) -> Result<DbStats, String> {
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
+    // tags : colonne JSON (["a","b"]) — json_each éclate chaque tableau,
+    // les tags vides sont ignorés
+    let by_tag: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT je.value, COUNT(*) FROM resources, json_each(resources.tags) je \
+         WHERE je.value <> '' GROUP BY je.value ORDER BY 2 DESC LIMIT 10",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let activity: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT strftime('%Y-%m', created_at), COUNT(*) FROM resources \
+         WHERE created_at >= datetime('now', '-12 months') \
+         GROUP BY 1 ORDER BY 1",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    // jamais ouvertes : les plus anciennes d'abord (ce sont celles qu'on
+    // a le plus « oubliées ») — lignes brutes → row_to_resource
+    let never_opened_list: Vec<Resource> = sqlx::query(
+        "SELECT * FROM resources WHERE open_count = 0 ORDER BY created_at ASC LIMIT 8",
+    )
+    .fetch_all(pool)
+    .await
+    .map(|rows| rows.into_iter().map(row_to_resource).collect())
+    .map_err(|e| e.to_string())?;
     let top_used = list_resources(
         pool,
         &ResourceFilter {
@@ -1254,6 +1375,9 @@ pub async fn stats(pool: &SqlitePool) -> Result<DbStats, String> {
         never_opened,
         by_type,
         top_used,
+        by_tag,
+        activity,
+        never_opened_list,
     })
 }
 
@@ -1378,5 +1502,73 @@ mod tests {
         assert_eq!(ordered[0].id, 3, "la tête demandée est en tête");
         assert_eq!(ordered[1].id, 1);
         assert!(ordered[2..].iter().all(|r| r.position >= 2));
+    }
+
+    #[tokio::test]
+    async fn restore_trash_bulk_restores_all_or_nothing() {
+        let pool = test_pool().await;
+        let a = add_resource(&pool, &new_res("https://a.com", "A", None))
+            .await
+            .unwrap();
+        let b = add_resource(&pool, &new_res("https://b.com", "B", None))
+            .await
+            .unwrap();
+        delete_resource(&pool, a.id).await.unwrap();
+        delete_resource(&pool, b.id).await.unwrap();
+        let trash = list_trash(&pool).await.unwrap();
+        assert_eq!(trash.len(), 2);
+
+        // restauration en masse : tout revient, aucune entrée manquante
+        let ids: Vec<i64> = trash.iter().map(|t| t.trash_id).collect();
+        let missing = restore_trash_bulk(&pool, &ids).await.unwrap();
+        assert!(missing.is_empty());
+        assert_eq!(list_trash(&pool).await.unwrap().len(), 0);
+        let all = list_resources(&pool, &ResourceFilter::default()).await.unwrap();
+        assert_eq!(all.len(), 2);
+
+        // --- conflit d'URL (tout ou rien) ---
+        // état de base : a.com et b.com vivent en base.
+        // 1. on recrée une copie fraîche de c.com, on la supprime → en corbeille
+        let c = add_resource(&pool, &new_res("https://c.com", "C", None))
+            .await
+            .unwrap();
+        delete_resource(&pool, c.id).await.unwrap();
+        // 2. on recrée c.com en base (conflit avec l'entrée corbeille ci-dessus)
+        add_resource(&pool, &new_res("https://c.com", "C copie", None))
+            .await
+            .unwrap();
+        // 3. on supprime aussi la copie de A → en corbeille, URL libre
+        let a2 = add_resource(&pool, &new_res("https://a2.com", "A2", None))
+            .await
+            .unwrap();
+        delete_resource(&pool, a2.id).await.unwrap();
+        let trash = list_trash(&pool).await.unwrap();
+        assert_eq!(trash.len(), 2, "C (conflit) + A2 (libre) en corbeille");
+        // le lot mélange une entrée en conflit et une libre : TOUT échoue
+        let err = restore_trash_bulk(
+            &pool,
+            &trash.iter().map(|t| t.trash_id).collect::<Vec<_>>(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("déjà enregistrée"), "erreur de conflit : {err}");
+        // rien n'a bougé : la corbeille garde ses 2 entrées
+        assert_eq!(list_trash(&pool).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn restore_trash_bulk_tolerates_missing_entries() {
+        let pool = test_pool().await;
+        let a = add_resource(&pool, &new_res("https://a.com", "A", None))
+            .await
+            .unwrap();
+        delete_resource(&pool, a.id).await.unwrap();
+        let trash = list_trash(&pool).await.unwrap();
+        // un id inexistant (999) ne bloque pas la restauration des autres
+        let missing = restore_trash_bulk(&pool, &[trash[0].trash_id, 999])
+            .await
+            .unwrap();
+        assert_eq!(missing, vec![999]);
+        assert!(list_trash(&pool).await.unwrap().is_empty());
     }
 }

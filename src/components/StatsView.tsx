@@ -1,9 +1,57 @@
 import { Activity, Flame, Star, Tag } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getStats } from "@/lib/api";
-import { typeLabel } from "@/lib/resources";
+import { hostOf, typeLabel } from "@/lib/resources";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+
+const MONTHS = [
+  "janv.", "févr.", "mars", "avr.", "mai", "juin",
+  "juil.", "août", "sept.", "oct.", "nov.", "déc.",
+];
+
+/** 12 derniers mois, trous comblés à zéro : ["YYYY-MM", n] → série dense. */
+function activitySeries(activity: [string, number][]): { label: string; n: number }[] {
+  const map = new Map(activity);
+  const out: { label: string; n: number }[] = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    out.push({ label: MONTHS[d.getMonth()], n: map.get(key) ?? 0 });
+  }
+  return out;
+}
+
+/** Mini-histogramme SVG : 12 barres, sans librairie externe. */
+function ActivityChart({ activity }: { activity: [string, number][] }) {
+  const series = activitySeries(activity);
+  const max = Math.max(...series.map((s) => s.n), 1);
+  return (
+    <div className="mt-3 flex h-24 items-end gap-1.5">
+      {series.map((s, i) => (
+        <div
+          key={i}
+          className="group flex min-w-0 flex-1 flex-col items-center gap-1"
+          title={`${s.label} : ${s.n} ajout${s.n > 1 ? "s" : ""}`}
+        >
+          <div className="flex h-20 w-full items-end">
+            <div
+              className={
+                "w-full rounded-t-md transition-colors " +
+                (s.n > 0
+                  ? "bg-primary/70 group-hover:bg-primary"
+                  : "bg-muted")
+              }
+              style={{ height: `${Math.max(s.n > 0 ? (s.n / max) * 100 : 0, 3)}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-muted-foreground">{s.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function StatsView() {
   const { data: s, isLoading, isError, error } = useQuery({
@@ -34,6 +82,7 @@ export function StatsView() {
     { label: "Favoris", value: s.favorites, icon: Star },
     { label: "Jamais ouvertes", value: s.neverOpened, icon: Tag },
   ];
+  const tagMax = Math.max(...s.byTag.map(([, n]) => n), 1);
 
   return (
     <ScrollArea className="h-full">
@@ -57,6 +106,12 @@ export function StatsView() {
               </p>
             </div>
           ))}
+        </div>
+
+        {/* activité : créations par mois sur 12 mois */}
+        <div className="rounded-xl border p-4">
+          <h3 className="font-medium">Activité — 12 derniers mois</h3>
+          <ActivityChart activity={s.activity} />
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -85,6 +140,33 @@ export function StatsView() {
             </div>
           </div>
 
+          {/* par tag : mêmes barres, top 10 */}
+          <div className="rounded-xl border p-4">
+            <h3 className="font-medium">Par tag</h3>
+            {s.byTag.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Ajoute des tags à tes ressources pour voir la répartition.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {s.byTag.map(([tag, n]) => (
+                  <div key={tag}>
+                    <div className="flex justify-between text-sm">
+                      <span className="min-w-0 truncate">{tag}</span>
+                      <span className="tabular-nums text-muted-foreground">{n}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-chart-2/80"
+                        style={{ width: `${Math.max((n / tagMax) * 100, 2)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-xl border p-4">
             <h3 className="flex items-center gap-2 font-medium">
               <Flame className="size-4" />
@@ -111,6 +193,37 @@ export function StatsView() {
                 </p>
               )}
             </div>
+          </div>
+
+          {/* jamais ouvertes : les plus anciennes, cliquables dans la palette */}
+          <div className="rounded-xl border p-4">
+            <h3 className="font-medium">Oubliées — jamais ouvertes</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Les plus anciennes d'abord : passe les revoir ou nettoie.
+            </p>
+            {s.neverOpenedList.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Toutes tes ressources ont été ouvertes au moins une fois. 🎉
+              </p>
+            ) : (
+              <div className="mt-3 space-y-1.5">
+                {s.neverOpenedList.map((r) => {
+                  const d = new Date(r.createdAt.replace(" ", "T") + "Z");
+                  const when = Number.isNaN(d.getTime())
+                    ? ""
+                    : d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+                  return (
+                    <div key={r.id} className="flex items-center gap-2 text-sm">
+                      <span className="min-w-0 flex-1 truncate">{r.title}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {typeLabel(r.resourceType)} · {hostOf(r.url)}
+                        {when ? ` · ${when}` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

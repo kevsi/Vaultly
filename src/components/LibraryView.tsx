@@ -51,6 +51,7 @@ import { FolderTile } from "@/components/FolderTile";
 import { NoteEditor } from "@/components/NoteEditor";
 import { NoteViewer } from "@/components/NoteViewer";
 import { ResourceDialog } from "@/components/ResourceDialog";
+import { ResourceDetails } from "@/components/ResourceDetails";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -61,6 +62,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Select,
   SelectContent,
@@ -115,6 +117,8 @@ export function LibraryView() {
   const [noteEditorOpen, setNoteEditorOpen] = useState(false);
   const [noteEditing, setNoteEditing] = useState<Resource | null>(null);
   const [noteViewing, setNoteViewing] = useState<Resource | null>(null);
+  /** vue « Détails » d'une ressource (fiche complète, README des dépôts) */
+  const [detailsViewing, setDetailsViewing] = useState<Resource | null>(null);
   // --- Joindre un fichier depuis Google Drive ---
   const [driveDialogOpen, setDriveDialogOpen] = useState(false);
   const [driveQuery, setDriveQuery] = useState("");
@@ -163,7 +167,7 @@ export function LibraryView() {
     function onKey(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey;
       const anyDialogOpen =
-        dialogOpen || noteEditorOpen || noteViewing !== null || folderDialog !== null || driveDialogOpen || confirm !== null;
+        dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || driveDialogOpen || confirm !== null;
       if (ctrl && e.altKey && e.key.toLowerCase() === "n") {
         if (anyDialogOpen) return;
         e.preventDefault();
@@ -185,15 +189,15 @@ export function LibraryView() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openFolder, dialogOpen, noteEditorOpen, noteViewing, folderDialog, driveDialogOpen, confirm]);
+  }, [openFolder, dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, driveDialogOpen, confirm]);
 
   // URL capturée depuis le presse-papiers : modale pré-remplie.
   // Ignorée si un dialogue est déjà ouvert : elle écraserait la saisie en cours.
   const anyDialogRef = useRef(false);
   useEffect(() => {
     anyDialogRef.current =
-      dialogOpen || noteEditorOpen || noteViewing !== null || folderDialog !== null || driveDialogOpen || confirm !== null;
-  }, [dialogOpen, noteEditorOpen, noteViewing, folderDialog, driveDialogOpen, confirm]);
+      dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || driveDialogOpen || confirm !== null;
+  }, [dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, driveDialogOpen, confirm]);
   useEffect(() => {
     function onAddUrl(e: Event) {
       if (anyDialogRef.current) return;
@@ -260,6 +264,51 @@ export function LibraryView() {
       ),
     [foldersList, openFolder],
   );
+
+  // --- virtualisation de la grille (au-delà de 120 tuiles) ---
+  // virtualise PAR LIGNES (n tuiles/ligne calculé à la largeur) : le drag
+  // natif HTML5 continue de fonctionner, la mémoire DOM reste bornée.
+  const gridViewportRef = useRef<HTMLDivElement | null>(null);
+  const VIRTUALIZE_ABOVE = 120;
+  const tileCount = (resources ?? []).length + visibleFolders.length;
+  const virtualizing = tileCount > VIRTUALIZE_ABOVE;
+  const [columns, setColumns] = useState(4);
+  useEffect(() => {
+    if (!virtualizing) return;
+    const el = gridViewportRef.current;
+    if (!el) return;
+    // colonnes = floor(largeur / (144px tuile + 12px gap)) — min 2, max 12
+    const compute = () =>
+      setColumns(
+        Math.min(12, Math.max(2, Math.floor(el.clientWidth / 156))),
+      );
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [virtualizing]);
+
+  // items de la grille dans l'ordre : dossiers, tuile « créer », ressources
+  const gridItems = useMemo(() => {
+    const items: Array<
+      { k: "folder"; f: Folder } | { k: "create" } | { k: "res"; r: Resource }
+    > = [
+      ...visibleFolders.map((f) => ({ k: "folder" as const, f })),
+      { k: "create" as const },
+      ...(resources ?? []).map((r) => ({ k: "res" as const, r })),
+    ];
+    return items;
+  }, [visibleFolders, resources]);
+
+  // lignes virtuelles : hauteur estimée puis MESURÉE (measureElement) —
+  // les tuiles sont fluides (minmax 9rem), l'estimation seule suffit pas
+  const rowCount = virtualizing ? Math.ceil(gridItems.length / columns) : 0;
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => gridViewportRef.current,
+    estimateSize: () => 176, // tuile carrée ~144px + gap 12 + marge hover
+    overscan: 4,
+  });
 
   function toggleCaptures() {
     const next = !captures;
@@ -936,8 +985,11 @@ export function LibraryView() {
         </div>
       )}
 
-      {/* grille : dossiers puis ressources */}
-      <ScrollArea className="min-h-0 flex-1">
+      {/* grille : dossiers puis ressources. Au-delà de 120 tuiles, les
+          lignes sont virtualisées (seules les lignes visibles + marge sont
+          rendues) : la grille reste fluide à 500 ressources. En dessous,
+          rendu natif (le drag inter-tuiles n'a rien à gagner). */}
+      <ScrollArea className="min-h-0 flex-1" viewportRef={gridViewportRef}>
         <div className="p-4 pt-3">
           {isError && (
             <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
@@ -984,6 +1036,167 @@ export function LibraryView() {
                   Ajouter une ressource
                 </Button>
               )}
+            </div>
+          ) : virtualizing ? (
+            /* --- grille virtualisée : seules les lignes visibles (+ marge)
+                existent dans le DOM. La hauteur des lignes est MESURÉE
+                (measureElement) : les tuiles fluides restent correctes. --- */
+            <div
+              style={{
+                height: rowVirtualizer.getTotalSize(),
+                position: "relative",
+                width: "100%",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((vi) => (
+                <div
+                  key={vi.key}
+                  data-index={vi.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="grid gap-3"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                    transform: `translateY(${vi.start}px)`,
+                  }}
+                >
+                  {gridItems
+                    .slice(vi.index * columns, (vi.index + 1) * columns)
+                    .map((it) =>
+                      it.k === "folder" ? (
+                        <div key={`folder-${it.f.id}`} className="animate-tile-in">
+                          <FolderTile
+                            folder={it.f}
+                            onOpen={(fo) => setFolderStack((s) => [...s, fo])}
+                            onRename={(fo) => {
+                              setFolderName(fo.name);
+                              setFolderDialog({ mode: "rename", folder: fo });
+                            }}
+                            onDissolve={(fo) => void handleDissolveFolder(fo)}
+                            onDelete={(fo) => void handleDeleteFolder(fo)}
+                            dropHint={folderDropHint === it.f.id}
+                            onDragOver={(e) => {
+                              if (dragId === null && dragFolderId === null) return;
+                              e.preventDefault();
+                              setFolderDropHint(it.f.id);
+                            }}
+                            onDragLeave={() =>
+                              setFolderDropHint((h) => (h === it.f.id ? null : h))
+                            }
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (dragFolderId !== null) {
+                                void handleFolderDrop(it.f);
+                              } else {
+                                void handleDropOnFolder(it.f);
+                              }
+                            }}
+                          />
+                        </div>
+                      ) : it.k === "create" ? (
+                        <button
+                          key="create"
+                          onClick={() => {
+                            setFolderName("");
+                            setFolderDialog({ mode: "create" });
+                          }}
+                          title={
+                            openFolder
+                              ? `Nouveau sous-dossier dans « ${openFolder.name} »`
+                              : "Nouveau dossier"
+                          }
+                          className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed p-3 text-muted-foreground transition-colors outline-none hover:border-primary/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                        >
+                          <FolderPlus className="size-7 opacity-70" />
+                          <span className="text-center text-xs font-medium">
+                            Nouveau dossier
+                          </span>
+                        </button>
+                      ) : (
+                        <div
+                          key={it.r.id}
+                          onKeyDown={(e) => {
+                            if (
+                              sortBy === "manual" &&
+                              e.ctrlKey &&
+                              e.shiftKey &&
+                              (e.key === "ArrowLeft" || e.key === "ArrowRight")
+                            ) {
+                              e.preventDefault();
+                              void moveTileByKey(
+                                it.r,
+                                e.key === "ArrowLeft" ? -1 : 1,
+                              );
+                            }
+                          }}
+                          onDragOver={(e) => {
+                            if (dragId === null) return;
+                            e.preventDefault();
+                            const zone = zoneFor(e);
+                            setDropZone((h) =>
+                              h && h.id === it.r.id && h.zone === zone
+                                ? h
+                                : { id: it.r.id, zone },
+                            );
+                          }}
+                          onDragLeave={() =>
+                            setDropZone((h) => (h?.id === it.r.id ? null : h))
+                          }
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dropZone?.id === it.r.id)
+                              void handleDropOnTile(it.r, dropZone.zone);
+                          }}
+                          onDragEnd={() => {
+                            setDragId(null);
+                            setDropZone(null);
+                            setFolderDropHint(null);
+                          }}
+                          className={cn(
+                            "relative rounded-xl transition-shadow",
+                            dragId === it.r.id && "opacity-40",
+                            dropZone?.id === it.r.id &&
+                              dropZone.zone === "left" &&
+                              "before:absolute before:inset-y-1 before:-left-[7px] before:z-10 before:w-[3px] before:rounded-full before:bg-primary before:content-['']",
+                            dropZone?.id === it.r.id &&
+                              dropZone.zone === "right" &&
+                              "before:absolute before:inset-y-1 before:-right-[7px] before:z-10 before:w-[3px] before:rounded-full before:bg-primary before:content-['']",
+                            dropZone?.id === it.r.id &&
+                              dropZone.zone === "center" &&
+                              dragId !== it.r.id &&
+                              "outline-2 outline-dashed outline-primary/60",
+                            selectedIds.has(it.r.id) && selectMode
+                              ? "ring-2 ring-amber-500"
+                              : "",
+                          )}
+                        >
+                          <ResourceTile
+                            resource={it.r}
+                            capture={captures && it.r.resourceType !== "note"}
+                            selectMode={selectMode}
+                            selected={selectedIds.has(it.r.id)}
+                            onToggleSelect={toggleSelect}
+                            draggable={!selectMode}
+                            onDragStarted={handleDragStarted}
+                            folders={foldersList}
+                            onMoveToFolder={handleMoveToFolder}
+                            onOpenNote={setNoteViewing}
+                            onDetails={setDetailsViewing}
+                            onUploadToDrive={handleUploadToDrive}
+                            onSetStatus={handleSetStatus}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            onToggled={refresh}
+                          />
+                        </div>
+                      ),
+                    )}
+                </div>
+              ))}
             </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
@@ -1134,6 +1347,7 @@ export function LibraryView() {
                     folders={foldersList}
                     onMoveToFolder={handleMoveToFolder}
                     onOpenNote={setNoteViewing}
+                    onDetails={setDetailsViewing}
                     onUploadToDrive={handleUploadToDrive}
                     onSetStatus={handleSetStatus}
                     onEdit={handleEdit}
@@ -1212,6 +1426,17 @@ export function LibraryView() {
           setNoteEditorOpen(true);
         }}
         onChanged={refresh}
+      />
+
+      {/* fiche « Détails » d'une ressource (README pour les dépôts GitHub) */}
+      <ResourceDetails
+        resource={detailsViewing}
+        onClose={() => setDetailsViewing(null)}
+        onEdit={(res) => {
+          setDetailsViewing(null);
+          setEditing(res);
+          setDialogOpen(true);
+        }}
       />
 
       {/* joindre un fichier depuis Google Drive */}

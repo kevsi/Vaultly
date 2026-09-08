@@ -32,14 +32,14 @@ async fn auto_backup(pool: SqlitePool, dir: std::path::PathBuf) {
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("sauvegarde auto annulée (lecture des ressources) : {e}");
+            tracing::warn!("sauvegarde auto annulée (lecture des ressources) : {e}");
             return;
         }
     };
     let folders = match db::list_folders(&pool).await {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("sauvegarde auto annulée (lecture des dossiers) : {e}");
+            tracing::warn!("sauvegarde auto annulée (lecture des dossiers) : {e}");
             return;
         }
     };
@@ -53,12 +53,12 @@ async fn auto_backup(pool: SqlitePool, dir: std::path::PathBuf) {
             let stamp = chrono_like_stamp();
             let path = dir.join(format!("vaultly-{stamp}.json"));
             if let Err(e) = tokio::fs::write(&path, json).await {
-                eprintln!("sauvegarde auto échouée : {e}");
+                tracing::warn!("sauvegarde auto échouée : {e}");
             } else {
                 prune_old_backups(&dir, 10).await;
             }
         }
-        Err(e) => eprintln!("sauvegarde auto : sérialisation {e}"),
+        Err(e) => tracing::warn!("sauvegarde auto : sérialisation {e}"),
     }
 }
 
@@ -174,7 +174,7 @@ fn migrate_from_connectall(app: &tauri::AppHandle, new_data_dir: &std::path::Pat
         let old_db = old.join("connectall.db");
         if old_db.exists() {
             if let Err(e) = std::fs::copy(&old_db, &db_path) {
-                eprintln!("migration ConnectAll : copie de la base échouée : {e}");
+                tracing::warn!("migration ConnectAll : copie de la base échouée : {e}");
             } else {
                 // les fichiers WAL/SHM accompagnent la base s'ils existent
                 for suffix in ["-wal", "-shm"] {
@@ -186,7 +186,7 @@ fn migrate_from_connectall(app: &tauri::AppHandle, new_data_dir: &std::path::Pat
                         );
                     }
                 }
-                eprintln!("migration ConnectAll → Vaultly : base copiée");
+                tracing::warn!("migration ConnectAll → Vaultly : base copiée");
             }
         }
     }
@@ -197,11 +197,11 @@ fn migrate_from_connectall(app: &tauri::AppHandle, new_data_dir: &std::path::Pat
             let new_res = docs.join("Vaultly");
             if old_res.exists() && !new_res.exists() {
                 match std::fs::rename(&old_res, &new_res) {
-                    Ok(()) => eprintln!("migration ConnectAll → Vaultly : dossier Documents renommé"),
+                    Ok(()) => tracing::warn!("migration ConnectAll → Vaultly : dossier Documents renommé"),
                     Err(e) => {
                         // dossier verrouillé (Explorateur ouvert...) : on copie
                         // au moins la structure pour que l'app fonctionne
-                        eprintln!(
+                        tracing::warn!(
                             "migration ConnectAll : renommage de Documents\\ConnectAll échoué ({e}), copie des sous-dossiers"
                         );
                         let _ = std::fs::create_dir_all(new_res.join("Fichiers"));
@@ -244,8 +244,58 @@ async fn get_mcp_status(
     Ok(status.0.read().await.clone())
 }
 
+/// Initialise le logging persistant : un fichier par jour dans
+/// %APPDATA%\com.kevsi.vaultly\logs (7 jours conservés). Remplace les
+/// eprintln! invisibles en release — les bugs rapportés par les
+/// utilisateurs deviennent diagnostiquables. Ne panique jamais : sans
+/// logging, l'app doit continuer de fonctionner.
+fn init_logging() {
+    // directories 6 : BaseDirs::data_dir() = %APPDATA% (roaming) sur Windows
+    let Some(base) = directories::BaseDirs::new().map(|d| d.data_dir().to_path_buf()) else {
+        return;
+    };
+    let log_dir = base.join("com.kevsi.vaultly").join("logs");
+    if std::fs::create_dir_all(&log_dir).is_err() {
+        return;
+    }
+    // prune des vieux fichiers (vaultly.log.YYYY-MM-DD) : garde 7 jours
+    let cutoff = chrono_like_stamp(); // réutilise le format, suffixe à part
+    let _ = cutoff; // (le tri lexicographique par nom suffit, voir ci-dessous)
+    let mut daily: Vec<String> = std::fs::read_dir(&log_dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|f| {
+                    let n = f.file_name().to_string_lossy().to_string();
+                    n.strip_prefix("vaultly.log.")
+                        .filter(|d| d.len() == 10 && d.chars().all(|c| c.is_ascii_digit() || c == '-'))
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    daily.sort();
+    daily.reverse();
+    for old in daily.iter().skip(7) {
+        let _ = std::fs::remove_file(log_dir.join(format!("vaultly.log.{old}")));
+    }
+
+    let appender = tracing_appender::rolling::daily(&log_dir, "vaultly.log");
+    let (writer, guard) = tracing_appender::non_blocking(appender);
+    // le guard fait avancer le writer en tâche de fond : il doit vivre
+    // jusqu'à la fin du process (on n'a pas de point de sortie propre qui
+    // puisse le flusher — exit(0) de save_and_exit inclus).
+    std::mem::forget(guard);
+    let _ = tracing_subscriber::fmt()
+        .with_writer(writer)
+        .with_ansi(false)
+        .with_target(false)
+        .try_init();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_logging();
+    tracing::info!("Vaultly démarre (v{})", env!("CARGO_PKG_VERSION"));
     // Handles des tâches de fond, partagés entre le setup (qui les remplit)
     // et on_window_event (qui les avorte à l'arrêt). Le serveur callback
     // OAuth est spawné dans gdrive.rs (aucun handle exposé) : le process qui
@@ -346,7 +396,7 @@ pub fn run() {
                 // purge de la corbeille : les entrées de plus de 30 jours
                 if let Ok(n) = db::purge_expired_trash(&pool, 30).await {
                     if n > 0 {
-                        eprintln!("corbeille : {n} entrée(s) expirée(s) purgée(s)");
+                        tracing::warn!("corbeille : {n} entrée(s) expirée(s) purgée(s)");
                     }
                 }
             });
@@ -384,7 +434,7 @@ pub fn run() {
                     .build(app.handle())
                 {
                     Ok(_) => tray_flag.store(true, std::sync::atomic::Ordering::SeqCst),
-                    Err(e) => eprintln!("icône plateau indisponible : {e} — la croix redevient la sortie"),
+                    Err(e) => tracing::warn!("icône plateau indisponible : {e} — la croix redevient la sortie"),
                 }
             }
 
@@ -405,7 +455,7 @@ pub fn run() {
             let slot_for_server = gdrive_slot.clone();
             tauri::async_runtime::block_on(async {
                 if let Err(e) = gdrive::start_callback_server(slot_for_server).await {
-                    eprintln!("serveur callback gdrive non démarré : {e}");
+                    tracing::warn!("serveur callback gdrive non démarré : {e}");
                 }
             });
             app.manage(gdrive::GDriveSlot(gdrive_slot));
@@ -427,7 +477,7 @@ pub fn run() {
                     if let Some(v) = db::get_setting(&pool, key).await {
                         if !v.is_empty() && !secret::is_encrypted(&v) {
                             if let Err(e) = db::set_secret(&pool, key, &v).await {
-                                eprintln!("migration DPAPI du secret {key} échouée : {e}");
+                                tracing::warn!("migration DPAPI du secret {key} échouée : {e}");
                             }
                         }
                     }
@@ -441,7 +491,7 @@ pub fn run() {
                                 // sans persistance, le jeton serait régénéré à
                                 // chaque démarrage et les clients déconnectés
                                 // sans message : le dire dans les logs.
-                                eprintln!("jeton {key} non persisté : {e}");
+                                tracing::warn!("jeton {key} non persisté : {e}");
                             }
                             t
                         }
@@ -460,7 +510,7 @@ pub fn run() {
                     match server::start(pool_for_server, shared_tokens).await {
                         Ok((s, h)) => (s, Some(h)),
                         Err(e) => {
-                            eprintln!("serveur MCP non démarré : {e}");
+                            tracing::warn!("serveur MCP non démarré : {e}");
                             (
                                 server::McpServerStatus {
                                     running: false,
@@ -491,7 +541,7 @@ pub fn run() {
                     .unwrap_or_else(|| "ctrl+alt+space".into())
             });
             if let Err(e) = app.global_shortcut().register(shortcut.as_str()) {
-                eprintln!("raccourci global indisponible ({shortcut}) : {e}");
+                tracing::warn!("raccourci global indisponible ({shortcut}) : {e}");
             }
 
             // auto-backup Drive : toutes les 30 minutes, si l'autobackup est
@@ -529,7 +579,7 @@ pub fn run() {
                             .and_then(|v| v.parse().ok());
                     if last.map(|l| now - l > interval_hours * 3600).unwrap_or(true) {
                         if let Err(e) = gdrive::backup_to_drive(&pool_for_backup).await {
-                            eprintln!("auto-backup Drive échoué : {e}");
+                            tracing::warn!("auto-backup Drive échoué : {e}");
                         }
                     }
                 }
@@ -578,6 +628,7 @@ pub fn run() {
             commands::delete_resources,
             commands::list_trash,
             commands::restore_trash,
+            commands::restore_trash_bulk,
             commands::empty_trash,
             commands::wayback_available,
             commands::set_autostart,
@@ -588,6 +639,7 @@ pub fn run() {
             commands::all_tags,
             commands::categories_with_counts,
             commands::fetch_metadata,
+            commands::fetch_repo_details,
             commands::detect_browser_profiles,
             commands::import_bookmarks,
             commands::open_resources_folder,

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { addResource, fetchMetadata, listResources } from "@/lib/api";
+import { fuzzyMatch } from "@/lib/fuzzy";
 import { openResource } from "@/lib/openResource";
 import { hostOf, typeLabel } from "@/lib/resources";
 import type { Resource } from "@/lib/types";
@@ -35,24 +36,38 @@ export function CommandPalette({
 
   const { data: all } = useQuery({
     queryKey: ["resources", "palette"],
-    queryFn: () => listResources({ sortBy: "mostUsed", limit: 200 }),
+    // le backend plafonne à 500 : la palette voit tout ce qui est visible
+    queryFn: () => listResources({ sortBy: "mostUsed", limit: 500 }),
     enabled: open,
   });
 
   const results = useMemo(() => {
     const list = all ?? [];
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return list.slice(0, 8);
-    return list
-      .filter(
-        (r) =>
-          r.title.toLowerCase().includes(q) ||
-          r.url.toLowerCase().includes(q) ||
-          r.description?.toLowerCase().includes(q) ||
-          r.notes?.toLowerCase().includes(q) ||
-          r.tags.some((t) => t.toLowerCase().includes(q)),
-      )
-      .slice(0, 8);
+    // fuzzy : sous-séquence tolérante (fautes d'ordre, initiales), sur le
+    // titre (pondéré fort), l'URL, les tags, puis description/notes.
+    // Le match direct substring reste le meilleur score.
+    const scored: { r: Resource; score: number }[] = [];
+    const ql = q.toLowerCase();
+    for (const r of list) {
+      let best = -Infinity;
+      const title = fuzzyMatch(q, r.title);
+      if (title) best = title.score * 3;
+      const url = fuzzyMatch(q, r.url);
+      if (url && url.score * 1.5 > best) best = url.score * 1.5;
+      for (const t of r.tags) {
+        const s = fuzzyMatch(q, t);
+        if (s && s.score * 2 > best) best = s.score * 2;
+      }
+      // description/notes : substring direct seulement (pas de fuzzy sur
+      // des paragraphes — trop de faux positifs)
+      const desc = `${r.description ?? ""}\n${r.notes ?? ""}`.toLowerCase();
+      if (desc.includes(ql) && best < 4) best = 4;
+      if (best > -Infinity) scored.push({ r, score: best });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 8).map((s) => s.r);
   }, [all, query]);
 
   // une saisie qui est une URL → première ligne = proposition d'ajout

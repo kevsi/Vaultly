@@ -65,6 +65,29 @@ pub async fn restore_trash(
     db::restore_trash(&pool, trash_id).await
 }
 
+/// Restauration en masse depuis la corbeille (sélection multiple).
+/// Retourne le nombre restauré + les ids de corbeille introuvables
+/// (déjà restaurés ailleurs) — mais échoue si une URL est en conflit.
+#[tauri::command]
+pub async fn restore_trash_bulk(
+    pool: State<'_, SqlitePool>,
+    trash_ids: Vec<i64>,
+) -> Result<BulkRestoreResult, String> {
+    let missing = db::restore_trash_bulk(&pool, &trash_ids).await?;
+    let restored = trash_ids.len() - missing.len();
+    Ok(BulkRestoreResult {
+        restored,
+        missing,
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkRestoreResult {
+    pub restored: usize,
+    pub missing: Vec<i64>,
+}
+
 #[tauri::command]
 pub async fn empty_trash(pool: State<'_, SqlitePool>) -> Result<usize, String> {
     db::empty_trash(&pool).await
@@ -172,6 +195,15 @@ pub struct CategoryCount {
 #[tauri::command]
 pub async fn fetch_metadata(url: String) -> Result<crate::metadata::PageMetadata, String> {
     crate::metadata::fetch(&url).await
+}
+
+/// Détails d'un dépôt GitHub (description, langage, stars, README…)
+/// pour le formulaire et la vue Détails des ressources type « repo ».
+#[tauri::command]
+pub async fn fetch_repo_details(
+    url: String,
+) -> Result<crate::metadata::RepoDetails, String> {
+    crate::metadata::fetch_github_repo(&url).await
 }
 
 /// Identifiant unique pour une ressource sans lien (garantit l'UNIQUE).

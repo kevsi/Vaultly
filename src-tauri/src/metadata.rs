@@ -136,9 +136,164 @@ pub struct PageMetadata {
     pub favicon: String,
 }
 
+// --- Détails d'un dépôt GitHub (API publique, sans authentification) ---
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoDetails {
+    /// URL canonique du dépôt (https://github.com/owner/repo)
+    pub repo_url: String,
+    pub owner: String,
+    pub name: String,
+    pub description: String,
+    /// langage principal renvoyé par GitHub
+    pub language: String,
+    pub stars: i64,
+    pub forks: i64,
+    /// tags officiel du dépôt (max 5 suggérés)
+    pub topics: Vec<String>,
+    /// nom de licence (MIT, Apache-2.0…) — vide si absente
+    pub license: String,
+    /// README au format Markdown brut — vide si absent/illisible
+    pub readme: String,
+}
+
+/// Extrait owner/repo d'une URL GitHub. Accepte https://github.com/owner/repo
+/// (+ .git final, + chemins excédentaires ignorés). Retourne None sinon.
+pub fn parse_github_url(url: &str) -> Option<(String, String)> {
+    let rest = url.trim().strip_prefix("https://github.com/").or_else(|| {
+        // http renvoyé vers https par github.com : on l'accepte aussi
+        url.trim().strip_prefix("http://github.com/")
+    })?;
+    let rest = rest.trim();
+    let mut parts = rest.trim_end_matches('/').split('/');
+    let owner = parts.next()?;
+    let name = parts.next()?;
+    // pas de sous-chemins exotiques (issues, pull…) ni d'owner vide
+    if parts.next().is_some() || owner.is_empty() || name.is_empty() {
+        return None;
+    }
+    if !owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        || !name
+            .trim_end_matches(".git")
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return None;
+    }
+    let name = name.trim_end_matches(".git");
+    // GitHub insensible à la casse sur owner/repo mais l'API renvoie la
+    // forme canonique : on transmet tel quel.
+    Some((owner.to_string(), name.to_string()))
+}
+
+/// Récupère les détails d'un dépôt GitHub : description, langage, étoiles,
+/// forks, topics, licence et README (Markdown brut, plafonné à 100 Ko).
+/// API publique sans token : 60 requêtes/heure — largement suffisant
+/// pour un usage personnel (détail à la demande, jamais en boucle).
+pub async fn fetch_github_repo(url: &str) -> Result<RepoDetails, String> {
+    let (owner, name) =
+        parse_github_url(url).ok_or("URL GitHub invalide (attendu : github.com/owner/repo)")?;
+    let client = reqwest::Client::builder()
+        .user_agent("Vaultly/0.2 (+https://github.com/kevsi/Vaultly)")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let base = format!("https://api.github.com/repos/{owner}/{name}");
+
+    let resp = client
+        .get(&base)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("GitHub injoignable : {e}"))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(format!(
+            "dépôt github.com/{owner}/{name} introuvable (privé ou supprimé ?)"
+        ));
+    }
+    if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err("quota de l'API GitHub épuisé (60 requêtes/h sans token) — réessaie plus tard".into());
+    }
+    let repo: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("réponse GitHub illisible : {e}"))?;
+
+    let description = repo["description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let language = repo["language"].as_str().unwrap_or_default().to_string();
+    let stars = repo["stargazers_count"].as_i64().unwrap_or(0);
+    let forks = repo["forks_count"].as_i64().unwrap_or(0);
+    let license = repo["license"]["spdx_id"]
+        .as_str()
+        .filter(|l| *l != "NOASSERTION")
+        .unwrap_or_default()
+        .to_string();
+    let topics = repo["topics"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    // README en Markdown brut (plafonné : certains README génèrent des
+    // réponses de plusieurs Mo, inutile de tout charger pour un aperçu)
+    let readme = match client
+        .get(format!("{base}/readme"))
+        .header("Accept", "application/vnd.github.raw+json")
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => {
+            let body = r.text().await.unwrap_or_default();
+            body.chars().take(100_000).collect()
+        }
+        _ => String::new(), // pas de README : ce n'est pas une erreur
+    };
+
+    Ok(RepoDetails {
+        repo_url: format!("https://github.com/{owner}/{name}"),
+        owner,
+        name,
+        description,
+        language,
+        stars,
+        forks,
+        topics,
+        license,
+        readme,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn github_urls_parse() {
+        assert_eq!(
+            parse_github_url("https://github.com/vitejs/vite"),
+            Some(("vitejs".into(), "vite".into()))
+        );
+        assert_eq!(
+            parse_github_url("https://github.com/vitejs/vite.git"),
+            Some(("vitejs".into(), "vite".into()))
+        );
+        assert_eq!(
+            parse_github_url("http://github.com/owner/repo/"),
+            Some(("owner".into(), "repo".into()))
+        );
+        // sous-chemins, vides, caractères suspects : refusés
+        assert_eq!(parse_github_url("https://github.com/owner/repo/issues/12"), None);
+        assert_eq!(parse_github_url("https://github.com/owner/"), None);
+        assert_eq!(parse_github_url("https://gitlab.com/owner/repo"), None);
+        assert_eq!(parse_github_url("pas une url"), None);
+    }
 
     #[test]
     fn named_entities_decode_in_one_pass() {

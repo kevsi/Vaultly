@@ -53,7 +53,7 @@ pub fn protect(plain: &str) -> String {
     } else {
         // DPAPI indisponible : mieux vaut un secret en clair qu'une app
         // incapable de démarrer — mais ça doit rester visible dans les logs.
-        eprintln!("DPAPI indisponible : secret stocké en clair (CryptProtectData a échoué)");
+        tracing::warn!("DPAPI indisponible : secret stocké en clair (CryptProtectData a échoué)");
         plain.to_string()
     }
 }

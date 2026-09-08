@@ -67,6 +67,17 @@ export async function restoreTrash(trashId: number): Promise<Resource> {
   return invoke("restore_trash", { trashId });
 }
 
+/** Résultat d'une restauration en masse (restore_trash_bulk). */
+export interface BulkRestoreResult {
+  restored: number;
+  /** ids de corbeille introuvables (déjà restaurés entre-temps) */
+  missing: number[];
+}
+
+export async function restoreTrashBulk(trashIds: number[]): Promise<BulkRestoreResult> {
+  return invoke("restore_trash_bulk", { trashIds });
+}
+
 export async function emptyTrash(): Promise<number> {
   return invoke("empty_trash");
 }
@@ -112,6 +123,24 @@ export async function allTags(): Promise<string[]> {
 
 export async function fetchMetadata(url: string): Promise<PageMetadata> {
   return invoke("fetch_metadata", { url });
+}
+
+/** Détails d'un dépôt GitHub (fetch_repo_details). */
+export interface RepoDetails {
+  repoUrl: string;
+  owner: string;
+  name: string;
+  description: string;
+  language: string;
+  stars: number;
+  forks: number;
+  topics: string[];
+  license: string;
+  readme: string;
+}
+
+export async function fetchRepoDetails(url: string): Promise<RepoDetails> {
+  return invoke("fetch_repo_details", { url });
 }
 
 export async function detectBrowserProfiles(): Promise<BrowserProfile[]> {
@@ -232,6 +261,12 @@ export interface DbStats {
   neverOpened: number;
   byType: [string, number][];
   topUsed: Resource[];
+  /** top 10 tags (« tag », nombre) */
+  byTag: [string, number][];
+  /** créations par mois sur 12 mois (« YYYY-MM », mois vides omis) */
+  activity: [string, number][];
+  /** les plus anciennes jamais ouvertes (max 8) */
+  neverOpenedList: Resource[];
 }
 
 export async function getStats(): Promise<DbStats> {

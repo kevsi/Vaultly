@@ -206,7 +206,7 @@ fn http_client() -> reqwest::Client {
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .unwrap_or_else(|e| {
-            eprintln!("client HTTP 15s indisponible, repli sans timeout : {e}");
+            tracing::warn!("client HTTP 15s indisponible, repli sans timeout : {e}");
             reqwest::Client::new()
         })
 }
@@ -219,7 +219,7 @@ fn http_client_transfer() -> reqwest::Client {
         .connect_timeout(std::time::Duration::from_secs(20))
         .build()
         .unwrap_or_else(|e| {
-            eprintln!("client HTTP transfert indisponible, repli sans timeout : {e}");
+            tracing::warn!("client HTTP transfert indisponible, repli sans timeout : {e}");
             reqwest::Client::new()
         })
 }
@@ -675,7 +675,7 @@ pub async fn list_share_lists(pool: &SqlitePool) -> Result<Vec<ShareListInfo>, S
         let count = match read_share_list(pool, &f.id).await {
             Ok(entries) => entries.len(),
             Err(e) => {
-                eprintln!("liste de liens {} illisible : {e}", f.id);
+                tracing::warn!("liste de liens {} illisible : {e}", f.id);
                 continue;
             }
         };
@@ -1334,11 +1334,11 @@ pub async fn backup_to_drive(pool: &SqlitePool) -> Result<BackupResult, String> 
             files.sort_by(|a, b| b.name.cmp(&a.name));
             for old in files.iter().skip(5) {
                 if let Err(e) = delete_drive_file(pool, &old.id).await {
-                    eprintln!("prune du backup {} échoué : {e}", old.id);
+                    tracing::warn!("prune du backup {} échoué : {e}", old.id);
                 }
             }
         }
-        Err(e) => eprintln!("prune des backups Drive impossible : {e}"),
+        Err(e) => tracing::warn!("prune des backups Drive impossible : {e}"),
     }
 
     let now = now_epoch().to_string();

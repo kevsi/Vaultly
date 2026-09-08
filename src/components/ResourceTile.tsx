@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Copy,
   ExternalLink,
+  Info,
   ListTodo,
   Loader2,
   MoreHorizontal,
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 import { gdriveAppendLink, gdriveListShareLists, toggleFavorite } from "@/lib/api";
 import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
 import { metaSummary } from "@/lib/metaFields";
+import { fileKindFor } from "@/lib/fileKind";
 import { isStale, noteColorClass } from "@/lib/resources";
 import { openResource } from "@/lib/openResource";
 import { cn } from "@/lib/utils";
@@ -69,6 +71,8 @@ interface Props {
   /** envoie le fichier local vers Google Drive */
   onUploadToDrive?: (r: Resource) => void;
   onSetStatus?: (r: Resource, status: "" | "todo" | "archived") => void;
+  /** ouvre la vue « Détails » (fiche complète, README pour les dépôts) */
+  onDetails?: (r: Resource) => void;
   onEdit: (r: Resource) => void;
   onDelete: (r: Resource) => void;
   onToggled: () => void;
@@ -89,6 +93,7 @@ export const ResourceTile = memo(function ResourceTile({
   onOpenNote,
   onUploadToDrive,
   onSetStatus,
+  onDetails,
   onEdit,
   onDelete,
   onToggled,
@@ -99,6 +104,10 @@ export const ResourceTile = memo(function ResourceTile({
   const summary = metaSummary(resource);
   const isNote = resource.resourceType === "note";
   const isFile = resource.resourceType === "fichier";
+  // icône selon l'extension réelle du fichier (txt, pdf, zip…) — pas de
+  // dossier générique : la tuile doit refléter le document
+  const fileKind = isFile ? fileKindFor(resource) : null;
+  const FileKindIcon = fileKind?.icon ?? FolderOpen;
   const stale = isStale(resource);
 
   async function open() {
@@ -244,7 +253,7 @@ export const ResourceTile = memo(function ResourceTile({
           className="flex aspect-square cursor-pointer select-none flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-3 transition-all duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
         >
           <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-muted">
-            <FolderOpen className="size-8 text-muted-foreground" />
+            <FileKindIcon className={`size-8 ${fileKind?.className ?? "text-muted-foreground"}`} />
           </div>
           <span className="line-clamp-2 min-h-8 text-center text-xs font-medium leading-tight">
             {resource.title}
@@ -392,6 +401,13 @@ export const ResourceTile = memo(function ResourceTile({
                   ? "Ajouter un lien…"
                   : "Ouvrir"}
               </DropdownMenuItem>
+              {/* détails : fiche complète (README pour les dépôts) */}
+              {onDetails && (
+                <DropdownMenuItem onClick={() => onDetails(resource)}>
+                  <Info />
+                  Détails
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={copy}>
                 <Copy />
                 Copier l'URL

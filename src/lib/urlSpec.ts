@@ -74,7 +74,7 @@ export function urlSpecFor(type: string): UrlSpec {
         primaryLabel: "Lien du dépôt",
         primaryPlaceholder: "https://github.com/owner/repo",
         showFetch: true,
-        hint: "GitHub, GitLab, Bitbucket ou Codeberg.",
+        hint: "GitHub : « Récupérer » remplit la fiche (langage, étoiles, licence…). GitLab, Bitbucket ou Codeberg acceptés.",
         validate: (v) => {
           const base = requireHttps(v);
           if (base) return base;

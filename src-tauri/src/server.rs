@@ -134,7 +134,7 @@ async fn try_bind(
         // une erreur du serveur ne doit pas rester invisible : sans ça le
         // statut resterait `running: true` à vie alors que rien n'écoute.
         if let Err(e) = axum::serve(listener, app).await {
-            eprintln!("serveur MCP interrompu : {e}");
+            tracing::warn!("serveur MCP interrompu : {e}");
         }
     });
     let (mcp_token, add_token) = tokens.snapshot().await;

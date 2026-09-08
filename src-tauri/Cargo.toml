@@ -38,6 +38,10 @@ directories = "6"
 base64 = "0.22"
 sha2 = "0.10"
 futures-util = "0.3"
+# logging persistant : fichier quotidien dans %APPDATA%\com.kevsi.vaultly\logs
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+tracing-appender = "0.2"
 
 [target."cfg(windows)".dependencies]
 # DPAPI (CryptProtectData/CryptUnprotectData) pour chiffrer les jetons au repos
