@@ -58,3 +58,8 @@ http-body-util = "0.1"
 [profile.release]
 codegen-units = 1
 lto = true
+
+# symboles de debug réduits en dev : le cache target/debug passe de ~48 Go
+# à quelques Go, les backtraces restent lisibles (numéros de ligne conservés)
+[profile.dev]
+debug = "line-tables-only"
