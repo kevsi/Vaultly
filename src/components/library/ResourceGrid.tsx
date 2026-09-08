@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Copy,
-  ExternalLink,
   FolderOpen,
   FolderPlus,
   Info,
@@ -130,13 +129,11 @@ function RowIcon({ resource }: { resource: Resource }) {
  *  courantes sans dupliquer tout le menu de ResourceTile. */
 function RowMenu({
   resource,
-  onOpen,
   onDetails,
   onEdit,
   onDelete,
 }: {
   resource: Resource;
-  onOpen: () => void;
   onDetails: (r: Resource) => void;
   onEdit: (r: Resource) => void;
   onDelete: (r: Resource) => void;
@@ -155,10 +152,6 @@ function RowMenu({
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
-          <DropdownMenuItem onClick={onOpen}>
-            <ExternalLink />
-            Ouvrir
-          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onDetails(resource)}>
             <Info />
             Détails
@@ -598,7 +591,6 @@ export function ResourceGrid(props: ResourceGridProps) {
                     onDetails={setDetailsViewing}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
-                    onOpen={() => void openRow(r)}
                     resource={r}
                   />
                 </div>

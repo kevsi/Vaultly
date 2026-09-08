@@ -458,32 +458,32 @@ export function ResourceDialog({
             </div>
           )}
 
-          {/* suggestions d'icônes quand un lien web est saisi */}
+          {/* suggestion d'icône quand un lien web est saisi (128 px : net
+              en tuile ET en vue Détails — 64 serait flou, 256 superflu) */}
           {form.url.trim().startsWith("http") && (
             <div className="grid gap-1.5">
               <span className="text-xs text-muted-foreground">
-                Icônes suggérées pour ce site :
+                Icône suggérée pour ce site :
               </span>
               <div className="flex items-center gap-2">
-                {[64, 128, 256].map((sz) => {
+                {(() => {
                   let src2 = "";
                   try {
                     const u = new URL(form.url.trim());
-                    src2 = `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=${sz}`;
+                    src2 = `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=128`;
                   } catch {
                     return null;
                   }
                   return (
                     <button
-                      key={sz}
                       onClick={() => setFavicon(src2)}
-                      title={`Favicon ${sz}px`}
+                      title="Utiliser le favicon du site"
                       className="flex size-10 cursor-pointer items-center justify-center rounded-lg border bg-muted/30 p-1.5 transition-colors hover:border-primary/50"
                     >
                       <img src={src2} alt="" className="size-full object-contain" />
                     </button>
                   );
-                })}
+                })()}
                 <span className="text-xs text-muted-foreground">
                   clic = appliquer comme icône
                 </span>

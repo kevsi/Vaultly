@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { gdriveSearchFiles, gdriveUpload } from "@/lib/api";
 import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
@@ -767,17 +766,6 @@ export function LibraryView() {
         >
           <Cloud />
           Depuis Drive
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          title="Ouvrir Google Drive dans le navigateur"
-          onClick={() =>
-            openUrl("https://drive.google.com/")
-              .catch((e) => toast.error(String(e)))
-          }
-        >
-          <Cloud />
         </Button>
         <Button
           variant="outline"
