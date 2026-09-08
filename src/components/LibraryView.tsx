@@ -4,14 +4,20 @@ import {
   CalendarDays,
   Camera,
   Clock,
+  Copy,
   Flame,
   FolderOpen,
   FolderPlus,
   History,
+  Info,
   LayoutGrid,
   Cloud,
+  ExternalLink,
+  List,
   ListChecks,
   Loader2,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Search,
   Star,
@@ -41,12 +47,21 @@ import {
   setResourceFolder,
   setResourceStatus,
 } from "@/lib/api";
-import { RESOURCE_TYPES } from "@/lib/resources";
+import { RESOURCE_TYPES, hostOf, typeLabel } from "@/lib/resources";
+import { metaSummary } from "@/lib/metaFields";
+import { fileKindFor } from "@/lib/fileKind";
+import { openResource } from "@/lib/openResource";
 import {
   getVirtualMode,
   virtualThresholdFor,
 } from "@/lib/gridVirtualization";
-import { getTileSize, tileMinPx } from "@/lib/tileSize";
+import {
+  getTileSize,
+  tileMinPx,
+  getViewMode,
+  setViewMode as persistViewMode,
+  type ViewMode,
+} from "@/lib/tileSize";
 import type { DriveFile, Folder, Resource, SortBy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
@@ -58,6 +73,14 @@ import { NoteViewer } from "@/components/NoteViewer";
 import { ResourceDialog } from "@/components/ResourceDialog";
 import { ResourceDetails } from "@/components/ResourceDetails";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -84,6 +107,96 @@ const SORTS: { value: SortBy; label: string; icon: typeof Clock }[] = [
   { value: "manual", label: "Placement", icon: LayoutGrid },
   { value: "title", label: "A→Z", icon: ArrowDownAZ },
 ];
+
+/** Icône de ligne (vue LISTE) : favicon, icône d'extension pour les
+ *  fichiers, initiales en repli — avec gestion locale de l'erreur image. */
+function RowIcon({ resource }: { resource: Resource }) {
+  const [imgError, setImgError] = useState(false);
+  const kind = resource.resourceType === "fichier" ? fileKindFor(resource) : null;
+  const KindIcon = kind?.icon;
+  return (
+    <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+      {resource.favicon && !imgError ? (
+        <img
+          src={resource.favicon}
+          alt=""
+          loading="lazy"
+          className="size-full object-contain p-1"
+          onError={() => setImgError(true)}
+        />
+      ) : KindIcon ? (
+        <KindIcon className={`size-4 ${kind?.className ?? ""}`} />
+      ) : (
+        <span className="text-[10px] font-bold uppercase text-muted-foreground">
+          {resource.title.slice(0, 2)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Menu ⋯ compact des lignes de la vue LISTE : couvre les actions les plus
+ *  courantes sans dupliquer tout le menu de ResourceTile. */
+function RowMenu({
+  resource,
+  onOpen,
+  onDetails,
+  onEdit,
+  onDelete,
+}: {
+  resource: Resource;
+  onOpen: () => void;
+  onDetails: (r: Resource) => void;
+  onEdit: (r: Resource) => void;
+  onDelete: (r: Resource) => void;
+}) {
+  return (
+    <div
+      className="flex justify-end"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`Options pour « ${resource.title} »`}
+          className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground data-[popup-open]:text-foreground"
+        >
+          <MoreHorizontal className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem onClick={onOpen}>
+            <ExternalLink />
+            Ouvrir
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onDetails(resource)}>
+            <Info />
+            Détails
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(resource.url)
+                .then(() => toast.success("URL copiée"))
+                .catch(() => toast.error("Copie impossible"));
+            }}
+          >
+            <Copy />
+            Copier l'URL
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onEdit(resource)}>
+            <Pencil />
+            Modifier
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => onDelete(resource)}>
+            <Trash2 />
+            Supprimer
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 export function LibraryView() {
   const qc = useQueryClient();
@@ -270,13 +383,18 @@ export function LibraryView() {
     [foldersList, openFolder],
   );
 
-  // --- taille des tuiles (réglage visuel, Réglages → Général) ---
+  // --- taille des tuiles + mode d'affichage (réglages visuels) ---
   const [tileSize, setTileSizeState] = useState(getTileSize);
+  const [viewMode, setViewModeState] = useState<ViewMode>(getViewMode);
   useEffect(() => {
-    const onChange = () => setTileSizeState(getTileSize());
-    window.addEventListener("vaultly:tile-size-changed", onChange);
-    return () =>
-      window.removeEventListener("vaultly:tile-size-changed", onChange);
+    const onSize = () => setTileSizeState(getTileSize());
+    const onView = () => setViewModeState(getViewMode());
+    window.addEventListener("vaultly:tile-size-changed", onSize);
+    window.addEventListener("vaultly:view-mode-changed", onView);
+    return () => {
+      window.removeEventListener("vaultly:tile-size-changed", onSize);
+      window.removeEventListener("vaultly:view-mode-changed", onView);
+    };
   }, []);
   const tileMin = tileMinPx(tileSize);
   // grille native fluide : largeur min par tuile, le navigateur remplit
@@ -303,8 +421,13 @@ export function LibraryView() {
   const threshold = virtualThresholdFor(virtualMode);
   const tileCount = (resources ?? []).length + visibleFolders.length;
   // jamais pendant le chargement ni sur une grille vide : les états
-  // squelette/vide vivent dans la branche ScrollArea
-  const virtualizing = !isLoading && tileCount > 0 && tileCount >= threshold;
+  // squelette/vide vivent dans la branche ScrollArea. La vue Liste n'a
+  // pas besoin de virtualisation (lignes légères) : grille seulement.
+  const virtualizing =
+    viewMode === "grid" &&
+    !isLoading &&
+    tileCount > 0 &&
+    tileCount >= threshold;
   const [columns, setColumns] = useState(4);
   useEffect(() => {
     if (!virtualizing) return;
@@ -420,6 +543,25 @@ export function LibraryView() {
     if (x < w * 0.3) return "left";
     if (x > w * 0.7) return "right";
     return "center";
+  }
+
+  /** Ouverture d'une ressource depuis la vue LISTE (même sémantique que
+   *  la tuile : note → lecteur, sans lien → édition, sinon openResource). */
+  async function openRow(r: Resource) {
+    if (r.resourceType === "note") {
+      setNoteViewing(r);
+      return;
+    }
+    if (r.url.startsWith("local:") && !r.meta?.filePath) {
+      handleEdit(r);
+      return;
+    }
+    try {
+      await openResource(r);
+      void qc.invalidateQueries({ queryKey: ["resources"] });
+    } catch (e) {
+      toast.error(`Ouverture impossible : ${e}`);
+    }
   }
 
   /** Dépose d'un dossier sur un autre : imbrique (le backend refuse les cycles). */
@@ -786,6 +928,25 @@ export function LibraryView() {
         >
           <Camera />
         </Button>
+        {/* bascule Tuiles / Liste : l'apparence se mémorise */}
+        <div className="flex items-center rounded-lg border p-0.5">
+          <Button
+            variant={viewMode === "grid" ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={() => persistViewMode("grid")}
+            title="Affichage en tuiles"
+          >
+            <LayoutGrid />
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={() => persistViewMode("list")}
+            title="Affichage en liste"
+          >
+            <List />
+          </Button>
+        </div>
         <Button
           variant="outline"
           size="icon"
@@ -1187,6 +1348,166 @@ export function LibraryView() {
               ))}
             </div>
         </div>
+      ) : viewMode === "list" ? (
+        /* ================= VUE LISTE =================
+           Lignes denses type tableau : favicon/icône d'extension, titre,
+           type · host, meta, ouverture, favori. Même DnD inter-lignes que
+           la grille en tri manuel, même menu via ⋯. Dossiers en tête. */
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-4 pt-3">
+            {isError && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
+                <span>
+                  Le chargement de la bibliothèque a échoué (base verrouillée ou erreur interne).
+                </span>
+                <Button size="sm" variant="outline" onClick={() => void refetch()}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
+            {(resources ?? []).length === 0 && visibleFolders.length === 0 && !isError ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
+                <Search className="size-8 opacity-40" />
+                <p className="font-medium text-foreground">
+                  {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
+                    ? "Aucun résultat"
+                    : openFolder
+                      ? "Ce dossier est vide"
+                      : "Ta bibliothèque est vide"}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border">
+                {/* en-tête de colonnes */}
+                <div className="grid grid-cols-[minmax(2.5rem,auto)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(4.5rem,auto)_minmax(3rem,auto)] items-center gap-3 border-b bg-muted/50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span />
+                  <span>Ressource</span>
+                  <span>Lien</span>
+                  <span>Détails</span>
+                  <span className="text-right">Ouvertures</span>
+                  <span />
+                </div>
+                {/* dossiers en tête de liste */}
+                {visibleFolders.map((f) => (
+                  <div
+                    key={`folder-${f.id}`}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", `folder:${f.id}`);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragFolderId(f.id);
+                    }}
+                    onDragEnd={() => setDragFolderId(null)}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setFolderStack((s) => [...s, f])}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") setFolderStack((s) => [...s, f]);
+                    }}
+                    className="grid cursor-pointer grid-cols-[minmax(2.5rem,auto)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(4.5rem,auto)_minmax(3rem,auto)] items-center gap-3 border-b px-3 py-2 text-sm outline-none transition-colors last:border-b-0 hover:bg-accent/40 focus-visible:bg-accent/40"
+                  >
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-muted">
+                      <FolderOpen className="size-4 text-amber-500" />
+                    </span>
+                    <span className="truncate font-medium">{f.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      dossier
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {f.count} ressource{f.count > 1 ? "s" : ""}
+                    </span>
+                    <span />
+                    <span />
+                  </div>
+                ))}
+                {/* ressources */}
+                {(resources ?? []).map((r) => {
+                  const summary = metaSummary(r, 3);
+                  return (
+                    <div
+                      key={r.id}
+                      draggable={sortBy === "manual" && !selectMode}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", String(r.id));
+                        e.dataTransfer.effectAllowed = "move";
+                        handleDragStarted(r);
+                      }}
+                      onDragOver={(e) => {
+                        if (dragId === null) return;
+                        e.preventDefault();
+                        setDropZone((h) =>
+                          h && h.id === r.id ? h : { id: r.id, zone: "center" },
+                        );
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dropZone?.id === r.id)
+                          void handleDropOnTile(r, dropZone.zone);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setDropZone(null);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => (selectMode ? toggleSelect(r) : void openRow(r))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          selectMode ? toggleSelect(r) : void openRow(r);
+                        }
+                      }}
+                      className={cn(
+                        "grid cursor-pointer grid-cols-[minmax(2.5rem,auto)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(4.5rem,auto)_minmax(3rem,auto)] items-center gap-3 border-b px-3 py-2 text-sm outline-none transition-colors last:border-b-0 hover:bg-accent/40 focus-visible:bg-accent/40",
+                        dragId === r.id && "opacity-40",
+                        dropZone?.id === r.id && "outline-2 outline-dashed outline-primary/60",
+                        selectedIds.has(r.id) && selectMode && "ring-2 ring-inset ring-amber-500",
+                      )}
+                    >
+                      {/* case (sélection) ou favicon/icône */}
+                      {selectMode ? (
+                        <span className="flex size-8 items-center justify-center">
+                          <Checkbox
+                            checked={selectedIds.has(r.id)}
+                            tabIndex={-1}
+                            aria-label={`Sélectionner « ${r.title} »`}
+                          />
+                        </span>
+                      ) : (
+                        <RowIcon resource={r} />
+                      )}
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5">
+                          {r.favorite && r.favicon && (
+                            <Star className="size-3 shrink-0 fill-yellow-400 text-yellow-400" />
+                          )}
+                          <span className="truncate font-medium">{r.title}</span>
+                        </span>
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {r.url.startsWith("http") ? hostOf(r.url) : r.url.startsWith("exe:") ? "application" : r.url.startsWith("file:") ? "fichier local" : r.url.startsWith("local:") ? "sans lien" : r.url}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {summary || typeLabel(r.resourceType)}
+                      </span>
+                      <span className="text-right text-xs tabular-nums text-muted-foreground">
+                        {r.openCount > 0 ? r.openCount : "—"}
+                      </span>
+                      {/* menu d'actions : même ⋯ que la tuile, en version compacte */}
+                      <RowMenu
+                        onDetails={setDetailsViewing}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        onOpen={() => void openRow(r)}
+                        resource={r}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       ) : (
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-4 pt-3">
