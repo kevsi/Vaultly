@@ -6,6 +6,7 @@ mod metadata;
 mod scan;
 mod secret;
 mod server;
+mod webdav;
 
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -565,42 +566,67 @@ pub fn run() {
                 tracing::warn!("raccourci global indisponible ({shortcut}) : {e}");
             }
 
-            // auto-backup Drive : toutes les 30 minutes, si l'autobackup est
-            // activé, Drive connecté, et l'intervalle écoulé depuis le dernier backup.
+            // auto-backup : toutes les 30 minutes, pour chaque destination
+            // activée (Drive et/ou WebDAV), si connecté et l'intervalle écoulé.
             let pool_for_backup = pool.clone();
             let backup_loop = tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(30 * 60)).await;
+                    // --- Google Drive ---
                     let enabled = db::get_setting(&pool_for_backup, "gdrive_autobackup_enabled")
                         .await
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                         .unwrap_or(false);
-                    if !enabled {
-                        continue;
+                    if enabled {
+                        let connected = db::get_secret(&pool_for_backup, "gdrive_refresh_token")
+                            .await
+                            .is_some();
+                        if connected {
+                            let interval_hours: i64 =
+                                db::get_setting(&pool_for_backup, "gdrive_autobackup_interval_hours")
+                                    .await
+                                    .and_then(|v| v.parse().ok())
+                                    .unwrap_or(24)
+                                    .max(1);
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0);
+                            let last: Option<i64> =
+                                db::get_setting(&pool_for_backup, "gdrive_last_backup_at")
+                                    .await
+                                    .and_then(|v| v.parse().ok());
+                            if last.map(|l| now - l > interval_hours * 3600).unwrap_or(true) {
+                                if let Err(e) = gdrive::backup_to_drive(&pool_for_backup).await {
+                                    tracing::warn!("auto-backup Drive échoué : {e}");
+                                }
+                            }
+                        }
                     }
-                    let connected = db::get_secret(&pool_for_backup, "gdrive_refresh_token")
+                    // --- WebDAV ---
+                    let enabled = db::get_setting(&pool_for_backup, "webdav_autobackup_enabled")
                         .await
-                        .is_some();
-                    if !connected {
-                        continue;
-                    }
-                    let interval_hours: i64 =
-                        db::get_setting(&pool_for_backup, "gdrive_autobackup_interval_hours")
-                            .await
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(24)
-                            .max(1);
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs() as i64)
-                        .unwrap_or(0);
-                    let last: Option<i64> =
-                        db::get_setting(&pool_for_backup, "gdrive_last_backup_at")
-                            .await
-                            .and_then(|v| v.parse().ok());
-                    if last.map(|l| now - l > interval_hours * 3600).unwrap_or(true) {
-                        if let Err(e) = gdrive::backup_to_drive(&pool_for_backup).await {
-                            tracing::warn!("auto-backup Drive échoué : {e}");
+                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                        .unwrap_or(false);
+                    if enabled && webdav::is_configured(&pool_for_backup).await {
+                        let interval_hours: i64 =
+                            db::get_setting(&pool_for_backup, "webdav_autobackup_interval_hours")
+                                .await
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(24)
+                                .max(1);
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        let last: Option<i64> =
+                            db::get_setting(&pool_for_backup, "webdav_last_backup_at")
+                                .await
+                                .and_then(|v| v.parse().ok());
+                        if last.map(|l| now - l > interval_hours * 3600).unwrap_or(true) {
+                            if let Err(e) = webdav::backup(&pool_for_backup).await {
+                                tracing::warn!("auto-backup WebDAV échoué : {e}");
+                            }
                         }
                     }
                 }
@@ -700,6 +726,14 @@ pub fn run() {
             commands::export_data,
             commands::import_data,
             commands::set_global_shortcut,
+            webdav::webdav_status,
+            webdav::webdav_set_config,
+            webdav::webdav_clear_config,
+            webdav::webdav_test_connection,
+            webdav::webdav_backup,
+            webdav::webdav_list_backups,
+            webdav::webdav_restore,
+            webdav::webdav_set_autobackup,
             get_mcp_status,
             server::mcp_regenerate_token,
             server::api_regenerate_token,

@@ -272,6 +272,56 @@ export async function setGlobalShortcut(shortcut: string): Promise<void> {
   return invoke("set_global_shortcut", { shortcut });
 }
 
+// --- Sauvegarde cloud WebDAV (Koofr, Nextcloud, Synology…) ---
+
+export interface WebDavStatus {
+  configured: boolean;
+  url: string;
+  autobackupEnabled: boolean;
+  autobackupIntervalHours: number;
+  lastBackupAt: number | null;
+}
+
+export async function webdavStatus(): Promise<WebDavStatus> {
+  return invoke("webdav_status");
+}
+
+/** password vide = conserve le secret existant (ne pas le renvoyer à l'UI). */
+export async function webdavSetConfig(
+  url: string,
+  user: string,
+  password: string,
+): Promise<void> {
+  return invoke("webdav_set_config", { url, user, password });
+}
+
+export async function webdavClearConfig(): Promise<void> {
+  return invoke("webdav_clear_config");
+}
+
+export async function webdavTestConnection(): Promise<number> {
+  return invoke("webdav_test_connection");
+}
+
+export async function webdavBackup(): Promise<string> {
+  return invoke("webdav_backup");
+}
+
+export async function webdavListBackups(): Promise<string[]> {
+  return invoke("webdav_list_backups");
+}
+
+export async function webdavRestore(name?: string | null): Promise<ImportSummary> {
+  return invoke("webdav_restore", { name: name ?? null });
+}
+
+export async function webdavSetAutobackup(
+  enabled: boolean,
+  intervalHours: number,
+): Promise<void> {
+  return invoke("webdav_set_autobackup", { enabled, intervalHours });
+}
+
 export async function gdriveConnect(): Promise<void> {
   return invoke("gdrive_connect");
 }

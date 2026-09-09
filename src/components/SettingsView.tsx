@@ -62,6 +62,7 @@ import {
 import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
+import { WebDavBackupSection } from "@/components/WebDavBackupSection";
 import { PromptDialog } from "@/components/PromptDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1433,6 +1434,10 @@ export function SettingsView() {
             </Button>
           </div>
         </div>
+
+        <Separator />
+
+        <WebDavBackupSection />
             </>
           )}
         </div>

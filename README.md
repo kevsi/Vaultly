@@ -36,8 +36,9 @@ Cursor…) pendant que l'app est ouverte.
 - **Liens morts & archivage** : vérification des 404/410/5xx, et par lien mort un bouton
   « Archiver » qui retrouve une capture sur **archive.org** (ou en demande une)
 - **Sauvegarde** : export/import JSON, backup automatique à la fermeture/masquage
-  (`Documents\Vaultly\Sauvegardes`), et backup optionnel sur **Google Drive**
-  (OAuth desktop + PKCE, sauvegarde auto à intervalle réglable)
+  (`Documents\Vaultly\Sauvegardes`), backup cloud **WebDAV** (Koofr, Nextcloud,
+  Synology — 3 champs, aucun compte développeur) et backup optionnel sur
+  **Google Drive** (OAuth desktop + PKCE, sauvegarde auto à intervalle réglable)
 - **Thème** : le sombre/clair suit celui de Windows tant qu'aucun choix manuel n'a été
   fait ; ensuite ton choix reste
 - **Local d'abord** : SQLite dans `%APPDATA%\com.kevsi.vaultly`, jetons
@@ -61,6 +62,12 @@ demande la variable d'environnement `GDRIVE_CLIENT_SECRET`) : définis-la sur la
 machine qui construit l'installateur — elle n'est jamais dans le dépôt.
 
 ## Connecter Google Drive (chaque utilisateur)
+
+> **Besoin de sauvegarder ta bibliothèque sans te créer un projet Google ?**
+> Utilise plutôt la **sauvegarde cloud WebDAV** (Réglages → Sauvegarde) :
+> Koofr offre 2 Go gratuits, un compte + un mot de passe WebDAV suffisent —
+> pas de console développeur. La section Drive ci-dessous est l'option
+> « complète » (explorateur de fichiers Drive, partage de listes de liens).
 
 Vaultly utilise **tes propres identifiants Google** : il n'y a pas de compte
 partagé intégré à l'app. En effet, les identifiants OAuth d'un développeur ne
@@ -98,6 +105,24 @@ mode « Testing ») — avec ton propre projet, tu contrôles ton accès.
 Aucun secret n'est partagé entre utilisateurs : chacun stocke les siens,
 chiffrés pour sa session Windows.
 
+## Sauvegarde cloud WebDAV (la plus simple)
+
+Pour sauvegarder/restaurer ta bibliothèque sans aucune configuration Google :
+
+1. Crée un compte gratuit sur [koofr.eu](https://koofr.eu) (2 Go), ou prends
+   ton Nextcloud/Synology existant.
+2. Sur Koofr : **Settings → WebDAV** → génère un mot de passe. L'URL est
+   `https://app.koofr.net/dav/Koofr/Vaultly` (crée le dossier Vaultly une
+   fois via le web, ou laisse Vaultly l'écrire à la racine).
+3. Vaultly → **Réglages → Sauvegarde → Sauvegarde cloud (WebDAV)** : URL,
+   identifiant, mot de passe → **Enregistrer et tester**.
+4. Active la sauvegarde automatique (intervalle réglable) — les 5 derniers
+   backups sont conservés en ligne, la restauration reprend le plus récent.
+
+`http://` est accepté pour un NAS en réseau local ; sinon mets `https://`.
+Sur Nextcloud avec 2FA, utilise un token (Paramètres → Applis → DAV).
+Le module ne touche qu'aux fichiers `vaultly-backup-*.json` du dossier ciblé.
+
 ## Connecter une IA
 
 Ouvre l'app → onglet **Réglages** : les tokens et des snippets prêts à coller
@@ -128,6 +153,7 @@ src-tauri/
     mcp.rs            # serveur MCP : 12 outils rmcp
     server.rs         # axum : auth Bearer à deux jetons, /api/add, choix du port
     gdrive.rs         # OAuth desktop + PKCE, upload, backup/restauration Drive
+    webdav.rs         # sauvegarde cloud simple : PROPFIND/PUT/GET/DELETE + prune
     metadata.rs       # récupération titre/favicon d'une page web
     scan.rs           # lecture favoris Brave/Chrome/Edge/Firefox
     secret.rs         # chiffrement DPAPI des jetons au repos
