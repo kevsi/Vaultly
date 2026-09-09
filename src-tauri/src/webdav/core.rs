@@ -53,15 +53,7 @@ pub fn normalize_base(raw: &str) -> Result<String, String> {
 /// « vaultly-backup-20260909-120000.json » : préfixe + horodatage ASCII +
 /// suffixe, rien d'autre (pas de '/', pas de '..', pas de segment arbitraire).
 fn valid_backup_name(name: &str) -> bool {
-    let Some(stem) = name
-        .strip_prefix(BACKUP_PREFIX)
-        .and_then(|s| s.strip_suffix(BACKUP_SUFFIX))
-    else {
-        return false;
-    };
-    !stem.is_empty()
-        && stem.len() < 100
-        && stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    super::valid_remote_name(name, BACKUP_PREFIX, BACKUP_SUFFIX)
 }
 
 fn now_epoch() -> i64 {
@@ -72,7 +64,7 @@ fn now_epoch() -> i64 {
 }
 
 /// Horodatage UTC AAAAMMJJ-HHMMSS (tri lexicographique = chronologique).
-fn backup_stamp() -> String {
+pub(crate) fn backup_stamp() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -99,7 +91,7 @@ pub async fn is_configured(pool: &SqlitePool) -> bool {
     load_config(pool).await.is_some()
 }
 
-fn http_client() -> reqwest::Client {
+pub(crate) fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(60))
         .build()
@@ -111,7 +103,7 @@ fn http_client() -> reqwest::Client {
 
 /// Deux tentatives avec backoff (Koofr limite le débit WebDAV côté gratuit).
 /// Le builder étant consommé par `send`, `make` le reconstruit à chaque essai.
-async fn retry2(
+pub(crate) async fn retry2(
     make: impl Fn() -> reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, String> {
     let mut last = String::from("inconnu");
@@ -139,7 +131,7 @@ async fn retry2(
 }
 
 /// Message d'erreur parlant selon le statut HTTP, avec un extrait du corps.
-fn describe_status(status: reqwest::StatusCode, body: &str) -> String {
+pub(crate) fn describe_status(status: reqwest::StatusCode, body: &str) -> String {
     let detail: String = body
         .chars()
         .filter(|c| !c.is_control())
@@ -201,7 +193,7 @@ fn extract_backup_names(xml: &str) -> Vec<String> {
 /// ou None s'il n'y en a plus. Ignore les balises auto-fermantes
 /// (`<d:href/>` : le contenu est vide mais le texte suivant n'appartient pas
 /// à l'élément).
-fn find_href_open(xml: &str) -> Option<usize> {
+pub(crate) fn find_href_open(xml: &str) -> Option<usize> {
     let mut i = 0;
     while let Some(rel) = xml[i..].find('<') {
         let open = i + rel;
@@ -218,7 +210,7 @@ fn find_href_open(xml: &str) -> Option<usize> {
     None
 }
 
-const PROPFIND_BODY: &str =
+pub(crate) const PROPFIND_BODY: &str =
     "<?xml version=\"1.0\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>";
 
 /// Liste les backups présents, du plus récent au plus ancien (l'horodatage
@@ -496,4 +488,4 @@ pub async fn webdav_set_autobackup(
 }
 
 
-#[cfg(test)] #[path = "webdav_tests.rs"] mod tests;
+#[cfg(test)] #[path = "tests.rs"] mod tests;

@@ -29,8 +29,9 @@ rien vers un serveur distant. Tout reste sur ta machine.
 ## Application de bureau
 
 La politique de confidentialité de l'application de bureau Vaultly (favoris,
-captures d'écran optionnelles, sauvegarde Google Drive optionnelle) est
-décrite dans le [README du projet](https://github.com/kevsi/Vaultly#fonctionnalit%C3%A9s).
+captures d'écran optionnelles, sauvegarde cloud WebDAV optionnelle vers le
+serveur que l'utilisateur configure lui-même) est décrite dans le
+[README du projet](https://github.com/kevsi/Vaultly#fonctionnalit%C3%A9s).
 
 ## Contact
 

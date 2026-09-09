@@ -80,7 +80,7 @@ export interface ResourceGridProps {
   setNoteViewing: (r: Resource) => void;
   handleSetStatus: (r: Resource, status: "" | "todo" | "archived") => void;
   handleMoveToFolder: (r: Resource, folderId: number | null) => void;
-  handleUploadToDrive: (r: Resource) => void;
+  handleUploadToCloud: (r: Resource) => void;
   refresh: () => void;
   setFolderStack: (f: (s: Folder[]) => Folder[]) => void;
   setFolderName: (n: string) => void;
@@ -229,7 +229,7 @@ export function ResourceGrid(props: ResourceGridProps) {
     setNoteViewing,
     handleSetStatus,
     handleMoveToFolder,
-    handleUploadToDrive,
+    handleUploadToCloud,
     refresh,
     setFolderStack,
     setFolderName,
@@ -451,7 +451,7 @@ export function ResourceGrid(props: ResourceGridProps) {
           onMoveToFolder={handleMoveToFolder}
           onOpenNote={setNoteViewing}
           onDetails={setDetailsViewing}
-          onUploadToDrive={handleUploadToDrive}
+          onUploadToCloud={handleUploadToCloud}
           onSetStatus={handleSetStatus}
           onEdit={handleEdit}
           onDelete={handleDelete}

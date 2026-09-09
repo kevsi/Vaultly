@@ -16,8 +16,7 @@ import {
 import { memo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { gdriveAppendLink, gdriveListShareLists, toggleFavorite } from "@/lib/api";
-import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
+import { cloudAppendLink, cloudListShareLists, toggleFavorite } from "@/lib/api";
 import { metaSummary } from "@/lib/metaFields";
 import { fileKindFor } from "@/lib/fileKind";
 import { isStale, noteColorClass } from "@/lib/resources";
@@ -68,8 +67,8 @@ interface Props {
   onMoveToFolder?: (r: Resource, folderId: number | null) => void;
   /** clic sur une note : ouvre la vue lecture */
   onOpenNote?: (r: Resource) => void;
-  /** envoie le fichier local vers Google Drive */
-  onUploadToDrive?: (r: Resource) => void;
+  /** envoie le fichier local vers le cloud WebDAV */
+  onUploadToCloud?: (r: Resource) => void;
   onSetStatus?: (r: Resource, status: "" | "todo" | "archived") => void;
   /** ouvre la vue « Détails » (fiche complète, README pour les dépôts) */
   onDetails?: (r: Resource) => void;
@@ -91,7 +90,7 @@ export const ResourceTile = memo(function ResourceTile({
   folders,
   onMoveToFolder,
   onOpenNote,
-  onUploadToDrive,
+  onUploadToCloud,
   onSetStatus,
   onDetails,
   onEdit,
@@ -153,11 +152,11 @@ export const ResourceTile = memo(function ResourceTile({
       });
   }
 
-  // --- Partage vers une liste JSON sur Google Drive ---
+  // --- Partage vers une liste JSON sur le cloud (WebDAV) ---
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLists, setShareLists] = useState<ShareListInfo[] | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
-  /** fileId d'une liste existante, ou "__new" pour créer un fichier */
+  /** name d'une liste existante, ou "__new" pour créer un fichier */
   const [shareTarget, setShareTarget] = useState<string>("__new");
   const [newFileName, setNewFileName] = useState("");
   const [sharing, setSharing] = useState(false);
@@ -166,9 +165,9 @@ export const ResourceTile = memo(function ResourceTile({
     setShareOpen(true);
     setShareLoading(true);
     try {
-      const lists = await gdriveListShareLists();
+      const lists = await cloudListShareLists();
       setShareLists(lists);
-      setShareTarget(lists.length > 0 ? lists[0].fileId : "__new");
+      setShareTarget(lists.length > 0 ? lists[0].name : "__new");
     } catch (e) {
       toast.error(String(e));
       setShareLists([]);
@@ -177,30 +176,29 @@ export const ResourceTile = memo(function ResourceTile({
     }
   }
 
-  async function runShareToDrive() {
+  async function runShareToCloud() {
     const isNew = shareTarget === "__new";
     const name = newFileName.trim();
     if (isNew && !name) {
-      toast.error("Donne un nom au fichier (ex. Design.json)");
+      toast.error("Donne un nom à la liste (ex. Design)");
       return;
     }
     setSharing(true);
     try {
-      const res = await gdriveAppendLink({
-        fileId: isNew ? null : shareTarget,
-        name: isNew ? name : null,
+      const res = await cloudAppendLink({
+        name: isNew ? null : shareTarget,
+        newListTitle: isNew ? name : null,
         title: resource.title || resource.url,
         url: resource.url,
         addedAt: new Date().toISOString(),
       });
-      await navigator.clipboard.writeText(res.webLink).catch(() => {});
-      suppressClipboardCapture(res.webLink);
+      const label = res.name;
       if (res.added) {
         toast.success(
-          `Lien ajouté à « ${res.fileName} » (${res.total} lien${res.total > 1 ? "s" : ""}) — lien copié`,
+          `Lien ajouté à « ${label} » (${res.total} lien${res.total > 1 ? "s" : ""})`,
         );
       } else {
-        toast.info(`Ce lien est déjà dans « ${res.fileName} » — lien copié`);
+        toast.info(`Ce lien est déjà dans « ${label} »`);
       }
       setShareOpen(false);
       setNewFileName("");
@@ -424,19 +422,19 @@ export const ResourceTile = memo(function ResourceTile({
               {resource.url.startsWith("http") && (
                 <DropdownMenuItem
                   onClick={() => void openShareDialog()}
-                  title="Ajoute ce lien à un fichier JSON sur Google Drive"
+                  title="Ajoute ce lien à un fichier JSON sur ton cloud (WebDAV)"
                 >
                   <CloudUpload />
-                  Partager vers Drive
+                  Partager vers le cloud
                 </DropdownMenuItem>
               )}
-              {/* fichier local : envoi réel via l'API Drive */}
-              {(resource.url.startsWith("file:") || resource.meta?.filePath) && onUploadToDrive && (
+              {/* fichier local : envoi réel vers le cloud WebDAV */}
+              {(resource.url.startsWith("file:") || resource.meta?.filePath) && onUploadToCloud && (
                 <DropdownMenuItem
-                  onClick={() => onUploadToDrive(resource)}
+                  onClick={() => onUploadToCloud(resource)}
                 >
                   <CloudUpload />
-                  Envoyer vers Drive
+                  Envoyer vers le cloud
                 </DropdownMenuItem>
               )}
             </>
@@ -513,16 +511,16 @@ export const ResourceTile = memo(function ResourceTile({
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Partager vers Google Drive</DialogTitle>
+            <DialogTitle>Partager vers le cloud</DialogTitle>
             <DialogDescription>
-              Le lien sera enregistré dans un fichier JSON sur ton Drive.
-              Choisis une liste existante ou crées-en une nouvelle
-              (ex. Design.json, AIAPI.json).
+              Le lien sera enregistré dans un fichier JSON de ton dossier
+              WebDAV. Choisis une liste existante ou crées-en une nouvelle
+              (ex. Design, AIAPI).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid gap-1.5">
-              <Label>Fichier de destination</Label>
+              <Label>Liste de destination</Label>
               <Select
                 value={shareTarget}
                 onValueChange={(v) => setShareTarget(v ?? "__new")}
@@ -533,21 +531,21 @@ export const ResourceTile = memo(function ResourceTile({
                 </SelectTrigger>
                 <SelectContent>
                   {(shareLists ?? []).map((l) => (
-                    <SelectItem key={l.fileId} value={l.fileId}>
-                      {l.name} ({l.count} lien{l.count > 1 ? "s" : ""})
+                    <SelectItem key={l.name} value={l.name}>
+                      {l.title} ({l.count} lien{l.count > 1 ? "s" : ""})
                     </SelectItem>
                   ))}
-                  <SelectItem value="__new">+ Nouveau fichier…</SelectItem>
+                  <SelectItem value="__new">+ Nouvelle liste…</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {shareTarget === "__new" && (
               <div className="grid gap-1.5">
-                <Label>Nom du nouveau fichier</Label>
+                <Label>Nom de la nouvelle liste</Label>
                 <Input
                   value={newFileName}
                   onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder="Design.json"
+                  placeholder="Design"
                   disabled={sharing}
                 />
               </div>
@@ -561,7 +559,7 @@ export const ResourceTile = memo(function ResourceTile({
             >
               Annuler
             </Button>
-            <Button onClick={() => void runShareToDrive()} disabled={sharing}>
+            <Button onClick={() => void runShareToCloud()} disabled={sharing}>
               {sharing && <Loader2 className="animate-spin" />}
               Partager
             </Button>

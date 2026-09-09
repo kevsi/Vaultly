@@ -36,16 +36,18 @@ Cursor…) pendant que l'app est ouverte.
 - **Liens morts & archivage** : vérification des 404/410/5xx, et par lien mort un bouton
   « Archiver » qui retrouve une capture sur **archive.org** (ou en demande une)
 - **Sauvegarde** : export/import JSON, backup automatique à la fermeture/masquage
-  (`Documents\Vaultly\Sauvegardes`), backup cloud **WebDAV** (Koofr, Nextcloud,
-  Synology — 3 champs, aucun compte développeur) et backup optionnel sur
-  **Google Drive** (OAuth desktop + PKCE, sauvegarde auto à intervalle réglable)
+  (`Documents\Vaultly\Sauvegardes`), et sauvegarde cloud **WebDAV** (Koofr, Nextcloud,
+  Synology — 3 champs à renseigner, aucun compte développeur requis ; sauvegarde
+  automatique à intervalle réglable, restauration en un clic). Le menu ⋯ d'une tuile
+  permet aussi d'**envoyer un fichier vers le cloud**, d'en **joindre** un depuis le
+  cloud, et de **partager un lien** vers une liste JSON du cloud
 - **Thème** : le sombre/clair suit celui de Windows tant qu'aucun choix manuel n'a été
   fait ; ensuite ton choix reste
 - **Local d'abord** : SQLite dans `%APPDATA%\com.kevsi.vaultly`, jetons
   chiffrés au repos (DPAPI). Aucune donnée n'est envoyée sauf ce que tu déclenches :
   favicons via le service Google s2, captures d'écran optionnelles via mShots
-  (`s.wordpress.com`), archives via `archive.org` (clic explicite), et backup Drive
-  si tu le connectes
+  (`s.wordpress.com`), archives via `archive.org` (clic explicite), et sauvegarde WebDAV
+  vers le serveur que TU configures
 
 ## Démarrage
 
@@ -57,71 +59,43 @@ pnpm tauri build    # exécutable de production (NSIS + MSI)
 
 Prérequis : Node 22, pnpm, Rust (MSVC) — [guide Tauri](https://tauri.app/start/prerequisites/).
 
-Pour embarquer le Client Secret Google Drive au build (sinon la connexion Drive
-demande la variable d'environnement `GDRIVE_CLIENT_SECRET`) : définis-la sur la
-machine qui construit l'installateur — elle n'est jamais dans le dépôt.
+## Sauvegarde cloud (WebDAV — simple, tout le monde peut le faire)
 
-## Connecter Google Drive (chaque utilisateur)
-
-> **Besoin de sauvegarder ta bibliothèque sans te créer un projet Google ?**
-> Utilise plutôt la **sauvegarde cloud WebDAV** (Réglages → Sauvegarde) :
-> Koofr offre 2 Go gratuits, un compte + un mot de passe WebDAV suffisent —
-> pas de console développeur. La section Drive ci-dessous est l'option
-> « complète » (explorateur de fichiers Drive, partage de listes de liens).
-
-Vaultly utilise **tes propres identifiants Google** : il n'y a pas de compte
-partagé intégré à l'app. En effet, les identifiants OAuth d'un développeur ne
-peuvent servir qu'aux comptes qu'il a déclarés (écran de consentement Google en
-mode « Testing ») — avec ton propre projet, tu contrôles ton accès.
-
-**Pas-à-pas (une fois, ~5 minutes, gratuit) :**
-
-1. Va sur [console.cloud.google.com](https://console.cloud.google.com/) et
-   crée un projet (le nom importe peu, ex. « Vaultly »).
-2. Menu **API et services → Bibliothèque** : recherche « **Google Drive API** »
-   et clique **Activer**.
-3. Menu **API et services → Écran de consentement OAuth** :
-   - type **Externe**, nom de l'app, ton e-mail ;
-   - **Utilisateurs test** : ajoute l'adresse Gmail que tu utiliseras dans
-     Vaultly (obligatoire tant que l'app de test n'est pas publiée) ;
-   - les autres étapes (logo, domaine) sont optionnelles — sauvegarde.
-4. Menu **API et services → Identifiants → Créer des identifiants → ID client
-   OAuth** :
-   - type d'application : **Application de bureau** ;
-   - nom : « Vaultly desktop ».
-5. Copie le **Client ID** (`…apps.googleusercontent.com`) et le **Client
-   Secret** (`GOCSPX-…`) affichés.
-6. Ouvre Vaultly → **Réglages → Google Drive → Identifiants Google** :
-   colle-les et **Enregistrer** (stockés chiffrés, DPAPI — jamais exportés).
-7. Clique **Connecter mon compte** : le navigateur s'ouvre sur l'écran de
-   consentement Google, autorise, et c'est fait.
-
-> **Écran « Google n'a pas validé cette application »** : c'est normal en mode
-> test (c'est TON app). Clique **Continuer** / afficher les infos de sécurité.
->
-> **Erreur 403 `access_denied`** : ton adresse Google n'est pas dans
-> **Utilisateurs test** de l'étape 3.
-
-Aucun secret n'est partagé entre utilisateurs : chacun stocke les siens,
-chiffrés pour sa session Windows.
-
-## Sauvegarde cloud WebDAV (la plus simple)
-
-Pour sauvegarder/restaurer ta bibliothèque sans aucune configuration Google :
+Tes sauvegardes, tes fichiers et tes listes de liens vivent sur **ton** nuage,
+accessible par trois champs : une URL, un identifiant, un mot de passe. Pas de
+compte développeur, pas d'OAuth, pas de console à configurer.
 
 1. Crée un compte gratuit sur [koofr.eu](https://koofr.eu) (2 Go), ou prends
    ton Nextcloud/Synology existant.
 2. Sur Koofr : **Settings → WebDAV** → génère un mot de passe. L'URL est
    `https://app.koofr.net/dav/Koofr/Vaultly` (crée le dossier Vaultly une
-   fois via le web, ou laisse Vaultly l'écrire à la racine).
+   fois via le web, ou cible directement `/dav/Koofr`).
 3. Vaultly → **Réglages → Sauvegarde → Sauvegarde cloud (WebDAV)** : URL,
    identifiant, mot de passe → **Enregistrer et tester**.
 4. Active la sauvegarde automatique (intervalle réglable) — les 5 derniers
-   backups sont conservés en ligne, la restauration reprend le plus récent.
+   backups sont conservés en ligne, « Restaurer la dernière » se connecte au
+   plus récent.
+
+Ce que Vaultly écrit, uniquement :
+
+```
+<Dossier WebDAV>/
+  vaultly-backup-<horodatage>.json   ← sauvegardes (5 conservées)
+  fichiers/                          ← fichiers envoyés depuis la bibliothèque
+  listes/vaultly-list-<nom>.json     ← listes de liens partagés
+```
 
 `http://` est accepté pour un NAS en réseau local ; sinon mets `https://`.
-Sur Nextcloud avec 2FA, utilise un token (Paramètres → Applis → DAV).
-Le module ne touche qu'aux fichiers `vaultly-backup-*.json` du dossier ciblé.
+Sur Nextcloud avec 2FA, utilise un token (Paramètres → Applis → DAV) comme mot
+de passe. Le mot de passe est stocké chiffré sur ta machine (DPAPI), jamais
+exporté. Supprimer la configuration (Réglages) n'efface rien sur le serveur.
+
+> **Et Google Drive ?** L'app ne le propose plus : l'écran de consentement
+> OAuth de Google impose à chaque utilisateur de créer son propre projet
+> Cloud Console (mode « Testing », plafond de 100 comptes, jetons expirant
+> après 7 jours) — inutilisable pour une app distribuée simplement. WebDAV
+> couvre les mêmes besoins (sauvegarde, fichiers, listes de liens) avec un
+> compte gratuit en 5 minutes.
 
 ## Connecter une IA
 
@@ -149,11 +123,10 @@ src-tauri/
   src/
     lib.rs            # setup Tauri : DB, plugins, raccourci global, backups auto
     db.rs             # couche données partagée UI + MCP (ressources, dossiers, settings)
-    commands.rs       # commandes Tauri (pont invoke) : CRUD, import/export, Drive
+    commands.rs       # commandes Tauri (pont invoke) : CRUD, import/export, ouverture
     mcp.rs            # serveur MCP : 12 outils rmcp
     server.rs         # axum : auth Bearer à deux jetons, /api/add, choix du port
-    gdrive.rs         # OAuth desktop + PKCE, upload, backup/restauration Drive
-    webdav.rs         # sauvegarde cloud simple : PROPFIND/PUT/GET/DELETE + prune
+    webdav/           # cloud : core (backups), files (explorateur), lists (liens)
     metadata.rs       # récupération titre/favicon d'une page web
     scan.rs           # lecture favoris Brave/Chrome/Edge/Firefox
     secret.rs         # chiffrement DPAPI des jetons au repos

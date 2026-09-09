@@ -21,10 +21,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { gdriveSearchFiles, gdriveUpload } from "@/lib/api";
-import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
+import { cloudImportFile, cloudListFiles, cloudUploadFile, type CloudFile } from "@/lib/api";
 import {
-  addResource,
   allTags,
   createFolder,
   deleteFolder,
@@ -49,7 +47,7 @@ import {
   setViewMode as persistViewMode,
   type ViewMode,
 } from "@/lib/tileSize";
-import type { DriveFile, Folder, Resource, SortBy } from "@/lib/types";
+import type { Folder, Resource, SortBy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
 
@@ -123,12 +121,12 @@ export function LibraryView() {
   const [noteViewing, setNoteViewing] = useState<Resource | null>(null);
   /** vue « Détails » d'une ressource (fiche complète, README des dépôts) */
   const [detailsViewing, setDetailsViewing] = useState<Resource | null>(null);
-  // --- Joindre un fichier depuis Google Drive ---
-  const [driveDialogOpen, setDriveDialogOpen] = useState(false);
-  const [driveQuery, setDriveQuery] = useState("");
-  const [driveResults, setDriveResults] = useState<DriveFile[] | null>(null);
-  const [driveSearching, setDriveSearching] = useState(false);
-  const [driveAddingId, setDriveAddingId] = useState<string | null>(null);
+  // --- Joindre un fichier depuis le cloud (WebDAV) ---
+  const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
+  const [cloudQuery, setCloudQuery] = useState("");
+  const [cloudResults, setCloudResults] = useState<CloudFile[] | null>(null);
+  const [cloudSearching, setCloudSearching] = useState(false);
+  const [cloudAddingId, setCloudAddingId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [captures, setCaptures] = useState(
     () => localStorage.getItem("vaultly-captures") === "1",
@@ -171,7 +169,7 @@ export function LibraryView() {
     function onKey(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey;
       const anyDialogOpen =
-        dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || driveDialogOpen || confirm !== null;
+        dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || cloudDialogOpen || confirm !== null;
       if (ctrl && e.altKey && e.key.toLowerCase() === "n") {
         if (anyDialogOpen) return;
         e.preventDefault();
@@ -193,15 +191,15 @@ export function LibraryView() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openFolder, dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, driveDialogOpen, confirm]);
+  }, [openFolder, dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, cloudDialogOpen, confirm]);
 
   // URL capturée depuis le presse-papiers : modale pré-remplie.
   // Ignorée si un dialogue est déjà ouvert : elle écraserait la saisie en cours.
   const anyDialogRef = useRef(false);
   useEffect(() => {
     anyDialogRef.current =
-      dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || driveDialogOpen || confirm !== null;
-  }, [dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, driveDialogOpen, confirm]);
+      dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || cloudDialogOpen || confirm !== null;
+  }, [dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, cloudDialogOpen, confirm]);
   useEffect(() => {
     function onAddUrl(e: Event) {
       if (anyDialogRef.current) return;
@@ -400,61 +398,47 @@ export function LibraryView() {
     [foldersList, refresh],
   );
 
-  const handleUploadToDrive = useCallback(async (r: Resource) => {
+  const handleUploadToCloud = useCallback(async (r: Resource) => {
     const path =
       r.meta?.filePath ?? (r.url.startsWith("file:") ? r.url.slice(5) : "");
     if (!path) {
       toast.error("Ce fichier n'a pas de chemin local enregistré");
       return;
     }
-    toast.info("Envoi vers Google Drive en cours…");
+    toast.info("Envoi vers le cloud en cours…");
     try {
-      const link = await gdriveUpload(path);
-      await navigator.clipboard.writeText(link).catch(() => {
-        toast.warning(`Copie impossible — lien : ${link}`);
-      });
-      suppressClipboardCapture(link);
-      toast.success(`Envoyé — lien de partage copié`);
+      const name = await cloudUploadFile(path);
+      toast.success(`Envoyé vers le cloud sous « ${name} »`);
     } catch (e) {
       toast.error(String(e));
     }
   }, []);
 
-  async function searchDriveFiles() {
-    const q = driveQuery.trim();
-    if (!q) {
-      toast.error("Tape un mot-clé pour chercher dans le Drive");
-      return;
-    }
-    setDriveSearching(true);
+  async function searchCloudFiles() {
+    setCloudSearching(true);
     try {
-      setDriveResults(await gdriveSearchFiles(q));
+      setCloudResults(await cloudListFiles(cloudQuery.trim() || null));
     } catch (e) {
       toast.error(String(e));
     } finally {
-      setDriveSearching(false);
+      setCloudSearching(false);
     }
   }
 
-  async function addDriveFileAsResource(f: DriveFile) {
-    setDriveAddingId(f.id);
+  async function addCloudFileAsResource(f: CloudFile) {
+    setCloudAddingId(f.name);
     try {
-      const url =
-        f.webViewLink ?? `https://drive.google.com/file/d/${f.id}/view`;
-      await addResource({
-        url,
-        title: f.name,
-        resourceType: "site",
-        category: "Google Drive",
-        tags: ["drive"],
-      });
-      toast.success(`« ${f.name} » ajouté à la bibliothèque`);
+      // rapatrie le fichier dans Documents\Vaultly\Fichiers et crée la
+      // ressource locale (l'URL WebDAV est protégée par mot de passe, elle
+      // ne serait pas cliquable depuis un autre appareil)
+      await cloudImportFile(f.name);
+      toast.success(`« ${f.name} » joint à la bibliothèque`);
       refresh();
-      setDriveDialogOpen(false);
+      setCloudDialogOpen(false);
     } catch (e) {
       toast.error(String(e));
     } finally {
-      setDriveAddingId(null);
+      setCloudAddingId(null);
     }
   }
 
@@ -759,14 +743,14 @@ export function LibraryView() {
         <Button
           variant="outline"
           onClick={() => {
-            setDriveQuery("");
-            setDriveResults(null);
-            setDriveDialogOpen(true);
+            setCloudQuery("");
+            setCloudResults(null);
+            setCloudDialogOpen(true);
           }}
-          title="Joindre un fichier depuis Google Drive"
+          title="Joindre un fichier depuis le cloud (WebDAV)"
         >
           <Cloud />
-          Depuis Drive
+          Depuis le cloud
         </Button>
         <Button
           variant="outline"
@@ -1039,7 +1023,7 @@ export function LibraryView() {
         setNoteViewing={setNoteViewing}
         handleSetStatus={handleSetStatus}
         handleMoveToFolder={handleMoveToFolder}
-        handleUploadToDrive={handleUploadToDrive}
+        handleUploadToCloud={handleUploadToCloud}
         refresh={refresh}
         setFolderStack={setFolderStack}
         setFolderName={setFolderName}
@@ -1124,81 +1108,76 @@ export function LibraryView() {
         }}
       />
 
-      {/* joindre un fichier depuis Google Drive */}
-      <Dialog open={driveDialogOpen} onOpenChange={setDriveDialogOpen}>
+      {/* joindre un fichier depuis le cloud (WebDAV) */}
+      <Dialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Joindre depuis Google Drive</DialogTitle>
+            <DialogTitle>Joindre depuis le cloud</DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-2">
             <Input
               autoFocus
-              placeholder="Rechercher un fichier dans le Drive…"
-              value={driveQuery}
-              onChange={(e) => setDriveQuery(e.target.value)}
+              placeholder="Filtrer par nom de fichier…"
+              value={cloudQuery}
+              onChange={(e) => setCloudQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void searchDriveFiles();
+                if (e.key === "Enter") void searchCloudFiles();
               }}
             />
             <Button
-              onClick={() => void searchDriveFiles()}
-              disabled={driveSearching}
+              onClick={() => void searchCloudFiles()}
+              disabled={cloudSearching}
             >
-              {driveSearching ? (
+              {cloudSearching ? (
                 <Loader2 className="animate-spin" />
               ) : (
                 <Search />
               )}
-              Chercher
+              Lister
             </Button>
           </div>
-          {driveSearching ? (
+          {cloudSearching ? (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Recherche en cours…
+              Lecture du dossier cloud…
             </div>
-          ) : driveResults !== null ? (
-            driveResults.length === 0 ? (
+          ) : cloudResults !== null ? (
+            cloudResults.length === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">
-                Aucun fichier trouvé pour « {driveQuery.trim()} ».
+                {cloudQuery.trim()
+                  ? `Aucun fichier trouvé pour « ${cloudQuery.trim()} ».`
+                  : "Aucun fichier envoyé pour l'instant — envoie-en un depuis le menu ⋯ d'une tuile fichier."}
               </p>
             ) : (
               <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border p-2">
-                {driveResults.map((f) => {
-                  const adding = driveAddingId === f.id;
-                  const folder =
-                    f.mimeType === "application/vnd.google-apps.folder";
+                {cloudResults.map((f) => {
+                  const adding = cloudAddingId === f.name;
+                  const modified = f.modified ? new Date(f.modified) : null;
                   return (
                     <div
-                      key={f.id}
+                      key={f.name}
                       className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                     >
                       <Cloud className="size-4 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{f.name}</div>
-                        {f.modifiedTime && (
-                          <div className="truncate text-xs text-muted-foreground">
-                            {new Date(f.modifiedTime).toLocaleDateString(
-                              "fr-FR",
-                              {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                              },
-                            )}
-                          </div>
-                        )}
+                        <div className="truncate font-medium">
+                          {f.name.replace(/^\d{8}-\d{6}-/, "")}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {modified && !Number.isNaN(modified.getTime())
+                            ? modified.toLocaleDateString("fr-FR")
+                            : ""}
+                          {f.size != null
+                            ? ` · ${f.size < 1024 ? `${f.size} o` : f.size < 1048576 ? `${(f.size / 1024).toFixed(1)} Ko` : `${(f.size / 1048576).toFixed(1)} Mo`}`
+                            : ""}
+                        </div>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={adding || folder}
-                        title={
-                          folder
-                            ? "Les dossiers ne peuvent pas être joints"
-                            : "Créer une ressource vers ce fichier"
-                        }
-                        onClick={() => void addDriveFileAsResource(f)}
+                        disabled={adding}
+                        title="Télécharger et joindre ce fichier comme ressource locale"
+                        onClick={() => void addCloudFileAsResource(f)}
                       >
                         {adding ? (
                           <Loader2 className="animate-spin" />
@@ -1214,12 +1193,12 @@ export function LibraryView() {
             )
           ) : (
             <p className="py-2 text-sm text-muted-foreground">
-              Lance une recherche pour choisir le fichier à ajouter comme
-              ressource (son lien Drive sera enregistré).
+              Choisis le fichier à rapatrier dans Documents\Vaultly\Fichiers —
+              il sera joint comme ressource locale, lisible hors connexion.
             </p>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDriveDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setCloudDialogOpen(false)}>
               Fermer
             </Button>
           </DialogFooter>

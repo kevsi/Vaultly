@@ -112,44 +112,26 @@ export interface PageMetadata {
   favicon: string;
 }
 
-/** Un fichier Google Drive (contrat backend gdrive_*). */
-export interface DriveFile {
-  id: string;
+/** Un fichier du cloud WebDAV (dossier fichiers/ — contrat cloud_*). */
+export interface CloudFile {
+  /** segment unique du nom (l'« id » WebDAV) */
   name: string;
-  mimeType: string;
-  size?: string | null;
-  modifiedTime?: string | null;
-  webViewLink?: string | null;
+  size: number | null;
+  modified: string | null;
 }
 
-/** Réglages de sauvegarde Google Drive. */
-export interface DriveSettings {
-  backupFolderId: string | null;
-  autobackupEnabled: boolean;
-  autobackupIntervalHours: number;
-  /** timestamp (secondes ou millisecondes) du dernier backup, null = jamais */
-  lastBackupAt: number | null;
-}
-
-/** Résultat d'une sauvegarde vers Google Drive. */
-export interface DriveBackupResult {
-  fileId: string;
-  link: string;
-  count: number;
-}
-
-/** Un fichier JSON de liste de liens partagés sur Google Drive. */
+/** Un fichier JSON de liste de liens partagés sur le cloud. */
 export interface ShareListInfo {
-  fileId: string;
+  /** nom du fichier distant (l'« id ») */
   name: string;
+  /** titre interne (peut être unicode) */
+  title: string;
   count: number;
 }
 
 /** Résultat de l'ajout d'un lien à une liste partagée. */
 export interface AppendLinkResult {
-  fileId: string;
-  fileName: string;
-  webLink: string;
+  name: string;
   /** false = l'URL était déjà présente (aucune modification) */
   added: boolean;
   total: number;

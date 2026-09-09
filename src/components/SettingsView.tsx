@@ -1,14 +1,9 @@
 import {
   Archive,
   Check,
-  Clock,
-  Cloud,
   Copy,
   Download,
   ExternalLink,
-  Folder,
-  FolderPlus,
-  History,
   Link2Off,
   Loader2,
   Plug,
@@ -16,10 +11,7 @@ import {
   Puzzle,
   RefreshCw,
   Save,
-  Search,
-  Share2,
   SlidersHorizontal,
-  Trash2,
   Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -37,36 +29,15 @@ import {
   mcpRegenerateToken,
   setAutostart,
   waybackAvailable,
-  gdriveBackup,
-  gdriveClearCredentials,
-  gdriveConnect,
-  gdriveCredentialsStatus,
-  gdriveCreateFolder,
-  gdriveDeleteFile,
-  gdriveDisconnect,
-  gdriveDownload,
-  gdriveGetSettings,
-  gdriveListFiles,
-  gdriveRestore,
-  gdriveSearchFiles,
-  gdriveSetAutobackup,
-  gdriveSetBackupFolder,
-  gdriveSetCredentials,
-  gdriveShareFile,
-  gdriveStatus as gdriveStatusApi,
-  gdriveUpload,
   setGlobalShortcut,
   type DeadLink,
-  type DriveFile,
 } from "@/lib/api";
 import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
 import { WebDavBackupSection } from "@/components/WebDavBackupSection";
-import { PromptDialog } from "@/components/PromptDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -125,7 +96,6 @@ function CopyBlock({ label, code }: { label: string; code: string }) {
 const SECTIONS = [
   { id: "ia", label: "Assistants IA", icon: Plug },
   { id: "extension", label: "Extension", icon: Puzzle },
-  { id: "drive", label: "Google Drive", icon: Cloud },
   { id: "links", label: "Liens morts", icon: Link2Off },
   { id: "general", label: "Général", icon: SlidersHorizontal },
   { id: "backup", label: "Sauvegarde", icon: Save },
@@ -157,29 +127,8 @@ export function SettingsView() {
   const [checking, setChecking] = useState(false);
   const [deadLinks, setDeadLinks] = useState<DeadLink[] | null>(null);
   const [waybackBusy, setWaybackBusy] = useState<number | null>(null);
-  const [gdriveBusy, setGdriveBusy] = useState(false);
-  const qcGdrive = useQueryClient();
-  // --- identifiants Google BYO (projet GCP de l'utilisateur) ---
-  const [credClientId, setCredClientId] = useState("");
-  const [credClientSecret, setCredClientSecret] = useState("");
-  const [credBusy, setCredBusy] = useState(false);
-  const { data: credStatus } = useQuery({
-    queryKey: ["gdriveCredentials"],
-    queryFn: gdriveCredentialsStatus,
-  });
+  const qc = useQueryClient();
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
-  const [prompt, setPrompt] = useState<{
-    title: string;
-    description?: string;
-    placeholder?: string;
-    confirmLabel?: string;
-    onDone: (v: string | null) => void;
-  } | null>(null);
-
-  const { data: gdriveStatus } = useQuery({
-    queryKey: ["gdriveStatus"],
-    queryFn: gdriveStatusApi,
-  });
 
   // --- Lancement au démarrage ---
   const { data: autostart } = useQuery({
@@ -197,7 +146,7 @@ export function SettingsView() {
           ? "Vaultly démarrera avec Windows"
           : "Lancement au démarrage désactivé",
       );
-      void qcGdrive.invalidateQueries({ queryKey: ["autostart"] });
+      void qc.invalidateQueries({ queryKey: ["autostart"] });
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -207,178 +156,7 @@ export function SettingsView() {
 
   // --- Corbeille : voir l'onglet dédié « Corbeille » dans le header ---
 
-  async function connectGdrive() {
-    setGdriveBusy(true);
-    try {
-      await gdriveConnect();
-      toast.success("Google Drive connecté ✓");
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveStatus"] });
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setGdriveBusy(false);
-    }
-  }
-
-  async function disconnectGdrive() {
-    try {
-      await gdriveDisconnect();
-      toast.success("Google Drive déconnecté");
-    } catch (e) {
-      toast.error(String(e));
-    }
-    void qcGdrive.invalidateQueries({ queryKey: ["gdriveStatus"] });
-  }
-
-  async function saveCredentials() {
-    setCredBusy(true);
-    try {
-      await gdriveSetCredentials(credClientId.trim(), credClientSecret.trim());
-      toast.success("Identifiants Google enregistrés ✓", {
-        description: "Connecte ton compte Drive avec ces identifiants.",
-      });
-      setCredClientId("");
-      setCredClientSecret("");
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveCredentials"] });
-      // l'ancienne session (liée aux anciens identifiants) est purgée côté Rust
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveStatus"] });
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setCredBusy(false);
-    }
-  }
-
-  async function clearCredentials() {
-    setCredBusy(true);
-    try {
-      await gdriveClearCredentials();
-      toast.success("Identifiants personnels effacés");
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveCredentials"] });
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setCredBusy(false);
-    }
-  }
-
-  async function tryUpload() {
-    setGdriveBusy(true);
-    try {
-      const link = await gdriveUpload();
-      await navigator.clipboard.writeText(link).catch(() => {});
-      suppressClipboardCapture(link);
-      toast.success(`Fichier envoyé — lien copié : ${link}`);
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setGdriveBusy(false);
-    }
-  }
-
-  // --- Sauvegarde / restauration / explorateur Drive ---
-  const [backupBusy, setBackupBusy] = useState(false);
-  const [restoreBusy, setRestoreBusy] = useState(false);
   const [regenBusy, setRegenBusy] = useState(false);
-  const [driveSearch, setDriveSearch] = useState("");
-  const [driveFiles, setDriveFiles] = useState<DriveFile[] | null>(null);
-  const [driveLoading, setDriveLoading] = useState(false);
-  const [driveActionId, setDriveActionId] = useState<string | null>(null);
-  const [autoEnabled, setAutoEnabled] = useState(false);
-  const [autoInterval, setAutoInterval] = useState("24");
-  const [autoSaving, setAutoSaving] = useState(false);
-
-  const { data: driveSettings } = useQuery({
-    queryKey: ["gdriveSettings"],
-    queryFn: gdriveGetSettings,
-    enabled: gdriveStatus?.connected === true,
-  });
-
-  useEffect(() => {
-    if (driveSettings) {
-      setAutoEnabled(driveSettings.autobackupEnabled);
-      setAutoInterval(String(driveSettings.autobackupIntervalHours));
-    }
-  }, [driveSettings]);
-
-  function formatBackupDate(ts: number | null | undefined): string {
-    if (ts == null) return "Jamais";
-    const ms = ts > 1_000_000_000_000 ? ts : ts * 1000;
-    return new Date(ms).toLocaleString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  function formatDriveSize(size: string | null | undefined): string {
-    if (size == null || size === "") return "";
-    const n = Number(size);
-    if (!Number.isFinite(n)) return "";
-    if (n < 1024) return `${n} o`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
-    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} Mo`;
-    return `${(n / 1024 / 1024 / 1024).toFixed(2)} Go`;
-  }
-
-  function formatDriveDate(iso: string | null | undefined): string {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  }
-
-  function isDriveFolder(f: DriveFile): boolean {
-    return f.mimeType === "application/vnd.google-apps.folder";
-  }
-
-  async function runBackup() {
-    setBackupBusy(true);
-    try {
-      const r = await gdriveBackup();
-      await navigator.clipboard.writeText(r.link).catch(() => {});
-      suppressClipboardCapture(r.link);
-      toast.success(
-        `${r.count} ressource(s) sauvegardée(s) — lien copié : ${r.link}`,
-      );
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveSettings"] });
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setBackupBusy(false);
-    }
-  }
-
-  async function runRestore() {
-    setConfirm({
-      title: "Restaurer le dernier backup Drive ?",
-      message: "Les doublons d'URL seront ignorés.",
-      confirmLabel: "Restaurer",
-      action: async () => {
-        setRestoreBusy(true);
-        try {
-          const r = await gdriveRestore(null);
-          toast.success(
-            `${r.resourcesAdded} ressource(s) ajoutée(s), ${r.duplicates} doublon(s), ${r.foldersAdded} dossier(s)${
-              r.invalid > 0 ? ` · ${r.invalid} entrée(s) invalide(s) ignorée(s)` : ""
-            }`,
-          );
-          void qcGdrive.invalidateQueries({ queryKey: ["resources"] });
-          void qcGdrive.invalidateQueries({ queryKey: ["folders"] });
-        } catch (e) {
-          toast.error(String(e));
-        } finally {
-          setRestoreBusy(false);
-        }
-      },
-    });
-  }
 
   async function runRegenerateToken() {
     setConfirm({
@@ -391,7 +169,7 @@ export function SettingsView() {
         try {
           await mcpRegenerateToken();
           toast.success("Nouveau token généré — mets à jour tes clients MCP");
-          void qcGdrive.invalidateQueries({ queryKey: ["mcpStatus"] });
+          void qc.invalidateQueries({ queryKey: ["mcpStatus"] });
         } catch (e) {
           toast.error(String(e));
         } finally {
@@ -412,7 +190,7 @@ export function SettingsView() {
         try {
           await apiRegenerateToken();
           toast.success("Nouveau token généré — recolle-le dans l'extension");
-          void qcGdrive.invalidateQueries({ queryKey: ["mcpStatus"] });
+          void qc.invalidateQueries({ queryKey: ["mcpStatus"] });
         } catch (e) {
           toast.error(String(e));
         } finally {
@@ -420,116 +198,6 @@ export function SettingsView() {
         }
       },
     });
-  }
-
-  async function saveAutobackup(enabled: boolean, hoursRaw: string) {
-    const hours = Math.max(1, Math.floor(Number(hoursRaw) || 24));
-    setAutoInterval(String(hours));
-    setAutoSaving(true);
-    try {
-      await gdriveSetAutobackup(enabled, hours);
-      toast.success(
-        enabled
-          ? `Sauvegarde auto activée (toutes les ${hours} h)`
-          : "Sauvegarde auto désactivée",
-      );
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveSettings"] });
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setAutoSaving(false);
-    }
-  }
-
-  async function loadDriveFiles() {
-    setDriveLoading(true);
-    try {
-      const q = driveSearch.trim();
-      const files = q
-        ? await gdriveSearchFiles(q)
-        : await gdriveListFiles(null, null);
-      setDriveFiles(files);
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setDriveLoading(false);
-    }
-  }
-
-  async function runDriveDownload(f: DriveFile) {
-    setDriveActionId(f.id);
-    try {
-      const path = await gdriveDownload(f.id);
-      toast.success(`Téléchargé : ${path}`);
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setDriveActionId(null);
-    }
-  }
-
-  async function runDriveShare(f: DriveFile) {
-    setDriveActionId(f.id);
-    try {
-      const link = await gdriveShareFile(f.id);
-      await navigator.clipboard.writeText(link).catch(() => {});
-      suppressClipboardCapture(link);
-      toast.success("Lien de partage copié dans le presse-papiers");
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setDriveActionId(null);
-    }
-  }
-
-  async function runDriveDelete(f: DriveFile) {
-    setConfirm({
-      title: `Supprimer « ${f.name} » de Google Drive ?`,
-      message: "Le fichier sera déplacé vers la corbeille de ton Drive.",
-      confirmLabel: "Supprimer",
-      destructive: true,
-      action: async () => {
-        setDriveActionId(f.id);
-        try {
-          await gdriveDeleteFile(f.id);
-          setDriveFiles((prev) => prev?.filter((x) => x.id !== f.id) ?? prev);
-          toast.success("Fichier supprimé du Drive");
-        } catch (e) {
-          toast.error(String(e));
-        } finally {
-          setDriveActionId(null);
-        }
-      },
-    });
-  }
-
-  async function runCreateDriveFolder() {
-    setPrompt({
-      title: "Nouveau dossier Drive",
-      placeholder: "Nom du dossier",
-      confirmLabel: "Créer",
-      onDone: async (name) => {
-        setPrompt(null);
-        if (!name?.trim()) return;
-        try {
-          await gdriveCreateFolder(name.trim());
-          toast.success(`Dossier « ${name.trim()} » créé`);
-          void loadDriveFiles();
-        } catch (e) {
-          toast.error(String(e));
-        }
-      },
-    });
-  }
-
-  async function runSetBackupFolder(f: DriveFile) {
-    try {
-      await gdriveSetBackupFolder(f.id);
-      toast.success(`« ${f.name} » défini comme dossier de backup`);
-      void qcGdrive.invalidateQueries({ queryKey: ["gdriveSettings"] });
-    } catch (e) {
-      toast.error(String(e));
-    }
   }
 
   async function runDeadLinkCheck() {
@@ -897,376 +565,6 @@ export function SettingsView() {
             </>
           )}
 
-          {section === "drive" && (
-            <>
-        {/* Google Drive */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="font-medium">Google Drive</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Sauvegardes, explorateur et partage de liens via ton Drive.
-                Nécessite une configuration Google une fois (voir ci-dessous).
-              </p>
-            </div>
-            {gdriveStatus?.connected ? (
-              <span className="shrink-0 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                Connecté
-              </span>
-            ) : (
-              <span className="shrink-0 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-                Non connecté
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              onClick={() => void connectGdrive()}
-              disabled={gdriveBusy || !credStatus?.configured}
-              title={
-                credStatus?.configured
-                  ? undefined
-                  : "Configure d'abord tes identifiants Google (section ci-dessous)"
-              }
-            >
-              {gdriveBusy ? <Loader2 className="animate-spin" /> : <Plug />}
-              {gdriveStatus?.connected ? "Reconnecter" : "Connecter mon compte"}
-            </Button>
-            {gdriveStatus?.connected && (
-              <>
-                <Button variant="outline" onClick={() => void tryUpload()} disabled={gdriveBusy}>
-                  <Upload />
-                  Envoyer un fichier…
-                </Button>
-                <Button variant="ghost" onClick={() => void disconnectGdrive()}>
-                  Déconnecter
-                </Button>
-              </>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Le serveur de callback utilise le port local 8790. Le lien de
-            partage du fichier envoyé est copié dans le presse-papiers.
-          </p>
-
-          <Separator />
-
-          {/* Identifiants OAuth BYO : chaque utilisateur utilise SON projet
-              Google Cloud — le projet du développeur ne peut pas servir
-              d'autres comptes (écran de consentement en mode Testing). */}
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-sm font-medium">
-                Identifiants Google (à configurer une fois)
-              </h4>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Vaultly utilise TES identifiants Google, jamais un compte
-                partagé : crée ton propre projet (gratuit, ~5 min) sur{" "}
-                <button
-                  type="button"
-                  className="cursor-pointer text-primary underline underline-offset-2"
-                  onClick={() =>
-                    void openUrl(
-                      "https://console.cloud.google.com/apis/credentials",
-                    )
-                  }
-                >
-                  console.cloud.google.com
-                </button>{" "}
-                puis colle-les ici. Le pas-à-pas complet est dans le README du
-                projet (section « Connecter Google Drive »).
-              </p>
-              {credStatus?.configured && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Client ID actif :{" "}
-                  <code className="rounded bg-muted px-1 py-0.5">
-                    {credStatus.clientIdPreview}
-                  </code>{" "}
-                  {credStatus.fromUser ? "(ta configuration)" : "(embarqué au build)"}
-                </p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Input
-                placeholder="Client ID — xxx.apps.googleusercontent.com"
-                value={credClientId}
-                onChange={(e) => setCredClientId(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <Input
-                type="password"
-                placeholder={
-                  credStatus?.fromUser
-                    ? "Client Secret — laisse vide pour conserver l'actuel"
-                    : "Client Secret — GOCSPX-…"
-                }
-                value={credClientSecret}
-                onChange={(e) => setCredClientSecret(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={credBusy || !credClientId.trim()}
-                  onClick={() => void saveCredentials()}
-                >
-                  {credBusy ? <Loader2 className="animate-spin" /> : null}
-                  Enregistrer
-                </Button>
-                {credStatus?.fromUser && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={credBusy}
-                    onClick={() => void clearCredentials()}
-                  >
-                    Revenir aux identifiants embarqués
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Stockés chiffrés sur cette machine (DPAPI) — le secret n'est
-                jamais affiché ni exporté.
-              </p>
-            </div>
-          </div>
-
-          {gdriveStatus?.connected && (
-            <>
-              <Separator />
-
-              {/* sauvegarde / restauration */}
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium">
-                    Sauvegarde de la bibliothèque
-                  </h4>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Envoie une sauvegarde JSON sur ton Drive, ou restaure la
-                    dernière — les doublons d'URL sont ignorés.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => void runBackup()}
-                    disabled={backupBusy || restoreBusy}
-                  >
-                    {backupBusy ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <Save />
-                    )}
-                    Sauvegarder maintenant
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => void runRestore()}
-                    disabled={restoreBusy || backupBusy}
-                  >
-                    {restoreBusy ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <History />
-                    )}
-                    Restaurer le dernier backup
-                  </Button>
-                </div>
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Clock className="size-3.5" />
-                  Dernier backup : {formatBackupDate(driveSettings?.lastBackupAt)}
-                </p>
-
-                {/* sauvegarde automatique */}
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border p-3">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={autoEnabled}
-                      disabled={autoSaving}
-                      onCheckedChange={(v) => {
-                        setAutoEnabled(v);
-                        void saveAutobackup(v, autoInterval);
-                      }}
-                    />
-                    <Label>Sauvegarde automatique</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="autobackup-interval" className="text-xs text-muted-foreground">
-                      Toutes les
-                    </Label>
-                    <Input
-                      id="autobackup-interval"
-                      type="number"
-                      min={1}
-                      className="w-20"
-                      value={autoInterval}
-                      disabled={autoSaving}
-                      onChange={(e) => setAutoInterval(e.target.value)}
-                      onBlur={() => {
-                        if (autoEnabled) void saveAutobackup(true, autoInterval);
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">heure(s)</span>
-                  </div>
-                  {autoSaving && <Loader2 className="size-4 animate-spin" />}
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* mini explorateur Drive */}
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium">Explorateur Drive</h4>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Recherche tes fichiers, télécharge-les, partage-les ou
-                    choisis le dossier de backup.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative min-w-0 grow">
-                    <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Rechercher dans le Drive…"
-                      className="pl-8"
-                      value={driveSearch}
-                      onChange={(e) => setDriveSearch(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void loadDriveFiles();
-                      }}
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void loadDriveFiles()}
-                    disabled={driveLoading}
-                  >
-                    {driveLoading ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <Search />
-                    )}
-                    {driveSearch.trim() ? "Rechercher" : "Lister mes fichiers"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void runCreateDriveFolder()}
-                  >
-                    <FolderPlus />
-                    Nouveau dossier
-                  </Button>
-                </div>
-
-                {driveLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
-                    Chargement des fichiers…
-                  </div>
-                ) : driveFiles !== null && driveFiles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Aucun fichier trouvé.
-                  </p>
-                ) : (
-                  driveFiles !== null && (
-                    <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border p-2">
-                      {driveFiles.map((f) => {
-                        const busy = driveActionId === f.id;
-                        const folder = isDriveFolder(f);
-                        const isBackupFolder =
-                          driveSettings?.backupFolderId === f.id;
-                        return (
-                          <div
-                            key={f.id}
-                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-                          >
-                            {folder ? (
-                              <Folder className="size-4 shrink-0 text-amber-500" />
-                            ) : (
-                              <ExternalLink className="size-4 shrink-0 text-muted-foreground" />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate font-medium">
-                                  {f.name}
-                                </span>
-                                {isBackupFolder && (
-                                  <Badge variant="outline">backup</Badge>
-                                )}
-                              </div>
-                              <div className="truncate text-xs text-muted-foreground">
-                                {[
-                                  formatDriveDate(f.modifiedTime),
-                                  formatDriveSize(f.size),
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            </div>
-                            {folder && !isBackupFolder && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title="Définir comme dossier de backup"
-                                onClick={() => void runSetBackupFolder(f)}
-                              >
-                                <Save />
-                                <span className="hidden xl:inline">Backup ici</span>
-                              </Button>
-                            )}
-                            {!folder && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title="Télécharger"
-                                disabled={busy}
-                                onClick={() => void runDriveDownload(f)}
-                              >
-                                {busy ? (
-                                  <Loader2 className="animate-spin" />
-                                ) : (
-                                  <Download />
-                                )}
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Partager (copie le lien)"
-                              disabled={busy}
-                              onClick={() => void runDriveShare(f)}
-                            >
-                              {busy ? (
-                                <Loader2 className="animate-spin" />
-                              ) : (
-                                <Share2 />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Supprimer"
-                              disabled={busy}
-                              onClick={() => void runDriveDelete(f)}
-                            >
-                              <Trash2 className="text-destructive" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )
-                )}
-              </div>
-            </>
-          )}
-        </div>
-            </>
-          )}
 
           {section === "links" && (
             <>
@@ -1444,14 +742,6 @@ export function SettingsView() {
       </ScrollArea>
 
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
-      <PromptDialog
-        open={prompt !== null}
-        title={prompt?.title ?? ""}
-        description={prompt?.description}
-        placeholder={prompt?.placeholder}
-        confirmLabel={prompt?.confirmLabel}
-        onDone={(v) => void prompt?.onDone(v)}
-      />
     </div>
   );
 }

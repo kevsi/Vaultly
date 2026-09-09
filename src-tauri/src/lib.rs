@@ -1,6 +1,5 @@
 mod commands;
 mod db;
-mod gdrive;
 mod mcp;
 mod metadata;
 mod scan;
@@ -91,7 +90,7 @@ fn civil_from_secs(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     (y, m, d, h, mi, s)
 }
 
-/// Alias public pour gdrive.rs (horodatage des backups Drive).
+/// Alias public pour le module webdav (horodatage des backups et fichiers).
 pub fn civil_from_secs_public(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     civil_from_secs(secs)
 }
@@ -298,9 +297,8 @@ pub fn run() {
     init_logging();
     tracing::info!("Vaultly démarre (v{})", env!("CARGO_PKG_VERSION"));
     // Handles des tâches de fond, partagés entre le setup (qui les remplit)
-    // et on_window_event (qui les avorte à l'arrêt). Le serveur callback
-    // OAuth est spawné dans gdrive.rs (aucun handle exposé) : le process qui
-    // s'arrête le nettoie de toute façon.
+    // et on_window_event (qui les avorte à l'arrêt). Toute tâche sans handle
+    // meurt avec le process : c'est voulu pour les spawns internes éphémères.
     let bg_for_setup: BgHandles = Arc::new(std::sync::Mutex::new(Vec::new()));
     let bg_for_event = bg_for_setup.clone();
     let bg_for_tray = bg_for_setup.clone();
@@ -454,31 +452,18 @@ pub fn run() {
                 }));
             app.manage(McpStatus(status_holder.clone()));
 
-            // serveur de callback Google OAuth : démarre une fois pour toutes
-            let gdrive_slot: gdrive::AuthCodeSlot =
-                Arc::new(tokio::sync::RwLock::new(None));
-            let slot_for_server = gdrive_slot.clone();
-            tauri::async_runtime::block_on(async {
-                if let Err(e) = gdrive::start_callback_server(slot_for_server).await {
-                    tracing::warn!("serveur callback gdrive non démarré : {e}");
-                }
-            });
-            app.manage(gdrive::GDriveSlot(gdrive_slot));
-
             // jetons générés au premier lancement, chiffrés au repos (DPAPI) :
             // `mcp_token` = plein accès (clients IA), `api_add_token` = POST
             // /api/add uniquement (extension navigateur).
             let shared_tokens = tauri::async_runtime::block_on(async {
+                // Drive retiré de l'app (remplacé par WebDAV) : purge one-shot
+                // des réglages/jetons « gdrive_* » (libère le port 8790 à
+                // l'usage, nettoie la base). Idempotent, silencieux si rien.
+                commands::purge_legacy_gdrive(&pool).await;
                 // migration une fois : les jetons écrits EN CLAIR avant le
                 // mécanisme DPAPI sont chiffrés dès ce démarrage (sinon il
                 // faudrait attendre leur prochaine réécriture, parfois jamais)
-                for key in [
-                    "mcp_token",
-                    "api_add_token",
-                    "gdrive_refresh_token",
-                    "gdrive_access_token",
-                    "gdrive_client_secret",
-                ] {
+                for key in ["mcp_token", "api_add_token", "webdav_pass"] {
                     if let Some(v) = db::get_setting(&pool, key).await {
                         if !v.is_empty() && !secret::is_encrypted(&v) {
                             if let Err(e) = db::set_secret(&pool, key, &v).await {
@@ -489,13 +474,7 @@ pub fn run() {
                 }
                 // DPAPI défaillant : un secret réécrit en clair ne doit pas
                 // passer inaperçu (signalé dans les logs à chaque démarrage)
-                for key in [
-                    "mcp_token",
-                    "api_add_token",
-                    "gdrive_refresh_token",
-                    "gdrive_access_token",
-                    "gdrive_client_secret",
-                ] {
+                for key in ["mcp_token", "api_add_token", "webdav_pass"] {
                     if let Some(v) = db::get_setting(&pool, key).await {
                         if secret::plaintext_stored(&v) {
                             tracing::warn!(
@@ -566,44 +545,12 @@ pub fn run() {
                 tracing::warn!("raccourci global indisponible ({shortcut}) : {e}");
             }
 
-            // auto-backup : toutes les 30 minutes, pour chaque destination
-            // activée (Drive et/ou WebDAV), si connecté et l'intervalle écoulé.
+            // auto-backup WebDAV : toutes les 30 minutes, si activé et
+            // l'intervalle écoulé depuis le dernier backup.
             let pool_for_backup = pool.clone();
             let backup_loop = tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(30 * 60)).await;
-                    // --- Google Drive ---
-                    let enabled = db::get_setting(&pool_for_backup, "gdrive_autobackup_enabled")
-                        .await
-                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                        .unwrap_or(false);
-                    if enabled {
-                        let connected = db::get_secret(&pool_for_backup, "gdrive_refresh_token")
-                            .await
-                            .is_some();
-                        if connected {
-                            let interval_hours: i64 =
-                                db::get_setting(&pool_for_backup, "gdrive_autobackup_interval_hours")
-                                    .await
-                                    .and_then(|v| v.parse().ok())
-                                    .unwrap_or(24)
-                                    .max(1);
-                            let now = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .map(|d| d.as_secs() as i64)
-                                .unwrap_or(0);
-                            let last: Option<i64> =
-                                db::get_setting(&pool_for_backup, "gdrive_last_backup_at")
-                                    .await
-                                    .and_then(|v| v.parse().ok());
-                            if last.map(|l| now - l > interval_hours * 3600).unwrap_or(true) {
-                                if let Err(e) = gdrive::backup_to_drive(&pool_for_backup).await {
-                                    tracing::warn!("auto-backup Drive échoué : {e}");
-                                }
-                            }
-                        }
-                    }
-                    // --- WebDAV ---
                     let enabled = db::get_setting(&pool_for_backup, "webdav_autobackup_enabled")
                         .await
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -700,40 +647,26 @@ pub fn run() {
             commands::dissolve_folder,
             commands::set_resource_status,
             commands::check_dead_links,
-            commands::gdrive_connect,
-            commands::gdrive_status,
-            commands::gdrive_disconnect,
-            commands::gdrive_set_credentials,
-            commands::gdrive_clear_credentials,
-            commands::gdrive_credentials_status,
-            commands::gdrive_upload,
-            commands::gdrive_list_files,
-            commands::gdrive_search_files,
-            commands::gdrive_download,
-            commands::gdrive_delete_file,
-            commands::gdrive_create_folder,
-            commands::gdrive_share_file,
-            commands::gdrive_list_share_lists,
-            commands::gdrive_append_link,
-            commands::gdrive_backup,
-            commands::gdrive_restore,
-            commands::gdrive_set_backup_folder,
-            commands::gdrive_set_autobackup,
-            commands::gdrive_get_settings,
             commands::set_resource_folder,
             commands::get_stats,
             commands::is_url_known,
             commands::export_data,
             commands::import_data,
             commands::set_global_shortcut,
-            webdav::webdav_status,
-            webdav::webdav_set_config,
-            webdav::webdav_clear_config,
-            webdav::webdav_test_connection,
-            webdav::webdav_backup,
-            webdav::webdav_list_backups,
-            webdav::webdav_restore,
-            webdav::webdav_set_autobackup,
+            webdav::core::webdav_status,
+            webdav::core::webdav_set_config,
+            webdav::core::webdav_clear_config,
+            webdav::core::webdav_test_connection,
+            webdav::core::webdav_backup,
+            webdav::core::webdav_list_backups,
+            webdav::core::webdav_restore,
+            webdav::core::webdav_set_autobackup,
+            webdav::files::cloud_upload_file,
+            webdav::files::cloud_list_files,
+            webdav::files::cloud_download_file,
+            webdav::files::cloud_import_file,
+            webdav::lists::cloud_list_share_lists,
+            webdav::lists::cloud_append_link,
             get_mcp_status,
             server::mcp_regenerate_token,
             server::api_regenerate_token,

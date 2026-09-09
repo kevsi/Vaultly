@@ -1,10 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   BrowserProfile,
+  CloudFile,
   DeadLink,
-  DriveBackupResult,
-  DriveFile,
-  DriveSettings,
   ShareListInfo,
   AppendLinkResult,
   Folder,
@@ -17,14 +15,7 @@ import type {
   ResourceFilter,
 } from "./types";
 
-export type {
-  AppendLinkResult,
-  DeadLink,
-  DriveBackupResult,
-  DriveFile,
-  DriveSettings,
-  ShareListInfo,
-};
+export type { AppendLinkResult, CloudFile, DeadLink, ShareListInfo };
 
 export async function listResources(filter: ResourceFilter): Promise<Resource[]> {
   return invoke("list_resources", { filter });
@@ -322,123 +313,46 @@ export async function webdavSetAutobackup(
   return invoke("webdav_set_autobackup", { enabled, intervalHours });
 }
 
-export async function gdriveConnect(): Promise<void> {
-  return invoke("gdrive_connect");
+// --- Fonctions « cloud » WebDAV (explorateur, listes de liens) ---
+
+/** Envoie un fichier local (obtenu via le sélecteur natif) vers fichiers/ ;
+ *  retourne son nom distant. */
+export async function cloudUploadFile(path: string): Promise<string> {
+  return invoke("cloud_upload_file", { path });
 }
 
-/** Identifiants OAuth BYO : l'utilisateur colle ceux de SON projet GCP.
- *  Secret vide = conserve le secret existant. */
-export async function gdriveSetCredentials(
-  clientId: string,
-  clientSecret: string,
-): Promise<void> {
-  return invoke("gdrive_set_credentials", { clientId, clientSecret });
+export async function cloudListFiles(query?: string | null): Promise<CloudFile[]> {
+  return invoke("cloud_list_files", { query: query ?? null });
 }
 
-export async function gdriveClearCredentials(): Promise<void> {
-  return invoke("gdrive_clear_credentials");
+/** Télécharge un fichier cloud vers le temporaire ; retourne le chemin local. */
+export async function cloudDownloadFile(name: string): Promise<string> {
+  return invoke("cloud_download_file", { name });
 }
 
-export interface GdriveCredentialsStatus {
-  configured: boolean;
-  fromUser: boolean;
-  clientIdPreview: string;
+/** « Joindre depuis le cloud » : rapatrie le fichier dans
+ *  Documents\Vaultly\Fichiers et crée la ressource locale correspondante. */
+export async function cloudImportFile(name: string): Promise<{ id: number; path: string; title: string }> {
+  return invoke("cloud_import_file", { name });
 }
 
-export async function gdriveCredentialsStatus(): Promise<GdriveCredentialsStatus> {
-  return invoke("gdrive_credentials_status");
+export async function cloudListShareLists(): Promise<ShareListInfo[]> {
+  return invoke("cloud_list_share_lists");
 }
 
-export async function gdriveDisconnect(): Promise<void> {
-  return invoke("gdrive_disconnect");
-}
-
-export async function gdriveUpload(path?: string): Promise<string> {
-  return invoke("gdrive_upload", { path: path ?? null });
-}
-
-export async function gdriveListFiles(
-  folderId?: string | null,
-  query?: string | null,
-): Promise<DriveFile[]> {
-  return invoke("gdrive_list_files", {
-    folderId: folderId ?? null,
-    query: query ?? null,
-  });
-}
-
-export async function gdriveSearchFiles(query: string): Promise<DriveFile[]> {
-  return invoke("gdrive_search_files", { query });
-}
-
-export interface GdriveTokenInfo {
-  connected: boolean;
-  expiresAt: number | null;
-}
-
-export async function gdriveStatus(): Promise<GdriveTokenInfo> {
-  return invoke("gdrive_status");
-}
-
-export async function gdriveDownload(fileId: string): Promise<string> {
-  return invoke("gdrive_download", { fileId });
-}
-
-export async function gdriveDeleteFile(fileId: string): Promise<void> {
-  return invoke("gdrive_delete_file", { fileId });
-}
-
-export async function gdriveCreateFolder(name: string): Promise<string> {
-  return invoke("gdrive_create_folder", { name });
-}
-
-export async function gdriveShareFile(fileId: string): Promise<string> {
-  return invoke("gdrive_share_file", { fileId });
-}
-
-export async function gdriveListShareLists(): Promise<ShareListInfo[]> {
-  return invoke("gdrive_list_share_lists");
-}
-
-export async function gdriveAppendLink(args: {
-  fileId?: string | null;
+/** Ajoute un lien à une liste JSON du cloud (ou la crée via newListTitle). */
+export async function cloudAppendLink(args: {
   name?: string | null;
+  newListTitle?: string | null;
   title: string;
   url: string;
   addedAt: string;
 }): Promise<AppendLinkResult> {
-  return invoke("gdrive_append_link", {
-    fileId: args.fileId ?? null,
+  return invoke("cloud_append_link", {
     name: args.name ?? null,
+    newListTitle: args.newListTitle ?? null,
     title: args.title,
     url: args.url,
     addedAt: args.addedAt,
   });
-}
-
-export async function gdriveBackup(): Promise<DriveBackupResult> {
-  return invoke("gdrive_backup");
-}
-
-export async function gdriveRestore(
-  fileId?: string | null,
-): Promise<ImportSummary> {
-  return invoke("gdrive_restore", { fileId: fileId ?? null });
-}
-
-export async function gdriveSetBackupFolder(
-  folderId?: string | null,
-): Promise<void> {
-  return invoke("gdrive_set_backup_folder", { folderId: folderId ?? null });
-}
-
-export async function gdriveSetAutobackup(
-  enabled: boolean,
-  intervalHours: number,
-): Promise<void> {
-  return invoke("gdrive_set_autobackup", { enabled, intervalHours });
-}
-
-export async function gdriveGetSettings(): Promise<DriveSettings> {
-  return invoke("gdrive_get_settings");
 }

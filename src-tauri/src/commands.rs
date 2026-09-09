@@ -1172,268 +1172,29 @@ pub async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
         .map_err(|e| format!("lecture impossible : {e}"))
 }
 
-// --- Google Drive (OAuth + upload) ---
+// --- Migration Google Drive → WebDAV (une fois) ---
 
-/// Purge la session Drive (jetons liés à l'ancien client OAuth) : les ids
-/// de settings utilisés par gdrive.rs. Sans `revoke` réseau (l'ancien token
-/// n'est pas forcément révoquable avec le nouveau client) ; Google révoque
-/// les refresh tokens inactifs de toute façon.
-async fn purge_drive_session(pool: &SqlitePool) -> Result<(), String> {
-    sqlx::query("DELETE FROM settings WHERE key = ?")
-        .bind("gdrive_refresh_token")
+/// Drive a été retiré de l'app (l'OAuth Google exige une console développeur
+/// par utilisateur, hors de portée du grand public) : la boucle de démarrage
+/// purge les anciennes traces pour libérer le port 8790 et nettoyer la base.
+pub(crate) async fn purge_legacy_gdrive(pool: &SqlitePool) {
+    let legacy: Vec<String> = sqlx::query_scalar(
+        "SELECT key FROM settings WHERE key LIKE 'gdrive_%'",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    if legacy.is_empty() {
+        return;
+    }
+    sqlx::query("DELETE FROM settings WHERE key LIKE 'gdrive_%'")
         .execute(pool)
         .await
-        .map_err(|e| e.to_string())?;
-    for k in ["gdrive_access_token", "gdrive_expires_at"] {
-        sqlx::query("DELETE FROM settings WHERE key = ?")
-            .bind(k)
-            .execute(pool)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-/// Enregistre les identifiants OAuth « apportés par l'utilisateur » (BYO) :
-/// chaque personne crée SON projet Google Cloud (gratuit) et colle ici son
-/// Client ID + Secret. Les valeurs sont stockées chiffrées (DPAPI) via
-/// set_secret — le champ peut aussi servir à corriger les constantes de
-/// build. client_secret vide = ne modifie pas la valeur existante.
-#[tauri::command]
-pub async fn gdrive_set_credentials(
-    pool: State<'_, SqlitePool>,
-    client_id: String,
-    client_secret: String,
-) -> Result<(), String> {
-    let id = client_id.trim();
-    let secret = client_secret.trim();
-    if id.is_empty() {
-        return Err("le Client ID est obligatoire".into());
-    }
-    // forme attendue : <numéro>-<hash>.apps.googleusercontent.com
-    if !id.ends_with(".apps.googleusercontent.com") {
-        return Err("Client ID invalide : il doit finir par « .apps.googleusercontent.com »".into());
-    }
-    db::set_setting(&pool, "gdrive_client_id", id).await?;
-    if !secret.is_empty() {
-        // GOCSPX-… : préfixe réel des secrets Google, conservé tel quel
-        db::set_secret(&pool, "gdrive_client_secret", secret).await?;
-    }
-    // des identifiants nouveaux invalident la session en cours : les jetons
-    // OAuth sont liés au client qui les a émis — un refresh avec un autre
-    // client échouerait (`invalid_grant`). On purge, l'utilisateur reconecta.
-    purge_drive_session(&pool).await
-}
-
-/// Efface les identifiants BYO : l'app retombe sur ceux embarqués au build
-/// (ou plus rien si aucun — la connexion Drive affichera l'erreur dédiée).
-#[tauri::command]
-pub async fn gdrive_clear_credentials(pool: State<'_, SqlitePool>) -> Result<(), String> {
-    sqlx::query("DELETE FROM settings WHERE key = ?")
-        .bind("gdrive_client_id")
-        .execute(&*pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM settings WHERE key = ?")
-        .bind("gdrive_client_secret")
-        .execute(&*pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    purge_drive_session(&pool).await
-}
-
-/// État BYO pour l'UI : un Client ID est-il configuré (setting ou build) ?
-/// Le secret n'est JAMAIS renvoyé — même masqué, il sortirait de la base.
-#[tauri::command]
-pub async fn gdrive_credentials_status(
-    pool: State<'_, SqlitePool>,
-) -> Result<crate::gdrive::CredentialsStatus, String> {
-    Ok(crate::gdrive::credentials_status(&pool).await)
-}
-
-#[tauri::command]
-pub async fn gdrive_connect(
-    pool: State<'_, SqlitePool>,
-    slot: tauri::State<'_, crate::gdrive::GDriveSlot>,
-) -> Result<(), String> {
-    crate::gdrive::connect_flow(pool.inner().clone(), slot.0.clone()).await
-}
-
-#[tauri::command]
-pub async fn gdrive_status(pool: State<'_, SqlitePool>) -> Result<crate::gdrive::TokenInfo, String> {
-    Ok(crate::gdrive::status(&pool).await)
-}
-
-#[tauri::command]
-pub async fn gdrive_disconnect(pool: State<'_, SqlitePool>) -> Result<(), String> {
-    crate::gdrive::disconnect(&pool).await
-}
-
-/// Ouvre le sélecteur de fichier puis l'upload vers Drive.
-/// Retourne le lien web du fichier partagé.
-#[tauri::command]
-pub async fn gdrive_upload(
-    app: tauri::AppHandle,
-    pool: State<'_, SqlitePool>,
-    path: Option<String>,
-) -> Result<String, String> {
-    let path = match path {
-        Some(p) => p,
-        None => {
-            // sélecteur natif côté Rust (dialog plugin, thread main requis)
-            let app_for_dialog = app.clone();
-            tauri::async_runtime::spawn_blocking(move || {
-                use tauri_plugin_dialog::DialogExt;
-                let (tx, rx) = std::sync::mpsc::channel();
-                let app_inner = app_for_dialog.clone();
-                let _ = app_for_dialog.run_on_main_thread(move || {
-                    let picked = app_inner.dialog().file().blocking_pick_file();
-                    let path = picked
-                        .and_then(|f| f.into_path().ok())
-                        .map(|p| p.display().to_string());
-                    let _ = tx.send(path);
-                });
-                rx.recv().unwrap_or(None)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or("aucun fichier sélectionné")?
-        }
-    };
-    let p = std::path::PathBuf::from(&path);
-    if !p.exists() {
-        return Err(format!("fichier introuvable : {path}"));
-    }
-    let link = crate::gdrive::upload_file(&pool, &p).await?;
-    Ok(link)
-}
-
-// --- Google Drive : explorateur, backup, restauration ---
-
-#[tauri::command]
-pub async fn gdrive_list_files(
-    pool: State<'_, SqlitePool>,
-    folder_id: Option<String>,
-    query: Option<String>,
-) -> Result<Vec<crate::gdrive::DriveFile>, String> {
-    crate::gdrive::list_files(&pool, folder_id, query).await
-}
-
-#[tauri::command]
-pub async fn gdrive_search_files(
-    pool: State<'_, SqlitePool>,
-    query: String,
-) -> Result<Vec<crate::gdrive::DriveFile>, String> {
-    crate::gdrive::search_files(&pool, query).await
-}
-
-#[tauri::command]
-pub async fn gdrive_download(
-    pool: State<'_, SqlitePool>,
-    file_id: String,
-) -> Result<String, String> {
-    crate::gdrive::download_file(&pool, &file_id).await
-}
-
-#[tauri::command]
-pub async fn gdrive_delete_file(
-    pool: State<'_, SqlitePool>,
-    file_id: String,
-) -> Result<(), String> {
-    crate::gdrive::delete_drive_file(&pool, &file_id).await
-}
-
-#[tauri::command]
-pub async fn gdrive_create_folder(
-    pool: State<'_, SqlitePool>,
-    name: String,
-) -> Result<String, String> {
-    crate::gdrive::create_drive_folder(&pool, &name).await
-}
-
-#[tauri::command]
-pub async fn gdrive_share_file(
-    pool: State<'_, SqlitePool>,
-    file_id: String,
-) -> Result<String, String> {
-    crate::gdrive::share_file(&pool, &file_id).await
-}
-
-#[tauri::command]
-pub async fn gdrive_list_share_lists(
-    pool: State<'_, SqlitePool>,
-) -> Result<Vec<crate::gdrive::ShareListInfo>, String> {
-    crate::gdrive::list_share_lists(&pool).await
-}
-
-#[tauri::command]
-pub async fn gdrive_append_link(
-    pool: State<'_, SqlitePool>,
-    file_id: Option<String>,
-    name: Option<String>,
-    title: String,
-    url: String,
-    added_at: String,
-) -> Result<crate::gdrive::AppendLinkResult, String> {
-    crate::gdrive::append_link(&pool, file_id, name, &title, &url, &added_at).await
-}
-
-#[tauri::command]
-pub async fn gdrive_backup(
-    pool: State<'_, SqlitePool>,
-) -> Result<crate::gdrive::BackupResult, String> {
-    crate::gdrive::backup_to_drive(&pool).await
-}
-
-#[tauri::command]
-pub async fn gdrive_restore(
-    pool: State<'_, SqlitePool>,
-    file_id: Option<String>,
-) -> Result<ImportSummary, String> {
-    crate::gdrive::restore_from_drive(&pool, file_id).await
-}
-
-#[tauri::command]
-pub async fn gdrive_set_backup_folder(
-    pool: State<'_, SqlitePool>,
-    folder_id: Option<String>,
-) -> Result<(), String> {
-    match folder_id.filter(|s| !s.is_empty()) {
-        Some(id) => db::set_setting(&pool, "gdrive_backup_folder_id", &id).await,
-        None => {
-            sqlx::query("DELETE FROM settings WHERE key = ?")
-                .bind("gdrive_backup_folder_id")
-                .execute(&*pool)
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(())
-        }
-    }
-}
-
-#[tauri::command]
-pub async fn gdrive_set_autobackup(
-    pool: State<'_, SqlitePool>,
-    enabled: bool,
-    interval_hours: u64,
-) -> Result<(), String> {
-    if interval_hours == 0 {
-        return Err("l'intervalle doit être d'au moins 1 heure".into());
-    }
-    db::set_setting(&pool, "gdrive_autobackup_enabled", if enabled { "1" } else { "0" }).await?;
-    db::set_setting(
-        &pool,
-        "gdrive_autobackup_interval_hours",
-        &interval_hours.to_string(),
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn gdrive_get_settings(
-    pool: State<'_, SqlitePool>,
-) -> Result<crate::gdrive::DriveSettings, String> {
-    Ok(crate::gdrive::get_drive_settings(&pool).await)
+        .ok();
+    tracing::info!(
+        "migration Drive → WebDAV : {} clé(s) de réglages Drive purgée(s)",
+        legacy.len()
+    );
 }
 
 #[cfg(test)]
