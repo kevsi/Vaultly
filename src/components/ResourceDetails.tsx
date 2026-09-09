@@ -14,10 +14,10 @@ import {
 import { toast } from "sonner";
 import { fetchRepoDetails } from "@/lib/api";
 import { fileKindFor } from "@/lib/fileKind";
+import { openResource } from "@/lib/openResource";
 import { parseDbDate, typeLabel } from "@/lib/resources";
 import { metaFieldsFor } from "@/lib/metaFields";
 import type { Resource } from "@/lib/types";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
@@ -200,7 +200,14 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
               <Button
                 size="icon-sm"
                 title="Ouvrir"
-                onClick={() => void openUrl(resource.url.startsWith("http") ? resource.url : resource.meta?.filePath ?? resource.url)}
+                // même chemin que le clic sur la tuile : gère exe:, file:,
+                // filePath et compte l'ouverture (l'ancien openUrl direct
+                // échouait sur les apps et ne comptait jamais l'ouverture)
+                onClick={() =>
+                  openResource(resource).catch((e) =>
+                    toast.error(String(e)),
+                  )
+                }
               >
                 <ExternalLink />
               </Button>

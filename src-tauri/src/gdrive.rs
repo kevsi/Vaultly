@@ -451,6 +451,19 @@ pub async fn upload_file(
         .and_then(|s| s.to_str())
         .unwrap_or("fichier")
         .to_string();
+    // contrôle de taille AVANT la lecture : un fichier de 2 Go ne doit pas
+    // transiter par la RAM pour être refusé ensuite.
+    const MAX_UPLOAD_BYTES: u64 = 4 * 1024 * 1024;
+    if tokio::fs::metadata(path)
+        .await
+        .map_err(|e| format!("lecture du fichier impossible : {e}"))?
+        .len()
+        > MAX_UPLOAD_BYTES
+    {
+        return Err(
+            "fichier trop volumineux pour l'upload simple (max 4 Mo dans cette version)".into(),
+        );
+    }
     let mime = mime_from_ext(path);
     let bytes = tokio::fs::read(path)
         .await

@@ -13,6 +13,13 @@ pub fn is_encrypted(stored: &str) -> bool {
     stored.starts_with(PREFIX)
 }
 
+/// Vrai si un secret vit actuellement en clair dans les settings (DPAPI
+/// indisponible lors de sa dernière écriture). Exposé pour que l'UI puisse
+/// prévenir l'utilisateur — le downgrade ne doit pas rester invisible.
+pub fn plaintext_stored(stored: &str) -> bool {
+    !stored.is_empty() && !is_encrypted(stored)
+}
+
 #[cfg(windows)]
 pub fn protect(plain: &str) -> String {
     use base64::Engine;

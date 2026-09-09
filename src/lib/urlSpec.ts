@@ -128,7 +128,8 @@ export function urlSpecFor(type: string): UrlSpec {
     case "fichier":
       return {
         primaryLabel: "Chemin du fichier",
-        primaryPlaceholder: "ex : C:\Users\moi\Documents\rapport.pdf",
+        // antislashs doublés : « C:\U » insérait un retour chariot réel
+        primaryPlaceholder: "ex : C:\\Users\\moi\\Documents\\rapport.pdf",
         showFetch: false,
         isFile: true,
         hint: "Le fichier s'ouvrira avec l'application Windows par défaut.",

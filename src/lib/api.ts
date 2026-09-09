@@ -109,10 +109,6 @@ export async function toggleFavorite(id: number): Promise<Resource> {
   return invoke("toggle_favorite", { id });
 }
 
-export async function recordOpen(id: number): Promise<void> {
-  return invoke("record_open", { id });
-}
-
 export async function reorderResources(ids: number[]): Promise<void> {
   return invoke("reorder_resources", { orderedIds: ids });
 }
@@ -178,12 +174,11 @@ export async function readImageDataUrl(path: string): Promise<string> {
   return invoke("read_image_data_url", { path });
 }
 
-export async function launchExecutable(path: string): Promise<void> {
-  return invoke("launch_executable", { path });
-}
-
-export async function openFilePath(path: string): Promise<void> {
-  return invoke("open_file_path", { path });
+/** Ouvre une ressource par son id, entièrement côté Rust : la webview ne
+ *  transmet plus de chemin ni d'URL (les anciennes commandes
+ *  launch_executable / open_file_path acceptaient un chemin arbitraire). */
+export async function openResourceById(resourceId: number): Promise<void> {
+  return invoke("open_resource", { resourceId });
 }
 
 export async function listFolders(): Promise<Folder[]> {

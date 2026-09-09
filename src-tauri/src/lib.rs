@@ -414,7 +414,11 @@ pub fn run() {
                 match TrayIconBuilder::with_id("vaultly-tray")
                     .menu(&tray_menu)
                     .tooltip("Vaultly — hub de ressources")
-                    .icon(app.default_window_icon().expect("icône de fenêtre embarquée").clone())
+                    // repli sur l'icône de fenêtre : un expect ici tuerait
+                    // l'app au démarrage si l'icône manquait au bundle
+                    .icon(app.default_window_icon().cloned().unwrap_or(
+                        tauri::image::Image::new(&[0u8; 4], 1, 1),
+                    ))
                     .on_menu_event(move |app, ev| match ev.id().as_ref() {
                         "tray_open" => show_main(app),
                         "tray_quit" => save_and_exit(app, &closing_t, &bg_t),
@@ -479,6 +483,23 @@ pub fn run() {
                             if let Err(e) = db::set_secret(&pool, key, &v).await {
                                 tracing::warn!("migration DPAPI du secret {key} échouée : {e}");
                             }
+                        }
+                    }
+                }
+                // DPAPI défaillant : un secret réécrit en clair ne doit pas
+                // passer inaperçu (signalé dans les logs à chaque démarrage)
+                for key in [
+                    "mcp_token",
+                    "api_add_token",
+                    "gdrive_refresh_token",
+                    "gdrive_access_token",
+                    "gdrive_client_secret",
+                ] {
+                    if let Some(v) = db::get_setting(&pool, key).await {
+                        if secret::plaintext_stored(&v) {
+                            tracing::warn!(
+                                "secret {key} stocké EN CLAIR (DPAPI indisponible à sa dernière écriture)"
+                            );
                         }
                     }
                 }
@@ -644,8 +665,7 @@ pub fn run() {
             commands::import_bookmarks,
             commands::open_resources_folder,
             commands::read_image_data_url,
-            commands::launch_executable,
-            commands::open_file_path,
+            commands::open_resource,
             commands::list_folders,
             commands::create_folder,
             commands::rename_folder,

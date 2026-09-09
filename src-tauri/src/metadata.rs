@@ -14,14 +14,25 @@ pub async fn fetch(url: &str) -> Result<PageMetadata, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
+    // host percent-encodé (comme favicon_for) : un « & »/« # » dans l'URL
+    // tronquait la requête vers le service s2
     let host = url
         .trim_start_matches("https://")
         .trim_start_matches("http://")
         .split('/')
         .next()
         .ok_or("URL invalide")?;
-
-    let favicon = format!("https://www.google.com/s2/favicons?domain={host}&sz=64");
+    let safe: String = host
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    let favicon = format!("https://www.google.com/s2/favicons?domain={safe}&sz=64");
 
     let mut title = String::new();
     if let Ok(resp) = client.get(url).send().await {

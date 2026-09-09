@@ -256,15 +256,25 @@ export function ResourceGrid(props: ResourceGridProps) {
   // conteneur virtualisé a un padding-top ÉGAL, compensé via scrollMargin
   const GRID_TOP_PAD = 12;
 
-  // colonnes du mode virtualisé : recalculées à la largeur du conteneur
+  // colonnes du mode virtualisé : recalculées à la largeur du conteneur.
+  // Le conteneur a un padding horizontal (px-4) : clientWidth l'inclut alors
+  // que les lignes s'arrêtent 32 px plus étroit — on le retranche, sinon une
+  // colonne de trop est demandée à certaines largeurs (tuile éjectée à la
+  // ligne suivante, saut de hauteur de ligne).
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState(4);
   useEffect(() => {
     if (!virtualizing) return;
     const el = virtualScrollRef.current;
     if (!el) return;
+    const H_PADDING = 32; // px-4 des lignes
     const compute = () =>
-      setColumns(Math.min(12, Math.max(2, Math.floor(el.clientWidth / (tileMin + 12)))));
+      setColumns(
+        Math.min(
+          12,
+          Math.max(2, Math.floor((el.clientWidth - H_PADDING) / (tileMin + 12))),
+        ),
+      );
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(el);

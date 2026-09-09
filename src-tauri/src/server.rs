@@ -111,13 +111,31 @@ async fn try_bind(
     );
 
     // endpoint simple pour l'extension navigateur (POST /api/add, token add-only)
+    // avec rate-limit : un token add-only est réutilisable à l'infini, une
+    // extension compromise ne doit pas pouvoir inonder la base.
+    let rate = std::sync::Arc::new(AddRateLimiter::new(
+        30,
+        std::time::Duration::from_secs(60),
+    ));
     let app = Router::new()
         .route("/", get(|| async { "Vaultly MCP" }))
         .route(
             "/api/add",
             post(move |body: Json<ApiAddBody>| {
                 let pool = pool_for_api.clone();
-                async move { api_add(pool, body.0).await }
+                let rate = rate.clone();
+                async move {
+                    if !rate.allow() {
+                        return cors_json(
+                            StatusCode::TOO_MANY_REQUESTS,
+                            serde_json::json!({
+                                "ok": false,
+                                "error": "trop d'ajouts (30/minute max) — réessaie dans un instant",
+                            }),
+                        );
+                    }
+                    api_add(pool, clamp_api_add_body(body.0)).await
+                }
             })
             .options(|| async { json_ok(serde_json::json!({})) }),
         )
@@ -175,11 +193,13 @@ async fn cors_mw(req: Request, next: Next) -> Response {
 }
 
 /// Vérifie Authorization: Bearer <token>. Rejette aussi les requêtes
-/// cross-origin non locales (protection DNS rebinding) si Origin présent.
-/// Les origines d'extensions navigateur (chrome-extension://, moz-extension://)
-/// sont acceptées : schémas non navigables par du contenu web, utilisées par
-/// l'extension Vaultly pour /api/add. Les préflights OPTIONS passent
-/// sans authentification.
+/// cross-origin non locales (protection DNS rebinding) si Origin présent,
+/// et tout Host non local (rebinding par technique non-Origin : le header
+/// Host d'une page rebindée pointe vers le domaine de l'attaquant, pas
+/// 127.0.0.1). Les origines d'extensions navigateur (chrome-extension://,
+/// moz-extension://) sont acceptées : schémas non navigables par du contenu
+/// web, utilisées par l'extension Vaultly pour /api/add. Les préflights
+/// OPTIONS passent sans authentification.
 ///
 /// Portée du jeton : `/api/*` accepte le token add-only (ou le token MCP),
 /// tout le reste (notamment /mcp : delete_resource, launch_app…) exige le
@@ -187,6 +207,11 @@ async fn cors_mw(req: Request, next: Next) -> Response {
 async fn check_bearer(tokens: SharedTokens, req: Request, next: Next) -> Response {
     if req.method() == Method::OPTIONS {
         return next.run(req).await;
+    }
+    // Host DOIT être local : sans ce contrôle, une requête sans Origin
+    // (client natif / rebinding non-Origin) échappait au filtre d'origine.
+    if !host_allowed(req.headers().get("host")) {
+        return forbidden("hôte non local");
     }
     if let Some(origin) = req.headers().get("origin") {
         let origin = origin.to_str().unwrap_or("");
@@ -210,10 +235,32 @@ async fn check_bearer(tokens: SharedTokens, req: Request, next: Next) -> Respons
     next.run(req).await
 }
 
+/// Host attendu : 127.0.0.1 / localhost (tous deux avec ou sans port).
+/// Un Host forgé par DNS rebinding porte le domaine de l'attaquant.
+fn host_allowed(host: Option<&axum::http::HeaderValue>) -> bool {
+    let Some(h) = host.and_then(|v| v.to_str().ok()) else {
+        return false; // HTTP/1.1 exige Host : son absence est suspecte
+    };
+    let bare = h
+        .split('/')
+        .next()
+        .unwrap_or("");
+    // retire le port APRÈS le dernier « : » SEULEMENT si c'est un port
+    // numérique (rsplit(:) simple confondait « 127.0.0.1:8765 » avec un
+    // hôte « 8765 » — les points de l'IPv4 contiennent déjà des deux-points)
+    let bare = match bare.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => host,
+        _ => bare,
+    };
+    matches!(bare, "127.0.0.1" | "localhost")
+}
+
 /// Origine autorisée : localhost / 127.0.0.1 / tauri.localhost avec
 /// comparaison EXACTE du hostname (un `starts_with("http://localhost")`
-/// acceptait « http://localhost.attacker.com »), le schéma tauri://, et les
-/// extensions navigateur (schémas non navigables par du contenu web).
+/// acceptait « http://localhost.attacker.com »), le schéma tauri (hôte
+/// localhost uniquement — pas de starts_with qui accepterait
+/// « tauri://attaquant »), et les extensions navigateur (schémas non
+/// navigables par du contenu web).
 fn origin_allowed(origin: &str) -> bool {
     if let Some(rest) = origin
         .strip_prefix("chrome-extension://")
@@ -222,7 +269,7 @@ fn origin_allowed(origin: &str) -> bool {
         // id d'extension : alphanumérique uniquement
         return !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric());
     }
-    if origin == "tauri://localhost" || origin.starts_with("tauri://") {
+    if origin == "tauri://localhost" || origin == "tauri://tauri.localhost" {
         return true;
     }
     let host = origin
@@ -330,6 +377,66 @@ pub struct ApiAddBody {
     pub notes: Option<String>,
 }
 
+/// Bornes des champs relayés par l'extension : le corps vient de pages web
+/// arbitraires, il ne doit pas pouvoir gonfler la base (titre géant, des
+/// centaines de tags, notes de plusieurs Mo).
+fn clamp_api_add_body(mut body: ApiAddBody) -> ApiAddBody {
+    const MAX_TITLE: usize = 300;
+    const MAX_TAGS: usize = 20;
+    const MAX_TAG_LEN: usize = 60;
+    const MAX_NOTES: usize = 10_000;
+    const MAX_URL: usize = 2_048;
+    if body.url.len() > MAX_URL {
+        body.url.truncate(MAX_URL);
+    }
+    if let Some(t) = body.title.take() {
+        body.title = Some(t.chars().take(MAX_TITLE).collect());
+    }
+    if let Some(tags) = body.tags.take() {
+        body.tags = Some(
+            tags.into_iter()
+                .take(MAX_TAGS)
+                .map(|t| t.chars().take(MAX_TAG_LEN).collect::<String>())
+                .collect(),
+        );
+    }
+    if let Some(n) = body.notes.take() {
+        body.notes = Some(n.chars().take(MAX_NOTES).collect());
+    }
+    body
+}
+
+/// Rate-limit « add-only » : fenêtre glissante minimaliste en mémoire.
+/// Un token add-only est réutilisable à l'infini ; sans garde, une extension
+/// compromise inonde la base. 30 ajouts / minute est bien au-delà de l'usage
+/// réel (quelques liens par heure).
+struct AddRateLimiter {
+    window: std::sync::Mutex<Vec<std::time::Instant>>,
+    max: usize,
+    period: std::time::Duration,
+}
+
+impl AddRateLimiter {
+    fn new(max: usize, period: std::time::Duration) -> Self {
+        Self {
+            window: std::sync::Mutex::new(Vec::new()),
+            max,
+            period,
+        }
+    }
+    /// Vrai si l'ajout est autorisé (et compté), faux si le quota est épuisé.
+    fn allow(&self) -> bool {
+        let now = std::time::Instant::now();
+        let mut w = self.window.lock().unwrap_or_else(|e| e.into_inner());
+        w.retain(|t| now.duration_since(*t) < self.period);
+        if w.len() >= self.max {
+            return false;
+        }
+        w.push(now);
+        true
+    }
+}
+
 fn cors_json(status: StatusCode, value: serde_json::Value) -> Response {
     // les en-têtes CORS sont posés par cors_mw (plus externe) : ici on
     // renvoie juste le JSON, l'origine du demandeur n'est pas connue ici.
@@ -429,6 +536,32 @@ mod tests {
     // --- fonctions pures ---
 
     #[test]
+    fn rate_limiter_blocks_after_quota() {
+        let rl = AddRateLimiter::new(3, std::time::Duration::from_secs(60));
+        assert!(rl.allow());
+        assert!(rl.allow());
+        assert!(rl.allow());
+        assert!(!rl.allow(), "quota épuisé : 4e ajout refusé");
+    }
+
+    #[test]
+    fn clamp_api_add_body_bounds_everything() {
+        let body = ApiAddBody {
+            url: "https://example.com/".repeat(200),
+            title: Some("t".repeat(5000)),
+            tags: Some((0..100).map(|i| format!("tag{i}-{}", "x".repeat(100))).collect()),
+            notes: Some("n".repeat(50_000)),
+        };
+        let c = clamp_api_add_body(body);
+        assert!(c.url.len() <= 2048);
+        assert!(c.title.unwrap().chars().count() <= 300);
+        let tags = c.tags.unwrap();
+        assert!(tags.len() <= 20);
+        assert!(tags.iter().all(|t| t.chars().count() <= 60));
+        assert!(c.notes.unwrap().chars().count() <= 10_000);
+    }
+
+    #[test]
     fn constant_time_eq_matches_and_differs() {
         assert!(constant_time_eq("abc", "abc"));
         assert!(!constant_time_eq("abc", "abd"));
@@ -455,23 +588,38 @@ mod tests {
             "https://localhost",
             "http://tauri.localhost",
             "tauri://localhost",
-            "tauri://autre-host",
+            "tauri://tauri.localhost",
             "chrome-extension://abcdefg",
             "moz-extension://abc123",
         ] {
             assert!(origin_allowed(o), "devrait être autorisée : {o}");
         }
-        // refusées : spoofing, pages web, schémas inconnus
+        // refusées : spoofing, pages web, schémas inconnus, tauri arbitraire
         for o in [
             "http://localhost.attacker.com",
             "http://evil-localhost.com",
             "https://google.com",
             "http://127.0.0.2.evil.com",
             "ftp://localhost",
+            "tauri://attacker.com",
             "chrome-extension://../../etc", // caractère interdit (id alphanumérique)
         ] {
             assert!(!origin_allowed(o), "devrait être refusée : {o}");
         }
+    }
+
+    #[test]
+    fn host_allows_localhost_only() {
+        // IPv4 avec/sans port — rsplit_once(':') doit retirer le port APRÈS
+        // le dernier « : » sans casser les points de l'adresse
+        assert!(host_allowed(Some(&"127.0.0.1:8765".parse().unwrap())));
+        assert!(host_allowed(Some(&"localhost:8766".parse().unwrap())));
+        assert!(host_allowed(Some(&"127.0.0.1".parse().unwrap())));
+        assert!(host_allowed(Some(&"localhost".parse().unwrap())));
+        assert!(!host_allowed(Some(&"attacker.com".parse().unwrap())));
+        assert!(!host_allowed(Some(&"localhost.attacker.com".parse().unwrap())));
+        assert!(!host_allowed(Some(&"8765".parse().unwrap())));
+        assert!(!host_allowed(None));
     }
 
     #[tokio::test]
@@ -509,7 +657,12 @@ mod tests {
         origin: Option<&str>,
         bearer: Option<&str>,
     ) -> axum::http::Response<Body> {
-        let mut req = Request::builder().method(method).uri(path);
+        let mut req = Request::builder()
+            .method(method)
+            .uri(path)
+            // un client HTTP/1.1 réel envoie toujours Host : le middleware
+            // le vérifie (anti DNS-rebinding) et refuse son absence
+            .header("host", "127.0.0.1");
         if let Some(o) = origin {
             req = req.header("origin", o);
         }

@@ -58,7 +58,14 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
       e.preventDefault();
       const href = anchor.getAttribute("href")!;
       if (href.startsWith("#")) return; // ancre interne : laisser faire
-      void openUrl(href);
+      // href vide (lien inséré sans adresse) : silencieux, pas un toast
+      // d'erreur global venu du rejet d'openUrl("")
+      if (!href.trim() || !href.trim().startsWith("#")) {
+        if (href.startsWith("http://") || href.startsWith("https://")) {
+          void openUrl(href);
+        }
+        return;
+      }
     }
   }
 

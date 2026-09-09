@@ -36,6 +36,14 @@ export function useClipboardCapture() {
 
     async function check() {
       if (!alive) return;
+      // fenêtre masquée (close-to-tray) : ne pas lire le presse-papiers
+      // système — une URL sensible copiée ailleurs (lien de reset, lien de
+      // partage avec token) ne doit pas être détectée pendant que l'app
+      // tourne en fond, ni faire surgir la modale à la réouverture.
+      if (document.visibilityState !== "visible") {
+        timer = window.setTimeout(check, 2000);
+        return;
+      }
       try {
         const raw = await readText();
         const url = raw?.trim() ?? "";

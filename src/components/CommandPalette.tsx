@@ -155,6 +155,12 @@ export function CommandPalette({
         aria-label="Palette de commandes"
         className="w-full max-w-xl animate-pop-in overflow-hidden rounded-xl border bg-popover shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
+        // focus trap : Tab ne doit pas fuir vers la page derrière (modale
+        // maison hors Base UI). La palette n'a que l'input + les résultats :
+        // contenir Tab dans le conteneur suffit, Échap ferme déjà.
+        onKeyDown={(e) => {
+          if (e.key === "Tab") e.preventDefault();
+        }}
       >
         <div className="flex items-center gap-2 border-b px-3 py-2.5">
           <Search className="size-4 shrink-0 text-muted-foreground" />

@@ -177,6 +177,20 @@ export function RichTextEditor({
           }
           emit();
         }}
+        onDrop={(e) => {
+          // Glisser-déposer : même garde que le collage. Sans ce handler,
+          // Chromium insère le fragment text/html BRUT (img onerror,
+          // a href=javascript:…) dans le DOM vivant puis onInput le persiste.
+          e.preventDefault();
+          const dropped = e.dataTransfer.getData("text/html");
+          const text = e.dataTransfer.getData("text/plain");
+          if (dropped) {
+            document.execCommand("insertHTML", false, sanitizeHtml(dropped));
+          } else if (text) {
+            document.execCommand("insertText", false, text);
+          }
+          emit();
+        }}
         className={cn(
           "note-content min-h-40 max-h-[45vh] overflow-y-auto px-4 py-3 text-[15px] leading-relaxed outline-none",
           "[&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-muted-foreground",

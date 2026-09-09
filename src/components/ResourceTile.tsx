@@ -13,7 +13,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { gdriveAppendLink, gdriveListShareLists, toggleFavorite } from "@/lib/api";
@@ -138,10 +138,19 @@ export const ResourceTile = memo(function ResourceTile({
       .catch(() => toast.error("Copie impossible"));
   }
 
+  // verrou local : un double-clic rapide sur « Ajouter aux favoris » envoyait
+  // deux toggles (retour à l'état initial) — le second appel est ignoré
+  const favBusy = useRef(false);
+
   function toggle() {
+    if (favBusy.current) return;
+    favBusy.current = true;
     toggleFavorite(resource.id)
       .then(onToggled)
-      .catch((e) => toast.error(String(e)));
+      .catch((e) => toast.error(String(e)))
+      .finally(() => {
+        favBusy.current = false;
+      });
   }
 
   // --- Partage vers une liste JSON sur Google Drive ---

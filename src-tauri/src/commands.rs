@@ -414,8 +414,10 @@ pub async fn import_bookmarks(
 }
 
 /// Favicon via le service Google s2 (pas de CORS, pas de scraping).
+/// Le host est percent-encodé : une URL contenant « & » ou « # » produisait
+/// une requête tronquée/équipée de paramètres parasites.
 pub(crate) fn favicon_for(url: &str) -> String {
-    if url.starts_with("exe:") || url.starts_with("file:") {
+    if url.starts_with("exe:") || url.starts_with("file:") || url.starts_with("local:") {
         return String::new();
     }
     let host = url
@@ -424,7 +426,22 @@ pub(crate) fn favicon_for(url: &str) -> String {
         .split('/')
         .next()
         .unwrap_or("");
-    format!("https://www.google.com/s2/favicons?domain={host}&sz=64")
+    // encodage strict (composant d'URL) : tout ce qui n'est pas un caractère
+    // d'hôte sûr est échappé
+    let safe: String = host
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    if safe.is_empty() {
+        return String::new();
+    }
+    format!("https://www.google.com/s2/favicons?domain={safe}&sz=64")
 }
 
 // --- Dossier de ressources, icônes images, exécutables ---
@@ -466,7 +483,20 @@ Icones/ : icones personnalisees des tuiles
 /// Lit une image et la renvoie en data URL (base64) pour l'affichage
 /// immédiat dans la tuile ; stockée telle quelle dans `favicon`.
 #[tauri::command]
-pub async fn read_image_data_url(path: String) -> Result<String, String> {
+pub async fn read_image_data_url(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<String, String> {
+    // restriction au dossier de ressources : la webview ne doit pas pouvoir
+    // lire un fichier quelconque du disque (renommé .png = exfiltration de
+    // 4 Mo en base64 vers l'UI).
+    let root = resources_root_dir(&app);
+    let p = std::path::PathBuf::from(&path);
+    let root_c = root.canonicalize().unwrap_or(root);
+    let allowed = p.canonicalize().map(|c| c.starts_with(&root_c)).unwrap_or(false);
+    if !allowed {
+        return Err("l'image doit se trouver dans le dossier de ressources (Documents\\Vaultly)".into());
+    }
     let p = std::path::PathBuf::from(&path);
     // taille contrôlée AVANT la lecture : un fichier de 2 Go ne doit pas
     // transiter par la mémoire pour être refusé ensuite.
@@ -497,9 +527,36 @@ pub async fn read_image_data_url(path: String) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{b64}"))
 }
 
+/// Extensions qu'une ressource « app » a le droit de lancer. Même liste
+/// que la garde d'import : un .hta/.ps1/.js ouvert via son handler par
+/// défaut = exécution de code arbitraire, il ne doit jamais passer.
+const LAUNCHABLE_EXTS: &[&str] = &["exe", "lnk", "bat", "cmd"];
+
+fn launchable_ext(p: &std::path::Path) -> Option<String> {
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if LAUNCHABLE_EXTS.contains(&ext.as_str()) {
+        Some(ext)
+    } else {
+        None
+    }
+}
+
 /// Lancement synchrone réutilisé par le serveur MCP.
 pub fn launch_executable_sync(path: &str) -> Result<(), String> {
     let p = std::path::PathBuf::from(path);
+    // liste blanche d'extensions : sans elle, la webview (ou un client MCP
+    // compromis) peut lancer N'IMPORTE quel fichier via son handler Windows
+    // (.hta, .ps1, .js… = exécution arbitraire, pas seulement des exécutables).
+    if launchable_ext(&p).is_none() {
+        return Err(format!(
+            "type de fichier non lançable : .{} (autorisés : exe, lnk, bat, cmd)",
+            p.extension().and_then(|e| e.to_str()).unwrap_or("?")
+        ));
+    }
     if !p.exists() {
         return Err(format!("fichier introuvable : {path}"));
     }
@@ -514,21 +571,63 @@ pub fn launch_executable_sync(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Lance un exécutable Windows (app sans URL web).
+/// Ouvre une ressource ENTIÈREMENT côté Rust, d'après la base : la webview ne
+/// donne qu'un id, jamais un chemin ni une URL. C'est le verrou des anciennes
+/// commandes launch_executable/open_file_path qui acceptaient un chemin
+/// arbitraire (pivot OS pour une webview compromise). La précédence est la
+/// même que l'ancien openResource.ts : exePath → filePath → url exe:/file: →
+/// local: → URL web.
 #[tauri::command]
-pub async fn launch_executable(path: String) -> Result<(), String> {
-    launch_executable_sync(&path)
-}
+pub async fn open_resource(pool: State<'_, SqlitePool>, resource_id: i64) -> Result<(), String> {
+    let r = db::get_resource(&pool, resource_id).await?;
+    let lower = r.url.to_lowercase();
 
-/// Ouvre un fichier local avec l'application Windows par défaut.
-#[tauri::command]
-pub async fn open_file_path(path: String) -> Result<(), String> {
-    let p = std::path::PathBuf::from(&path);
-    if !p.exists() {
-        return Err(format!("fichier introuvable : {path}"));
+    let opened = if r.resource_type == "app" {
+        if let Some(exe) = r.meta.get("exePath").filter(|s| !s.is_empty()) {
+            launch_executable_sync(exe)?;
+            true
+        } else if let Some(path) = lower.strip_prefix("exe:") {
+            launch_executable_sync(path.trim())?;
+            true
+        } else {
+            false
+        }
+    } else {
+        // exe: hors type app ne doit pas être retourné en lanceur (même
+        // garde que normalize_url : défense si une ancienne ligne traîne)
+        if lower.starts_with("exe:") {
+            return Err("seule une ressource de type « app » peut lancer un exécutable".into());
+        }
+        false
+    };
+
+    let opened = if opened {
+        opened
+    } else if let Some(file) = r.meta.get("filePath").filter(|s| !s.is_empty()) {
+        tauri_plugin_opener::open_path(file, None::<&str>)
+            .map_err(|e| format!("ouverture impossible : {e}"))?;
+        true
+    } else if let Some(path) = lower.strip_prefix("file:") {
+        tauri_plugin_opener::open_path(path.trim(), None::<&str>)
+            .map_err(|e| format!("ouverture impossible : {e}"))?;
+        true
+    } else if lower.starts_with("local:") {
+        // sans lien : rien à ouvrir, rien à compter
+        false
+    } else if lower.starts_with("http://") || lower.starts_with("https://") {
+        // garde de défense en profondeur : seul un schéma web atteint open_url
+        tauri_plugin_opener::open_url(&r.url, None::<&str>)
+            .map_err(|e| format!("ouverture impossible : {e}"))?;
+        true
+    } else {
+        return Err(format!("schéma de lien non pris en charge : {}", r.url));
+    };
+
+    // compté seulement si l'ouverture a réussi (comportement openResource.ts)
+    if opened {
+        db::record_open(&pool, resource_id).await?;
     }
-    tauri_plugin_opener::open_path(p.display().to_string(), None::<&str>)
-        .map_err(|e| format!("ouverture impossible : {e}"))
+    Ok(())
 }
 
 
@@ -711,10 +810,13 @@ pub struct ExportData {
 }
 
 #[tauri::command]
-pub async fn export_data(
-    pool: State<'_, SqlitePool>,
-    path: String,
-) -> Result<usize, String> {
+pub async fn export_data(pool: State<'_, SqlitePool>, path: String) -> Result<usize, String> {
+    // l'export ne doit pas écraser un fichier arbitraire (config d'une autre
+    // app, script de démarrage…) : extension .json exigée.
+    let p = std::path::PathBuf::from(path.trim());
+    if p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() != Some("json") {
+        return Err("l'export doit être un fichier .json".into());
+    }
     // l'export doit rester exhaustif : pas de garde-fou LIMIT.
     let resources = db::list_resources(
         &pool,
@@ -731,7 +833,7 @@ pub async fn export_data(
         version: env!("CARGO_PKG_VERSION").into(),
     };
     let json = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    tokio::fs::write(&path, json)
+    tokio::fs::write(&p, json)
         .await
         .map_err(|e| e.to_string())?;
     Ok(data.resources.len())
@@ -784,11 +886,15 @@ pub struct ImportSummary {
 }
 
 #[tauri::command]
-pub async fn import_data(
-    pool: State<'_, SqlitePool>,
-    path: String,
-) -> Result<ImportSummary, String> {
-    let text = tokio::fs::read_to_string(&path)
+pub async fn import_data(pool: State<'_, SqlitePool>, path: String) -> Result<ImportSummary, String> {
+    // lecture limitée aux .json : import_data ne renvoie que des compteurs,
+    // mais ne pas restreindre laisse la webview sonder l'existence/lisibilité
+    // de n'importe quel fichier du disque (erreur « illisible » vs « introuvable »).
+    let p = std::path::PathBuf::from(path.trim());
+    if p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() != Some("json") {
+        return Err("l'import attend un fichier .json".into());
+    }
+    let text = tokio::fs::read_to_string(&p)
         .await
         .map_err(|e| e.to_string())?;
     import_payload_from_str(&pool, &text).await
@@ -993,19 +1099,12 @@ async fn would_create_cycle(
 
 // --- Presse-papiers : l'URL copiée est-elle déjà connue ? ---
 
-/// Normalisation légère pour la comparaison d'URLs : on ignore la casse du
-/// schéma/domaine et un éventuel slash final (sinon « Exemple.com/ » passe
-/// pour inconnu alors que « exemple.com » est en base).
-fn comparable_url(url: &str) -> String {
-    let trimmed = url.trim();
-    let lowered = trimmed.to_lowercase();
-    let no_slash = lowered.strip_suffix('/').unwrap_or(&lowered);
-    no_slash.to_string()
-}
-
 #[tauri::command]
 pub async fn is_url_known(pool: State<'_, SqlitePool>, url: String) -> Result<bool, String> {
-    let needle = comparable_url(&url);
+    // le stockage est canonique (canonicalize_url à l'écriture) : la
+    // comparaison canonique ciblée remplace l'ancien scan LIKE de toute la
+    // table à chaque copie dans le presse-papiers (O(n) par requête).
+    let needle = canonicalize_url(&url);
     let known: Option<i64> = sqlx::query_scalar(
         "SELECT id FROM resources WHERE url = ? COLLATE NOCASE",
     )
@@ -1013,15 +1112,7 @@ pub async fn is_url_known(pool: State<'_, SqlitePool>, url: String) -> Result<bo
     .fetch_optional(&*pool)
     .await
     .map_err(|e| e.to_string())?;
-    if known.is_some() {
-        return Ok(true);
-    }
-    // repli : comparons aussi la version normalisée de chaque URL en base
-    let all: Vec<String> = sqlx::query_scalar("SELECT url FROM resources WHERE url LIKE 'http%'")
-        .fetch_all(&*pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(all.iter().any(|u| comparable_url(u) == needle))
+    Ok(known.is_some())
 }
 
 /// Change le raccourci global de la palette (persisté, pris au prochain

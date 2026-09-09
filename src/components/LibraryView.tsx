@@ -41,6 +41,7 @@ import {
   setResourceStatus,
 } from "@/lib/api";
 import { RESOURCE_TYPES } from "@/lib/resources";
+import { ensureSystemFolder } from "@/lib/systemFolders";
 import {
   getTileSize,
   tileMinPx,
@@ -518,6 +519,9 @@ export function LibraryView() {
    * Statut lié aux dossiers système : « À traiter » et « Archivés » sont
    * créés automatiquement (une seule fois) et la ressource y est rangée.
    * Réactiver la sort de son dossier et remet le statut à vide.
+   * Un verrou module-scope sérialise la création : deux statuts posés en
+   * rafale faisaient la course (listFolders → createFolder non atomique)
+   * et créaient deux dossiers homonymes.
    */
   const handleSetStatus = useCallback(
     async (r: Resource, status: "" | "todo" | "archived") => {
@@ -525,10 +529,7 @@ export function LibraryView() {
         await setResourceStatus(r.id, status);
         if (status === "todo" || status === "archived") {
           const name = status === "todo" ? "À traiter" : "Archivés";
-          let folder = (await listFolders()).find(
-            (f) => f.name === name && f.parentId === null,
-          );
-          if (!folder) folder = await createFolder(name);
+          const folder = await ensureSystemFolder(name);
           await setResourceFolder(r.id, folder.id);
           toast.success(`Rangée dans « ${name} »`);
         } else {
@@ -1274,6 +1275,7 @@ function FilterTab({
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
         "relative shrink-0 cursor-pointer px-3 py-2 text-sm outline-none transition-colors",
         active
