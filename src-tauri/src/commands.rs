@@ -1174,6 +1174,83 @@ pub async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
 
 // --- Google Drive (OAuth + upload) ---
 
+/// Purge la session Drive (jetons liés à l'ancien client OAuth) : les ids
+/// de settings utilisés par gdrive.rs. Sans `revoke` réseau (l'ancien token
+/// n'est pas forcément révoquable avec le nouveau client) ; Google révoque
+/// les refresh tokens inactifs de toute façon.
+async fn purge_drive_session(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("DELETE FROM settings WHERE key = ?")
+        .bind("gdrive_refresh_token")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    for k in ["gdrive_access_token", "gdrive_expires_at"] {
+        sqlx::query("DELETE FROM settings WHERE key = ?")
+            .bind(k)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Enregistre les identifiants OAuth « apportés par l'utilisateur » (BYO) :
+/// chaque personne crée SON projet Google Cloud (gratuit) et colle ici son
+/// Client ID + Secret. Les valeurs sont stockées chiffrées (DPAPI) via
+/// set_secret — le champ peut aussi servir à corriger les constantes de
+/// build. client_secret vide = ne modifie pas la valeur existante.
+#[tauri::command]
+pub async fn gdrive_set_credentials(
+    pool: State<'_, SqlitePool>,
+    client_id: String,
+    client_secret: String,
+) -> Result<(), String> {
+    let id = client_id.trim();
+    let secret = client_secret.trim();
+    if id.is_empty() {
+        return Err("le Client ID est obligatoire".into());
+    }
+    // forme attendue : <numéro>-<hash>.apps.googleusercontent.com
+    if !id.ends_with(".apps.googleusercontent.com") {
+        return Err("Client ID invalide : il doit finir par « .apps.googleusercontent.com »".into());
+    }
+    db::set_setting(&pool, "gdrive_client_id", id).await?;
+    if !secret.is_empty() {
+        // GOCSPX-… : préfixe réel des secrets Google, conservé tel quel
+        db::set_secret(&pool, "gdrive_client_secret", secret).await?;
+    }
+    // des identifiants nouveaux invalident la session en cours : les jetons
+    // OAuth sont liés au client qui les a émis — un refresh avec un autre
+    // client échouerait (`invalid_grant`). On purge, l'utilisateur reconecta.
+    purge_drive_session(&pool).await
+}
+
+/// Efface les identifiants BYO : l'app retombe sur ceux embarqués au build
+/// (ou plus rien si aucun — la connexion Drive affichera l'erreur dédiée).
+#[tauri::command]
+pub async fn gdrive_clear_credentials(pool: State<'_, SqlitePool>) -> Result<(), String> {
+    sqlx::query("DELETE FROM settings WHERE key = ?")
+        .bind("gdrive_client_id")
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM settings WHERE key = ?")
+        .bind("gdrive_client_secret")
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    purge_drive_session(&pool).await
+}
+
+/// État BYO pour l'UI : un Client ID est-il configuré (setting ou build) ?
+/// Le secret n'est JAMAIS renvoyé — même masqué, il sortirait de la base.
+#[tauri::command]
+pub async fn gdrive_credentials_status(
+    pool: State<'_, SqlitePool>,
+) -> Result<crate::gdrive::CredentialsStatus, String> {
+    Ok(crate::gdrive::credentials_status(&pool).await)
+}
+
 #[tauri::command]
 pub async fn gdrive_connect(
     pool: State<'_, SqlitePool>,

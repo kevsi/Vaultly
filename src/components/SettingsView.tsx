@@ -38,7 +38,9 @@ import {
   setAutostart,
   waybackAvailable,
   gdriveBackup,
+  gdriveClearCredentials,
   gdriveConnect,
+  gdriveCredentialsStatus,
   gdriveCreateFolder,
   gdriveDeleteFile,
   gdriveDisconnect,
@@ -49,6 +51,7 @@ import {
   gdriveSearchFiles,
   gdriveSetAutobackup,
   gdriveSetBackupFolder,
+  gdriveSetCredentials,
   gdriveShareFile,
   gdriveStatus as gdriveStatusApi,
   gdriveUpload,
@@ -155,6 +158,14 @@ export function SettingsView() {
   const [waybackBusy, setWaybackBusy] = useState<number | null>(null);
   const [gdriveBusy, setGdriveBusy] = useState(false);
   const qcGdrive = useQueryClient();
+  // --- identifiants Google BYO (projet GCP de l'utilisateur) ---
+  const [credClientId, setCredClientId] = useState("");
+  const [credClientSecret, setCredClientSecret] = useState("");
+  const [credBusy, setCredBusy] = useState(false);
+  const { data: credStatus } = useQuery({
+    queryKey: ["gdriveCredentials"],
+    queryFn: gdriveCredentialsStatus,
+  });
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [prompt, setPrompt] = useState<{
     title: string;
@@ -216,6 +227,38 @@ export function SettingsView() {
       toast.error(String(e));
     }
     void qcGdrive.invalidateQueries({ queryKey: ["gdriveStatus"] });
+  }
+
+  async function saveCredentials() {
+    setCredBusy(true);
+    try {
+      await gdriveSetCredentials(credClientId.trim(), credClientSecret.trim());
+      toast.success("Identifiants Google enregistrés ✓", {
+        description: "Connecte ton compte Drive avec ces identifiants.",
+      });
+      setCredClientId("");
+      setCredClientSecret("");
+      void qcGdrive.invalidateQueries({ queryKey: ["gdriveCredentials"] });
+      // l'ancienne session (liée aux anciens identifiants) est purgée côté Rust
+      void qcGdrive.invalidateQueries({ queryKey: ["gdriveStatus"] });
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setCredBusy(false);
+    }
+  }
+
+  async function clearCredentials() {
+    setCredBusy(true);
+    try {
+      await gdriveClearCredentials();
+      toast.success("Identifiants personnels effacés");
+      void qcGdrive.invalidateQueries({ queryKey: ["gdriveCredentials"] });
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setCredBusy(false);
+    }
   }
 
   async function tryUpload() {
@@ -861,8 +904,8 @@ export function SettingsView() {
             <div>
               <h3 className="font-medium">Google Drive</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Envoie des fichiers vers ton Drive. Un simple écran Google te
-                demandera d'autoriser Vaultly — rien d'autre à configurer.
+                Sauvegardes, explorateur et partage de liens via ton Drive.
+                Nécessite une configuration Google une fois (voir ci-dessous).
               </p>
             </div>
             {gdriveStatus?.connected ? (
@@ -876,7 +919,15 @@ export function SettingsView() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => void connectGdrive()} disabled={gdriveBusy}>
+            <Button
+              onClick={() => void connectGdrive()}
+              disabled={gdriveBusy || !credStatus?.configured}
+              title={
+                credStatus?.configured
+                  ? undefined
+                  : "Configure d'abord tes identifiants Google (section ci-dessous)"
+              }
+            >
               {gdriveBusy ? <Loader2 className="animate-spin" /> : <Plug />}
               {gdriveStatus?.connected ? "Reconnecter" : "Connecter mon compte"}
             </Button>
@@ -896,6 +947,91 @@ export function SettingsView() {
             Le serveur de callback utilise le port local 8790. Le lien de
             partage du fichier envoyé est copié dans le presse-papiers.
           </p>
+
+          <Separator />
+
+          {/* Identifiants OAuth BYO : chaque utilisateur utilise SON projet
+              Google Cloud — le projet du développeur ne peut pas servir
+              d'autres comptes (écran de consentement en mode Testing). */}
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-medium">
+                Identifiants Google (à configurer une fois)
+              </h4>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Vaultly utilise TES identifiants Google, jamais un compte
+                partagé : crée ton propre projet (gratuit, ~5 min) sur{" "}
+                <button
+                  type="button"
+                  className="cursor-pointer text-primary underline underline-offset-2"
+                  onClick={() =>
+                    void openUrl(
+                      "https://console.cloud.google.com/apis/credentials",
+                    )
+                  }
+                >
+                  console.cloud.google.com
+                </button>{" "}
+                puis colle-les ici. Le pas-à-pas complet est dans le README du
+                projet (section « Connecter Google Drive »).
+              </p>
+              {credStatus?.configured && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Client ID actif :{" "}
+                  <code className="rounded bg-muted px-1 py-0.5">
+                    {credStatus.clientIdPreview}
+                  </code>{" "}
+                  {credStatus.fromUser ? "(ta configuration)" : "(embarqué au build)"}
+                </p>
+              )}
+            </div>
+            <div className="grid gap-2">
+              <Input
+                placeholder="Client ID — xxx.apps.googleusercontent.com"
+                value={credClientId}
+                onChange={(e) => setCredClientId(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <Input
+                type="password"
+                placeholder={
+                  credStatus?.fromUser
+                    ? "Client Secret — laisse vide pour conserver l'actuel"
+                    : "Client Secret — GOCSPX-…"
+                }
+                value={credClientSecret}
+                onChange={(e) => setCredClientSecret(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={credBusy || !credClientId.trim()}
+                  onClick={() => void saveCredentials()}
+                >
+                  {credBusy ? <Loader2 className="animate-spin" /> : null}
+                  Enregistrer
+                </Button>
+                {credStatus?.fromUser && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={credBusy}
+                    onClick={() => void clearCredentials()}
+                  >
+                    Revenir aux identifiants embarqués
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Stockés chiffrés sur cette machine (DPAPI) — le secret n'est
+                jamais affiché ni exporté.
+              </p>
+            </div>
+          </div>
 
           {gdriveStatus?.connected && (
             <>

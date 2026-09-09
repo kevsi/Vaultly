@@ -85,6 +85,46 @@ async fn effective_client_secret(pool: &SqlitePool) -> Result<String, String> {
     Ok(secret)
 }
 
+/// État des identifiants OAuth pour l'UI (le secret n'est jamais renvoyé).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialsStatus {
+    /// vrai si un Client ID effectif existe (setting BYO ou build)
+    pub configured: bool,
+    /// vrai si le Client ID actif vient des réglages utilisateur (BYO)
+    pub from_user: bool,
+    /// extrait lisible du Client ID actif (jamais le secret)
+    pub client_id_preview: String,
+}
+
+pub async fn credentials_status(pool: &SqlitePool) -> CredentialsStatus {
+    let from_settings = db::get_setting(pool, "gdrive_client_id")
+        .await
+        .filter(|v| !v.is_empty());
+    let from_user = from_settings.is_some();
+    let effective = match from_settings {
+        Some(v) => Some(v),
+        None => std::env::var("GDRIVE_CLIENT_ID").ok().filter(|v| !v.is_empty()),
+    }
+    .unwrap_or_else(|| DEFAULT_CLIENT_ID.to_string());
+    let configured = !effective.is_empty();
+    // aperçu : début + fin du Client ID (c'est une donnée publique)
+    let preview = if configured && effective.len() > 24 {
+        format!(
+            "{}…{}",
+            &effective[..12],
+            &effective[effective.len() - 12..]
+        )
+    } else {
+        effective
+    };
+    CredentialsStatus {
+        configured,
+        from_user,
+        client_id_preview: preview,
+    }
+}
+
 /// PKCE : vérifieur aléatoire + défi SHA-256 encodé base64url.
 fn pkce_pair() -> (String, String) {
     use base64::Engine;

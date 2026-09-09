@@ -276,6 +276,29 @@ export async function gdriveConnect(): Promise<void> {
   return invoke("gdrive_connect");
 }
 
+/** Identifiants OAuth BYO : l'utilisateur colle ceux de SON projet GCP.
+ *  Secret vide = conserve le secret existant. */
+export async function gdriveSetCredentials(
+  clientId: string,
+  clientSecret: string,
+): Promise<void> {
+  return invoke("gdrive_set_credentials", { clientId, clientSecret });
+}
+
+export async function gdriveClearCredentials(): Promise<void> {
+  return invoke("gdrive_clear_credentials");
+}
+
+export interface GdriveCredentialsStatus {
+  configured: boolean;
+  fromUser: boolean;
+  clientIdPreview: string;
+}
+
+export async function gdriveCredentialsStatus(): Promise<GdriveCredentialsStatus> {
+  return invoke("gdrive_credentials_status");
+}
+
 export async function gdriveDisconnect(): Promise<void> {
   return invoke("gdrive_disconnect");
 }

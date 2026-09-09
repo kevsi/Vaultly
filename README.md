@@ -60,6 +60,44 @@ Pour embarquer le Client Secret Google Drive au build (sinon la connexion Drive
 demande la variable d'environnement `GDRIVE_CLIENT_SECRET`) : définis-la sur la
 machine qui construit l'installateur — elle n'est jamais dans le dépôt.
 
+## Connecter Google Drive (chaque utilisateur)
+
+Vaultly utilise **tes propres identifiants Google** : il n'y a pas de compte
+partagé intégré à l'app. En effet, les identifiants OAuth d'un développeur ne
+peuvent servir qu'aux comptes qu'il a déclarés (écran de consentement Google en
+mode « Testing ») — avec ton propre projet, tu contrôles ton accès.
+
+**Pas-à-pas (une fois, ~5 minutes, gratuit) :**
+
+1. Va sur [console.cloud.google.com](https://console.cloud.google.com/) et
+   crée un projet (le nom importe peu, ex. « Vaultly »).
+2. Menu **API et services → Bibliothèque** : recherche « **Google Drive API** »
+   et clique **Activer**.
+3. Menu **API et services → Écran de consentement OAuth** :
+   - type **Externe**, nom de l'app, ton e-mail ;
+   - **Utilisateurs test** : ajoute l'adresse Gmail que tu utiliseras dans
+     Vaultly (obligatoire tant que l'app de test n'est pas publiée) ;
+   - les autres étapes (logo, domaine) sont optionnelles — sauvegarde.
+4. Menu **API et services → Identifiants → Créer des identifiants → ID client
+   OAuth** :
+   - type d'application : **Application de bureau** ;
+   - nom : « Vaultly desktop ».
+5. Copie le **Client ID** (`…apps.googleusercontent.com`) et le **Client
+   Secret** (`GOCSPX-…`) affichés.
+6. Ouvre Vaultly → **Réglages → Google Drive → Identifiants Google** :
+   colle-les et **Enregistrer** (stockés chiffrés, DPAPI — jamais exportés).
+7. Clique **Connecter mon compte** : le navigateur s'ouvre sur l'écran de
+   consentement Google, autorise, et c'est fait.
+
+> **Écran « Google n'a pas validé cette application »** : c'est normal en mode
+> test (c'est TON app). Clique **Continuer** / afficher les infos de sécurité.
+>
+> **Erreur 403 `access_denied`** : ton adresse Google n'est pas dans
+> **Utilisateurs test** de l'étape 3.
+
+Aucun secret n'est partagé entre utilisateurs : chacun stocke les siens,
+chiffrés pour sa session Windows.
+
 ## Connecter une IA
 
 Ouvre l'app → onglet **Réglages** : les tokens et des snippets prêts à coller
