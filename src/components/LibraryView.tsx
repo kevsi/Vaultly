@@ -1159,8 +1159,8 @@ export function LibraryView() {
       {/* le backend plafonne la vue à 500 lignes : le dire, pas le cacher */}
       {(resources ?? []).length >= 500 && (
         <div className="px-4 pt-2 text-xs text-amber-600 dark:text-amber-500">
-          Affichage limité aux 500 premières ressources — affine la recherche ou
-          un filtre pour voir le reste.
+          Un très grand nombre de résultats — précise ta recherche ou ajoute un
+          filtre pour tout voir.
         </div>
       )}
 
@@ -1169,10 +1169,7 @@ export function LibraryView() {
           ici ; les tuiles/lignes vives sont dans le composant. */}
       {isError && (
         <div className="mx-6 mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
-          <span>
-            Le chargement de la bibliothèque a échoué (base verrouillée ou
-            erreur interne).
-          </span>
+          <span>Impossible de charger ta bibliothèque.</span>
           <Button size="sm" variant="outline" onClick={() => void refetch()}>
             Réessayer
           </Button>

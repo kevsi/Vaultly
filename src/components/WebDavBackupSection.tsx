@@ -210,9 +210,9 @@ export function WebDavBackupSection() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Mot de passe chiffré sur cette machine (DPAPI). Sur Nextcloud, utilise
-          un token de « Paramètres → Applis → DAV » plutôt que ton mot de passe
-          si l'authentification à deux facteurs est active.
+          Ton mot de passe est chiffré et reste sur cette machine. Sur
+          Nextcloud, utilise un token de « Paramètres → Applis → DAV » plutôt
+          que ton mot de passe si l'authentification à deux facteurs est active.
         </p>
       </div>
 

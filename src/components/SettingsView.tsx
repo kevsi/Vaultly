@@ -343,7 +343,7 @@ export function SettingsView() {
       );
     } catch {
       setUpdateStatus(
-        "Vérification impossible (hors-ligne, ou signatures pas encore configurées).",
+        "Vérification impossible pour le moment — réessaie plus tard.",
       );
     } finally {
       setUpdateBusy(false);
@@ -1492,13 +1492,13 @@ export function SettingsView() {
 
           {section === "maj" && (
             <>
-              {/* mise à jour depuis GitHub Releases */}
+              {/* mise à jour */}
               <div className="space-y-3">
                 <div>
                   <h3 className="font-medium">Mise à jour</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vaultly se met à jour depuis GitHub Releases. Version
-                    installée : {appVersion ?? "…"}
+                    Vérifie les nouvelles versions et les installe en un clic.
+                    Version installée : {appVersion ?? "…"}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1529,12 +1529,6 @@ export function SettingsView() {
                     {updateStatus}
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Tant que la clé de signature n'est pas configurée
-                  (tauri.conf.json › plugins › updater › pubkey), la
-                  vérification répond mais l'installation est refusée — voir
-                  .github/workflows/release.yml pour la marche à suivre.
-                </p>
               </div>
             </>
           )}
