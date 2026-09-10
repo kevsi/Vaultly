@@ -658,7 +658,7 @@ export function SettingsView() {
               {/* langue de l'interface */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">{t("settings.language")}</h3>
+                  <h3 className="font-medium">{t("Langue")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {t(
                       "Langue de l'interface. Appliqué immédiatement (les sous-titres avancés restent en français pour l'instant).",
