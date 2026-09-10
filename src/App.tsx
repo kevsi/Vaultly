@@ -32,6 +32,7 @@ import {
   openResourceById,
   startupNotice,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import {
   checkForUpdates,
   markUpdateChecked,
@@ -102,6 +103,7 @@ function TrashCount() {
 function WindowControls() {
   const win = getCurrentWindow();
   const [maximized, setMaximized] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     let active = true;
@@ -132,8 +134,8 @@ function WindowControls() {
     <div className="-mr-4 flex shrink-0 self-stretch items-stretch">
       <button
         type="button"
-        aria-label="Réduire"
-        title="Réduire"
+        aria-label={t("win.minimize")}
+        title={t("win.minimize")}
         className={`${base} hover:bg-muted hover:text-foreground`}
         onClick={() => void win.minimize()}
       >
@@ -141,8 +143,8 @@ function WindowControls() {
       </button>
       <button
         type="button"
-        aria-label={maximized ? "Restaurer" : "Agrandir"}
-        title={maximized ? "Restaurer" : "Agrandir"}
+        aria-label={maximized ? t("win.restore") : t("win.maximize")}
+        title={maximized ? t("win.restore") : t("win.maximize")}
         className={`${base} hover:bg-muted hover:text-foreground`}
         onClick={() => void win.toggleMaximize()}
       >
@@ -154,8 +156,8 @@ function WindowControls() {
       </button>
       <button
         type="button"
-        aria-label="Fermer"
-        title="Fermer"
+        aria-label={t("win.close")}
+        title={t("win.close")}
         className={`${base} hover:bg-destructive hover:text-white`}
         onClick={() => void win.close()}
       >
@@ -166,6 +168,7 @@ function WindowControls() {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [tab, setTab] = useState("library");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -404,24 +407,24 @@ export default function App() {
             <TabsList>
               <TabsTrigger value="library">
                 <Library />
-                Bibliothèque
+                {t("nav.library")}
               </TabsTrigger>
               <TabsTrigger value="import">
                 <StickyNote />
-                Importer
+                {t("nav.import")}
               </TabsTrigger>
               <TabsTrigger value="stats">
                 <Activity />
-                Stats
+                {t("nav.stats")}
               </TabsTrigger>
               <TabsTrigger value="trash">
                 <Trash2 />
-                Corbeille
+                {t("nav.trash")}
                 <TrashCount />
               </TabsTrigger>
               <TabsTrigger value="settings">
                 <Settings />
-                Réglages
+                {t("nav.settings")}
                 {deadCount > 0 && (
                   <span className="ml-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-600 tabular-nums">
                     {deadCount}

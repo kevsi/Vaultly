@@ -5,34 +5,38 @@ import welcome1 from "@/assets/lottie/welcome-1.json";
 import welcome2 from "@/assets/lottie/welcome-2.json";
 import welcome3 from "@/assets/lottie/welcome-3.json";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 import { prefersReducedMotion } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
-const SLIDES = [
-  {
-    data: welcome1,
-    title: "Bienvenue dans Vaultly",
-    text: "Ton hub personnel : tous tes bons sites, apps, fichiers et notes, réunis en tuiles.",
-  },
-  {
-    data: welcome2,
-    title: "Range sans effort",
-    text: "Dossiers imbriqués, tags, favoris, tableau par statut. Les doublons sont fusionnés tout seul.",
-  },
-  {
-    data: welcome3,
-    title: "Retrouve et connecte ton IA",
-    text: "Recherche instantanée, palette n'importe où, et tes assistants IA qui lisent ta bibliothèque.",
-  },
-] as const;
+function getSlides(t: (key: string) => string) {
+  return [
+    {
+      data: welcome1,
+      title: t("onb.welcome.title"),
+      text: t("onb.welcome.text"),
+    },
+    {
+      data: welcome2,
+      title: t("onb.organize.title"),
+      text: t("onb.organize.text"),
+    },
+    {
+      data: welcome3,
+      title: t("onb.ai.title"),
+      text: t("onb.ai.text"),
+    },
+  ];
+}
 
 /** Diaporama animé du tout premier lancement, puis relais vers la visite. */
 export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
+  const { t } = useI18n();
+  const slides = getSlides(t);
   const [i, setI] = useState(0);
   const reduce = prefersReducedMotion();
-  const last = i === SLIDES.length - 1;
+  const last = i === slides.length - 1;
 
-  // Échap = passer (on ne bloque jamais un premier lancement)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onFinish();
@@ -41,13 +45,13 @@ export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onFinish]);
 
-  const slide = SLIDES[i];
+  const slide = slides[i];
   return (
     <div className="fixed inset-0 z-[120] flex animate-fade-in items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Bienvenue dans Vaultly"
+        aria-label={t("onb.welcome.title")}
         className="w-full max-w-sm animate-pop-in rounded-3xl border bg-card p-7 text-center shadow-2xl"
       >
         <div className="mx-auto size-40">
@@ -65,7 +69,7 @@ export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-1.5">
-          {SLIDES.map((s, d) => (
+          {slides.map((s, d) => (
             <span
               key={s.title}
               className={cn(
@@ -78,7 +82,7 @@ export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
 
         <div className="mt-6 flex items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={onFinish}>
-            Passer
+            {t("common.skip")}
           </Button>
           <div className="flex items-center gap-2">
             {i > 0 && (
@@ -86,22 +90,22 @@ export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
                 variant="outline"
                 size="icon-sm"
                 onClick={() => setI((v) => v - 1)}
-                aria-label="Précédent"
+                aria-label={t("common.prev")}
               >
                 <ArrowLeft />
               </Button>
             )}
             {last ? (
-              <Button
-                onClick={onFinish}
-                title="Démarrer la visite guidée de l'interface"
-              >
+              <Button onClick={onFinish} title={t("onb.cta")}>
                 <Sparkles />
-                Découvrir
+                {t("onb.cta")}
               </Button>
             ) : (
-              <Button onClick={() => setI((v) => v + 1)} title="Étape suivante">
-                Suivant
+              <Button
+                onClick={() => setI((v) => v + 1)}
+                title={t("common.next")}
+              >
+                {t("common.next")}
                 <ArrowRight />
               </Button>
             )}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WelcomeSlides } from "@/components/WelcomeSlides";
 import { runGuidedTour } from "@/lib/guidedTour";
+import { useI18n } from "@/lib/i18n";
 import { isOnboarded, markOnboarded, REPLAY_EVENT } from "@/lib/onboarding";
 
 type Phase = "welcome" | "tour" | "done";
@@ -11,6 +12,7 @@ type Phase = "welcome" | "tour" | "done";
  * visite via l'événement de rejeu.
  */
 export function FirstRun() {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<Phase>(() =>
     isOnboarded() ? "done" : "welcome",
   );
@@ -18,22 +20,19 @@ export function FirstRun() {
 
   useEffect(() => {
     if (phase !== "tour") return;
-    // léger différé : laisse la toolbar bibliothèque se stabiliser/afficher
     const id = window.setTimeout(() => {
       tourRef.current = runGuidedTour(() => {
         tourRef.current = null;
         setPhase("done");
-      });
+      }, t);
     }, 150);
     return () => {
       window.clearTimeout(id);
-      // ne détruit que si le tour est encore vivant (sinon déjà fermé)
       tourRef.current?.destroy();
       tourRef.current = null;
     };
-  }, [phase]);
+  }, [phase, t]);
 
-  // Rejeu demandé depuis Réglages : relancer directement la visite.
   useEffect(() => {
     const onReplay = () => {
       markOnboarded();

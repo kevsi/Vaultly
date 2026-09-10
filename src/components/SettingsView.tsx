@@ -14,6 +14,7 @@ import {
   FileInput,
   FileText,
   GraduationCap,
+  Heart,
   ImagePlus,
   Link2Off,
   Loader2,
@@ -80,7 +81,9 @@ import {
   type PageDensity,
   setPageDensity as persistPageDensity,
 } from "@/lib/gridPagination";
+import { useI18n } from "@/lib/i18n";
 import { replayTour } from "@/lib/onboarding";
+import { openKoFi, openSponsors } from "@/lib/support";
 import {
   getTileSize,
   setTileSize as persistTileSize,
@@ -189,6 +192,7 @@ const SECTIONS = [
   { id: "ouverture", label: "Ouverture", icon: ExternalLink },
   { id: "backup", label: "Sauvegarde", icon: Save },
   { id: "maj", label: "Mise à jour", icon: Rocket },
+  { id: "soutenir", label: "Soutenir", icon: Heart },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -224,6 +228,7 @@ export function SettingsView() {
   const [tileSize, setTileSizeState] = useState<TileSize>(getTileSize);
   // apparence (style, typographie, boutons, arrière-plan) — réactive
   const appearance = useAppearance();
+  const { lang, setLang: setUiLang } = useI18n();
   const bgFileRef = useRef<HTMLInputElement | null>(null);
   const [bgBusy, setBgBusy] = useState(false);
 
@@ -627,6 +632,32 @@ export function SettingsView() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* langue de l'interface */}
+              <div className="space-y-3">
+                <div>
+                  <h3 className="font-medium">Langue</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Langue de l'interface. Appliqué immédiatement (les
+                    sous-titres avancés restent en français pour l'instant).
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {(["fr", "en"] as const).map((l) => (
+                    <Button
+                      key={l}
+                      variant={lang === l ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUiLang(l)}
+                      aria-pressed={lang === l}
+                    >
+                      {l === "fr" ? "Français" : "English"}
+                    </Button>
+                  ))}
                 </div>
               </div>
 
@@ -1531,6 +1562,45 @@ export function SettingsView() {
                 )}
               </div>
             </>
+          )}
+
+          {section === "soutenir" && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-medium">Soutenir Vaultly</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Vaultly est gratuit, sans publicité et sans compte. Si l'app
+                  te sert au quotidien, un don — même petit — aide à garder le
+                  projet vivant : hébergement, temps de développement, nouvelles
+                  fonctionnalités.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  onClick={() =>
+                    void openSponsors().catch((e) =>
+                      toast.error(describeError(e)),
+                    )
+                  }
+                >
+                  <Heart />
+                  GitHub Sponsors
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    void openKoFi().catch((e) => toast.error(describeError(e)))
+                  }
+                >
+                  <Heart />
+                  Ko-fi (dons ponctuels)
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Les liens s'ouvrent dans ton navigateur. Toutes les
+                fonctionnalités de Vaultly restent gratuites, pour toujours.
+              </p>
+            </div>
           )}
         </div>
       </ScrollArea>

@@ -18,6 +18,7 @@ import {
   ListChecks,
   Loader2,
   Plus,
+  RotateCw,
   Search,
   Star,
   StickyNote,
@@ -70,6 +71,7 @@ import {
   setResourceFolder,
   setResourceStatus,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { openResource } from "@/lib/openResource";
 import { isStale, RESOURCE_TYPES } from "@/lib/resources";
 import {
@@ -82,20 +84,23 @@ import {
 import type { Folder, Resource, SortBy } from "@/lib/types";
 import { cn, describeError } from "@/lib/utils";
 
-const SORTS: { value: SortBy; label: string; icon: typeof Clock }[] = [
-  { value: "recent", label: "Récents", icon: Clock },
-  { value: "added", label: "Ajoutés", icon: CalendarDays },
-  { value: "oldest", label: "Anciens", icon: History },
-  { value: "mostUsed", label: "Plus utilisés", icon: Flame },
-  { value: "manual", label: "Placement", icon: LayoutGrid },
-  { value: "title", label: "A→Z", icon: ArrowDownAZ },
-];
+function getSorts(t: (key: string) => string) {
+  return [
+    { value: "recent" as SortBy, label: t("sort.recent"), icon: Clock },
+    { value: "added" as SortBy, label: t("sort.added"), icon: CalendarDays },
+    { value: "oldest" as SortBy, label: t("sort.oldest"), icon: History },
+    { value: "mostUsed" as SortBy, label: t("sort.mostUsed"), icon: Flame },
+    { value: "manual" as SortBy, label: t("sort.manual"), icon: LayoutGrid },
+    { value: "title" as SortBy, label: t("sort.title"), icon: ArrowDownAZ },
+  ];
+}
 
 /** Clés stables des 12 squelettes de chargement (jamais réordonnés). */
 const SKELETON_KEYS = Array.from({ length: 12 }, (_, i) => `skeleton-${i}`);
 
 export function LibraryView() {
   const qc = useQueryClient();
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -154,6 +159,9 @@ export function LibraryView() {
   // toolbar) ; ResourceGrid tranche `pageItems` et remonte pages/total ---
   const [page, setPage] = useState(0);
   const [pagination, setPagination] = useState({ pages: 1, total: 0 });
+  // compteur de rechargement : incrémenter remonte la grille → réessaie les
+  // images distantes (favicons/captures) passées en erreur faute de réseau
+  const [imgNonce, setImgNonce] = useState(0);
   const handlePagination = useCallback(
     (info: { pages: number; total: number }) => {
       setPagination((prev) =>
@@ -431,6 +439,13 @@ export function LibraryView() {
     void qc.invalidateQueries({ queryKey: ["trash"] });
   }, [qc]);
 
+  /** Rafraîchir : recolle les données à la source + retente les images. */
+  function handleRefresh() {
+    refetch();
+    refresh();
+    setImgNonce((n) => n + 1);
+  }
+
   /** Dépose d'une tuile pendant le drag d'une ressource :
    *  - zone CENTRALE de la cible → crée un dossier avec les deux (fusion) ;
    *  - moitiés gauche/droite → insère la tuile à cet interstice (trait). */
@@ -463,7 +478,7 @@ export function LibraryView() {
           folder.name.length > 45
             ? `${folder.name.slice(0, 45)}…`
             : folder.name;
-        toast.success(`Dossier « ${shown} » créé`, {
+        toast.success(`Folder « ${shown} » created`, {
           description: "Renomme-le depuis son menu ⋯ si besoin.",
         });
         refresh();
@@ -500,7 +515,7 @@ export function LibraryView() {
     setDragFolderId(null);
     try {
       await moveFolder(srcId, target.id);
-      toast.success(`Déplacé dans « ${target.name} »`);
+      toast.success(`Moved to « ${target.name} »`);
       refresh();
     } catch (e) {
       toast.error(describeError(e));
@@ -515,7 +530,7 @@ export function LibraryView() {
     setDragId(null);
     try {
       await setResourceFolder(id, folder.id);
-      toast.success(`Rangée dans « ${folder.name} »`);
+      toast.success(`Filed in « ${folder.name} »`);
       refresh();
     } catch (e) {
       toast.error(describeError(e));
@@ -543,13 +558,13 @@ export function LibraryView() {
     const path =
       r.meta?.filePath ?? (r.url.startsWith("file:") ? r.url.slice(5) : "");
     if (!path) {
-      toast.error("Ce fichier n'a pas de chemin local enregistré");
+      toast.error("This file has no local path registered");
       return;
     }
     toast.info("Envoi vers le cloud en cours…");
     try {
       const name = await cloudUploadFile(path);
-      toast.success(`Envoyé vers le cloud sous « ${name} »`);
+      toast.success(`Sent to cloud as « ${name} »`);
     } catch (e) {
       toast.error(describeError(e));
     }
@@ -573,7 +588,7 @@ export function LibraryView() {
       // ressource locale (l'URL WebDAV est protégée par mot de passe, elle
       // ne serait pas cliquable depuis un autre appareil)
       await cloudImportFile(f.name);
-      toast.success(`« ${f.name} » joint à la bibliothèque`);
+      toast.success(`« ${f.name} » attached to library`);
       refresh();
       setCloudDialogOpen(false);
     } catch (e) {
@@ -630,7 +645,7 @@ export function LibraryView() {
       action: async () => {
         try {
           const n = await deleteResources(ids);
-          toast.success(`${n} ressource(s) déplacée(s) dans la corbeille`);
+          toast.success(`${n} resource(s) moved to trash`);
           setSelectedIds(new Set());
           setSelectMode(false);
           refresh();
@@ -648,7 +663,7 @@ export function LibraryView() {
     if (ids.length === 0) return;
     try {
       await Promise.all(ids.map((id) => setResourceStatus(id, "archived")));
-      toast.success(`${ids.length} ressource(s) archivée(s)`);
+      toast.success(`${ids.length} resource(s) archived`);
       setSelectedIds(new Set());
       setSelectMode(false);
       refresh();
@@ -707,7 +722,7 @@ export function LibraryView() {
         action: async () => {
           try {
             await deleteResource(r.id);
-            toast.success("Déplacée dans la corbeille");
+            toast.success("Moved to trash");
             refresh();
           } catch (e) {
             toast.error(describeError(e));
@@ -756,17 +771,17 @@ export function LibraryView() {
     if (!folderDialog) return;
     const name = folderName.trim();
     if (!name) {
-      toast.error("Donne un nom au dossier");
+      toast.error("Give the folder a name");
       return;
     }
     try {
       if (folderDialog.mode === "create") {
         // créé dans le dossier courant (imbrication)
         await createFolder(name, undefined, openFolder?.id ?? null);
-        toast.success(`Dossier « ${name} » créé`);
+        toast.success(`Folder « ${name} » created`);
       } else {
         await renameFolder(folderDialog.folder.id, name);
-        toast.success("Dossier renommé");
+        toast.success("Folder renamed");
         // met à jour le fil d'ariane si le dossier renommé y figure
         setFolderStack((s) =>
           s.map((f) => (f.id === folderDialog.folder.id ? { ...f, name } : f)),
@@ -789,7 +804,7 @@ export function LibraryView() {
         try {
           await deleteFolder(f.id);
           if (openFolder?.id === f.id) goUp();
-          toast.success("Dossier supprimé");
+          toast.success("Folder deleted");
           refresh();
         } catch (e) {
           toast.error(describeError(e));
@@ -808,7 +823,7 @@ export function LibraryView() {
         try {
           await dissolveFolder(f.id);
           if (openFolder?.id === f.id) goUp();
-          toast.success(`Dossier « ${f.name} » dissous`);
+          toast.success(`Folder « ${f.name} » dissolved`);
           refresh();
         } catch (e) {
           toast.error(describeError(e));
@@ -833,7 +848,8 @@ export function LibraryView() {
     return [...known, ...extras];
   }, [typeCounts]);
 
-  const sortDef = SORTS.find((s) => s.value === sortBy) ?? SORTS[0];
+  const sorts = getSorts(t);
+  const sortDef = sorts.find((s) => s.value === sortBy) ?? sorts[0];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -843,7 +859,7 @@ export function LibraryView() {
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
-            placeholder="Rechercher…  (raccourci : /)"
+            placeholder={t("lib.search")}
             className="pl-8"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -858,7 +874,7 @@ export function LibraryView() {
             <SelectValue>{sortDef.label}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {SORTS.map((s) => (
+            {sorts.map((s) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
               </SelectItem>
@@ -869,7 +885,7 @@ export function LibraryView() {
           variant={favOnly ? "default" : "outline"}
           size="icon"
           onClick={() => setFavOnly((v) => !v)}
-          title="Favoris seulement"
+          title={t("lib.favorites")}
         >
           <Star className={favOnly ? "fill-yellow-400 text-yellow-400" : ""} />
         </Button>
@@ -880,7 +896,7 @@ export function LibraryView() {
             variant={staleOnly ? "default" : "outline"}
             size="icon"
             onClick={() => setStaleOnly((v) => !v)}
-            title="À revisiter : jamais ouvertes depuis 60 jours"
+            title={t("lib.stale")}
           >
             <History />
           </Button>
@@ -889,7 +905,7 @@ export function LibraryView() {
           variant={captures ? "default" : "outline"}
           size="icon"
           onClick={toggleCaptures}
-          title="Voir les captures d'écran des sites (au lieu des favicons)"
+          title={t("lib.captures")}
         >
           <Camera />
         </Button>
@@ -902,7 +918,7 @@ export function LibraryView() {
             variant={viewMode === "grid" ? "default" : "ghost"}
             size="icon-sm"
             onClick={() => persistViewMode("grid")}
-            title="Affichage en tuiles"
+            title={t("lib.view.grid")}
           >
             <LayoutGrid />
           </Button>
@@ -910,7 +926,7 @@ export function LibraryView() {
             variant={viewMode === "list" ? "default" : "ghost"}
             size="icon-sm"
             onClick={() => persistViewMode("list")}
-            title="Affichage en liste"
+            title={t("lib.view.list")}
           >
             <List />
           </Button>
@@ -918,7 +934,7 @@ export function LibraryView() {
             variant={viewMode === "board" ? "default" : "ghost"}
             size="icon-sm"
             onClick={() => persistViewMode("board")}
-            title="Tableau (kanban par statut)"
+            title={t("lib.view.board")}
           >
             <KanbanSquare />
           </Button>
@@ -926,10 +942,18 @@ export function LibraryView() {
         <Button
           variant="outline"
           size="icon"
-          title="Ouvrir le dossier de ressources (Documents\\Vaultly)"
+          onClick={handleRefresh}
+          title={t("lib.refresh")}
+        >
+          <RotateCw />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          title={t("lib.openFolder")}
           onClick={() =>
             openResourcesFolder()
-              .then(() => toast.success("Dossier de ressources ouvert"))
+              .then(() => toast.success("Resources folder opened"))
               .catch((e) => toast.error(describeError(e)))
           }
         >
@@ -941,10 +965,10 @@ export function LibraryView() {
             setSelectMode((v) => !v);
             setSelectedIds(new Set());
           }}
-          title="Sélectionner des ressources pour agir en masse"
+          title={t("lib.select")}
         >
           <ListChecks />
-          {selectMode ? "Quitter" : "Sélectionner"}
+          {selectMode ? t("lib.select.exit") : t("lib.select.select")}
         </Button>
         <Button
           variant="outline"
@@ -953,18 +977,18 @@ export function LibraryView() {
             setCloudResults(null);
             setCloudDialogOpen(true);
           }}
-          title="Joindre un fichier depuis le cloud (WebDAV)"
+          title={t("lib.cloud")}
         >
           <Cloud />
-          Depuis le cloud
+          {t("lib.cloud.label")}
         </Button>
         <Button
           variant="outline"
           onClick={() => setTagManagerOpen(true)}
-          title="Gérer les tags (renommer, fusionner, supprimer)"
+          title={t("lib.tags")}
         >
           <Tags />
-          Tags
+          {t("lib.tags.label")}
         </Button>
         <Button
           variant="outline"
@@ -972,10 +996,10 @@ export function LibraryView() {
             setNoteEditing(null);
             setNoteEditorOpen(true);
           }}
-          title="Nouvelle note (Ctrl+Alt+N)"
+          title={t("lib.note")}
         >
           <StickyNote />
-          Note
+          {t("lib.note.label")}
         </Button>
         <Button
           data-tour="add"
@@ -986,7 +1010,7 @@ export function LibraryView() {
           }}
         >
           <Plus />
-          Ajouter
+          {t("lib.add")}
         </Button>
       </div>
 
@@ -1169,9 +1193,9 @@ export function LibraryView() {
           ici ; les tuiles/lignes vives sont dans le composant. */}
       {isError && (
         <div className="mx-6 mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
-          <span>Impossible de charger ta bibliothèque.</span>
+          <span>{t("lib.loadError")}</span>
           <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            Réessayer
+            {t("lib.retry")}
           </Button>
         </div>
       )}
@@ -1201,17 +1225,17 @@ export function LibraryView() {
           )}
           <p className="font-medium text-foreground">
             {staleAlone
-              ? "Rien à revisiter 🎉"
+              ? t("lib.stale.empty.title")
               : hasFilter
-                ? "Aucun résultat"
-                : "Ta bibliothèque est vide"}
+                ? t("lib.empty.filtered.title")
+                : t("lib.empty.title")}
           </p>
           <p className="max-w-sm text-sm">
             {staleAlone
-              ? "Toutes tes ressources ont été ouvertes récemment."
+              ? t("lib.stale.empty.desc")
               : hasFilter
-                ? "Essaie une autre recherche ou retire les filtres."
-                : "Ajoute ta première ressource, ou importe tes favoris depuis l'onglet Importer."}
+                ? t("lib.empty.filtered.desc")
+                : t("lib.empty.desc")}
           </p>
           {!hasFilter && (
             <Button
@@ -1223,18 +1247,20 @@ export function LibraryView() {
               }}
             >
               <Plus />
-              Ajouter une ressource
+              {t("lib.empty.add")}
             </Button>
           )}
         </div>
       ) : viewMode === "board" ? (
         <BoardView
+          key={`board-${imgNonce}`}
           resources={boardResources ?? []}
           onOpen={(r) => void handleBoardOpen(r)}
           onMove={handleMoveStatusColumn}
         />
       ) : (
         <ResourceGrid
+          key={`grid-${imgNonce}`}
           resources={displayed}
           visibleFolders={visibleFolders}
           foldersList={foldersList}
@@ -1280,7 +1306,7 @@ export function LibraryView() {
       {selectMode && selectedIds.size > 0 && (
         <div className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-pop-in items-center gap-2 rounded-2xl border bg-popover px-4 py-2 shadow-2xl">
           <span className="text-sm font-medium tabular-nums">
-            {selectedIds.size} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+            {selectedIds.size} {t("lib.bulk.selected")}
           </span>
           <span className="mx-1 h-5 w-px bg-border" />
           <Button
@@ -1288,14 +1314,14 @@ export function LibraryView() {
             size="sm"
             onClick={() => setSelectedIds(new Set(displayed.map((r) => r.id)))}
           >
-            Tout sélectionner
+            {t("lib.bulk.selectAll")}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setSelectedIds(new Set())}
           >
-            Désélectionner
+            {t("lib.bulk.deselect")}
           </Button>
           <Button
             variant="ghost"
@@ -1303,7 +1329,7 @@ export function LibraryView() {
             onClick={() => void handleBulkArchive()}
           >
             <Archive />
-            Archiver
+            {t("lib.bulk.archive")}
           </Button>
           <Button
             variant="destructive"
@@ -1311,7 +1337,7 @@ export function LibraryView() {
             onClick={() => void handleBulkDelete()}
           >
             <Trash2 />
-            Supprimer
+            {t("lib.bulk.delete")}
           </Button>
         </div>
       )}
