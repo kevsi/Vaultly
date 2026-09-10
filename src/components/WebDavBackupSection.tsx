@@ -1,7 +1,10 @@
-import { Cloud, Download, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Cloud, Download, Loader2, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   webdavBackup,
   webdavClearConfig,
@@ -11,9 +14,7 @@ import {
   webdavStatus,
   webdavTestConnection,
 } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { describeError, isInsecureRemoteWebdav } from "@/lib/utils";
 
 function formatBackupDate(ts: number | null | undefined): string {
   if (ts == null) return "Jamais";
@@ -65,7 +66,7 @@ export function WebDavBackupSection() {
       );
       void refetch();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setWebdavBusy(false);
     }
@@ -81,7 +82,7 @@ export function WebDavBackupSection() {
       toast.success("Configuration WebDAV effacée");
       void refetch();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setWebdavBusy(false);
     }
@@ -94,7 +95,7 @@ export function WebDavBackupSection() {
       toast.success(`Sauvegardé sur le cloud : ${name}`);
       void refetch();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setWebdavBusy(false);
     }
@@ -108,7 +109,7 @@ export function WebDavBackupSection() {
         `${r.resourcesAdded} ressource(s) restaurée(s), ${r.duplicates} doublon(s) ignoré(s)`,
       );
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setWebdavBusy(false);
     }
@@ -121,7 +122,7 @@ export function WebDavBackupSection() {
       await webdavSetAutobackup(enabled, hours);
       void refetch();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }
 
@@ -132,9 +133,9 @@ export function WebDavBackupSection() {
           <h3 className="font-medium">Sauvegarde cloud (WebDAV)</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Envoie tes sauvegardes sur Koofr (2 Go gratuits), Nextcloud,
-            Synology… Trois champs, pas de compte développeur à créer :
-            l'URL d'un dossier WebDAV, un identifiant, un mot de passe.
-            Les 5 sauvegardes les plus récentes sont conservées en ligne.
+            Synology… Trois champs, pas de compte développeur à créer : l'URL
+            d'un dossier WebDAV, un identifiant, un mot de passe. Les 5
+            sauvegardes les plus récentes sont conservées en ligne.
           </p>
         </div>
         {webdav?.configured ? (
@@ -156,6 +157,18 @@ export function WebDavBackupSection() {
           autoComplete="off"
           spellCheck={false}
         />
+        {isInsecureRemoteWebdav(webdavUrl.trim() || webdav?.url || "") && (
+          <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              URL en <code className="font-mono">http://</code> vers un serveur
+              distant : ton identifiant et ton mot de passe circulent{" "}
+              <b>non chiffrés</b>. Privilégie une URL{" "}
+              <code className="font-mono">https://</code> (excepté pour un NAS
+              en réseau local).
+            </span>
+          </p>
+        )}
         <div className="grid gap-2 sm:grid-cols-2">
           <Input
             placeholder="Identifiant"
@@ -197,16 +210,20 @@ export function WebDavBackupSection() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Mot de passe chiffré sur cette machine (DPAPI). Sur Nextcloud,
-          utilise un token de « Paramètres → Applis → DAV » plutôt que ton
-          mot de passe si l'authentification à deux facteurs est active.
+          Mot de passe chiffré sur cette machine (DPAPI). Sur Nextcloud, utilise
+          un token de « Paramètres → Applis → DAV » plutôt que ton mot de passe
+          si l'authentification à deux facteurs est active.
         </p>
       </div>
 
       {webdav?.configured && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => void runWebdavBackup()} disabled={webdavBusy}>
+            <Button
+              size="sm"
+              onClick={() => void runWebdavBackup()}
+              disabled={webdavBusy}
+            >
               {webdavBusy ? <Loader2 className="animate-spin" /> : <Cloud />}
               Sauvegarder maintenant
             </Button>
@@ -238,7 +255,8 @@ export function WebDavBackupSection() {
           </div>
           {webdav?.lastBackupAt && (
             <p className="text-xs text-muted-foreground">
-              Dernière sauvegarde cloud : {formatBackupDate(webdav.lastBackupAt)}
+              Dernière sauvegarde cloud :{" "}
+              {formatBackupDate(webdav.lastBackupAt)}
             </p>
           )}
         </div>

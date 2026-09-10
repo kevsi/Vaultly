@@ -1,0 +1,53 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.12/biome.json",
+  "files": {
+    // index.css (Tailwind v4) n'est pas parsable par Biome : on ne traverse
+    // que le TypeScript
+    "includes": ["src/**/*.ts", "src/**/*.tsx"]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        // La grille de tuiles utilise un pattern assumé : éléments non
+        // natifs avec role="button" + tabIndex + gestion clavier
+        // (Entrée/Espace, DnD au clavier via Ctrl+Maj+←/→, focus visibles).
+        // Un <button> natif casserait le glisser-déposer et les grilles
+        // internes — ces 4 règles sont donc coupées, le reste de
+        // l'accessibilité (useButtonType, labels, etc.) reste actif.
+        "noStaticElementInteractions": "off",
+        "useSemanticElements": "off",
+        "useKeyWithClickEvents": "off",
+        "useFocusableInteractive": "off"
+      },
+      "security": {
+        // Les 2 usages (notes assainies par sanitizeHtml, README échappé
+        // par renderMarkdown) sont audités : le HTML injecté est sûr.
+        // Tout nouveau dangerouslySetInnerHTML devra être justifié ici.
+        "noDangerouslySetInnerHtml": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "overrides": [
+    {
+      // Tailwind v4 (@theme, @custom-variant, @apply…) n'est pas parsable
+      // par Biome : le CSS reste gouverné par Tailwind lui-même
+      "includes": ["**/*.css"],
+      "linter": { "enabled": false },
+      "formatter": { "enabled": false }
+    }
+  ]
+}

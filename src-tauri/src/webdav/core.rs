@@ -414,6 +414,14 @@ pub async fn webdav_set_config(
     password: String,
 ) -> Result<(), String> {
     let base = normalize_base(&url)?;
+    // http vers un hôte distant = identifiants Basic en clair : on n'interdit
+    // pas (les NAS en LAN http sont un cas légitime) mais on le trace et on le
+    // signale en UI. https doit rester la norme pour un serveur public.
+    if base.starts_with("http://") && crate::metadata::host_is_public(&base) {
+        tracing::warn!(
+            "WebDAV configuré en http non chiffré vers un hôte distant ({base}) : les identifiants circulent en clair"
+        );
+    }
     let user = user.trim().to_string();
     if user.is_empty() {
         return Err("l'identifiant est obligatoire".into());

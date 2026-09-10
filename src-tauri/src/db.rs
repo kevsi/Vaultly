@@ -38,6 +38,10 @@ pub struct Resource {
     /// statut de traitement : '' = actif, 'todo' = à traiter, 'archived'
     #[serde(default)]
     pub status: String,
+    /// rappel « me rappeler le… » (UTC « YYYY-MM-DD HH:MM:SS »), None = aucun.
+    /// Ouvrir la ressource solde le rappel (record_open le remet à NULL).
+    #[serde(default)]
+    pub remind_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -106,6 +110,11 @@ pub struct ResourceFilter {
     /// de liens) passent `no_limit: true` pour rester exhaustifs.
     #[serde(default)]
     pub no_limit: bool,
+    /// true = exclure les archivés (`status != 'archived'`). Utilisé par
+    /// l'accueil pour masquer le « fait » sans le retirer par dossier ;
+    /// ignoré si un filtre `status` explicite est déjà posé.
+    #[serde(default)]
+    pub hide_archived: bool,
 }
 
 /// Échappe les jokers LIKE (% _ et l'échappement lui-même) pour que la
@@ -141,6 +150,7 @@ fn row_to_resource(row: sqlx::sqlite::SqliteRow) -> Resource {
         meta,
         folder_id: row.get("folder_id"),
         status: row.get("status"),
+        remind_at: row.get("remind_at"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -165,6 +175,15 @@ pub async fn open_pool(db_path: &std::path::Path) -> Result<SqlitePool, sqlx::Er
     Ok(pool)
 }
 
+/// true si `PRAGMA integrity_check` rend « ok » (base saine).
+pub async fn integrity_ok(pool: &SqlitePool) -> bool {
+    sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+        .fetch_one(pool)
+        .await
+        .map(|s| s == "ok")
+        .unwrap_or(false)
+}
+
 pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))",
@@ -180,6 +199,8 @@ pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         ("0005_nested_folders", include_str!("../migrations/0005_nested_folders.sql")),
         ("0006_status", include_str!("../migrations/0006_status.sql")),
         ("0007_trash", include_str!("../migrations/0007_trash.sql")),
+        ("0008_remind_at", include_str!("../migrations/0008_remind_at.sql")),
+        ("0009_indexes", include_str!("../migrations/0009_indexes.sql")),
     ] {
         // chaque migration est exécutée dans une transaction
         let mut tx = pool.begin().await?;
@@ -235,7 +256,7 @@ pub async fn list_resources(
 ) -> Result<Vec<Resource>, String> {
     let mut clauses: Vec<String> = Vec::new();
     let mut q = String::from(
-        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, created_at, updated_at FROM resources",
+        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, remind_at, created_at, updated_at FROM resources",
     );
 
     if !filter.query.trim().is_empty() {
@@ -269,6 +290,10 @@ pub async fn list_resources(
         // Some("") = actifs, Some("todo") / Some("archived")
         clauses.push("status = ?".into());
         status_clause = true;
+    }
+    // accueil : masquer les archivés sans filtre status explicite
+    if filter.hide_archived && !status_clause {
+        clauses.push("status != 'archived'".into());
     }
     if filter.folder_id.is_some() {
         clauses.push("folder_id = ?".into());
@@ -353,7 +378,7 @@ pub async fn list_resources(
 
 pub async fn get_resource(pool: &SqlitePool, id: i64) -> Result<Resource, String> {
     let row = sqlx::query(
-        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, created_at, updated_at FROM resources WHERE id = ?",
+        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, remind_at, created_at, updated_at FROM resources WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -369,7 +394,7 @@ pub(crate) async fn get_resource_tx(
     id: i64,
 ) -> Result<Resource, String> {
     let row = sqlx::query(
-        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, created_at, updated_at FROM resources WHERE id = ?",
+        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, remind_at, created_at, updated_at FROM resources WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&mut **tx)
@@ -787,16 +812,51 @@ pub async fn toggle_favorite(pool: &SqlitePool, id: i64) -> Result<Resource, Str
     get_resource(pool, id).await
 }
 
-/// Incrémente le compteur d'ouvertures et date la dernière ouverture.
+/// Incrémente le compteur d'ouvertures, date la dernière ouverture et solde
+/// un éventuel rappel (ouvrir = traité).
 pub async fn record_open(pool: &SqlitePool, id: i64) -> Result<(), String> {
     sqlx::query(
-        "UPDATE resources SET open_count = open_count + 1, last_opened_at = datetime('now') WHERE id = ?",
+        "UPDATE resources SET open_count = open_count + 1, last_opened_at = datetime('now'), remind_at = NULL WHERE id = ?",
     )
     .bind(id)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Pose (ou efface avec None) un rappel « me rappeler le… » (UTC
+/// « YYYY-MM-DD HH:MM:SS »).
+pub async fn set_remind_at(
+    pool: &SqlitePool,
+    id: i64,
+    remind_at: Option<String>,
+) -> Result<(), String> {
+    if let Some(ref at) = remind_at {
+        // garde de format : on ne stocke que du datetime SQLite triable
+        if at.len() != 19 || at.as_bytes().get(10) != Some(&b' ') {
+            return Err("date de rappel invalide (AAAA-MM-JJ HH:MM:SS)".into());
+        }
+    }
+    sqlx::query("UPDATE resources SET remind_at = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(remind_at)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Rappels échus (non archivés), les plus urgents d'abord.
+pub async fn due_reminders(pool: &SqlitePool, limit: i64) -> Result<Vec<Resource>, String> {
+    let rows = sqlx::query(
+        "SELECT id, url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, remind_at, created_at, updated_at FROM resources WHERE remind_at IS NOT NULL AND remind_at <= datetime('now') AND status != 'archived' ORDER BY remind_at ASC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(row_to_resource).collect())
 }
 
 /// Réordonnancement PARTIEL du placement manuel : seules les ids de la liste
@@ -887,16 +947,87 @@ pub async fn all_tags(pool: &SqlitePool) -> Result<Vec<String>, String> {
     Ok(tags)
 }
 
-pub async fn categories_with_counts(
-    pool: &SqlitePool,
-) -> Result<Vec<(String, i64)>, String> {
+/// Renomme un tag partout ; fusion si `new` existe déjà (les doublons
+/// intra-ressource sont éliminés). Retourne les ressources touchées.
+pub async fn rename_tag(pool: &SqlitePool, old: &str, new: &str) -> Result<usize, String> {
+    let old = old.trim();
+    let new = new.trim();
+    if old.is_empty() || new.is_empty() {
+        return Err("tag vide".into());
+    }
+    if old == new {
+        return Ok(0);
+    }
+    let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, tags FROM resources")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut touched = 0usize;
+    for (id, tags_json) in rows {
+        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+        if !tags.iter().any(|t| t == old) {
+            continue;
+        }
+        let mut next: Vec<String> = tags
+            .into_iter()
+            .map(|t| if t == old { new.to_string() } else { t })
+            .collect();
+        next.sort();
+        next.dedup();
+        let json = serde_json::to_string(&next).map_err(|e| e.to_string())?;
+        sqlx::query("UPDATE resources SET tags = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(&json)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        touched += 1;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(touched)
+}
+
+/// Supprime un tag de toutes les ressources. Retourne les touchées.
+pub async fn remove_tag(pool: &SqlitePool, tag: &str) -> Result<usize, String> {
+    let tag = tag.trim();
+    if tag.is_empty() {
+        return Err("tag vide".into());
+    }
+    let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, tags FROM resources")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut touched = 0usize;
+    for (id, tags_json) in rows {
+        let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+        if !tags.iter().any(|t| t == tag) {
+            continue;
+        }
+        let next: Vec<String> = tags.into_iter().filter(|t| t != tag).collect();
+        let json = serde_json::to_string(&next).map_err(|e| e.to_string())?;
+        sqlx::query("UPDATE resources SET tags = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(&json)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        touched += 1;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(touched)
+}
+
+/// Tags + compteurs, triés insensible à la casse.
+pub async fn tag_stats(pool: &SqlitePool) -> Result<Vec<(String, i64)>, String> {
     let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT category, COUNT(*) as n FROM resources GROUP BY category ORDER BY category COLLATE NOCASE",
+        "SELECT value AS tag, COUNT(*) AS n FROM resources, json_each(resources.tags) GROUP BY value ORDER BY value COLLATE NOCASE",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().filter(|(c, _)| !c.is_empty()).collect())
+    Ok(rows)
 }
 
 // --- Dossiers (groupements de ressources) ---
@@ -1078,6 +1209,52 @@ pub async fn rename_folder(
         return Err(format!("dossier {id} introuvable"));
     }
     Ok(())
+}
+
+/// Nettoyage one-shot des dossiers-système hérités (« À traiter », « Archivés »)
+/// créés par l'ancien modèle où `status` se doublait d'un rang en dossier. La
+/// source de vérité est désormais le seul champ `status` : on supprime ces
+/// dossiers racine homonymes, et grace à `ON DELETE SET NULL` leurs ressources
+/// ressortent à la racine EN GARDANT leur statut (rien n'est perdu, archivés
+/// restent masqués de l'accueil par `hide_archived`).
+///
+/// Un dossier de ce nom possédant des sous-dossiers est considéré détourné par
+/// l'utilisateur et LAISSÉ INTACT. Retourne le nombre de dossiers supprimés.
+pub async fn cleanup_legacy_status_folders(pool: &SqlitePool) -> Result<usize, String> {
+    let rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT id, name FROM folders WHERE parent_id IS NULL",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let legacy = |n: &str| {
+        let l = n.trim().to_lowercase();
+        l == "à traiter" || l == "archivés"
+    };
+    let mut removed = 0usize;
+    for (id, name) in rows {
+        if !legacy(&name) {
+            continue;
+        }
+        let children: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE parent_id = ?")
+                .bind(id)
+                .fetch_one(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        if children > 0 {
+            continue; // dossier réutilisé par l'utilisateur : on n'y touche pas
+        }
+        let r = sqlx::query("DELETE FROM folders WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        if r.rows_affected() > 0 {
+            removed += 1;
+        }
+    }
+    Ok(removed)
 }
 
 pub async fn delete_folder(pool: &SqlitePool, id: i64) -> Result<(), String> {
@@ -1570,5 +1747,136 @@ mod tests {
             .unwrap();
         assert_eq!(missing, vec![999]);
         assert!(list_trash(&pool).await.unwrap().is_empty());
+    }
+
+    fn tagged_res(url: &str, title: &str, tags: &[&str]) -> NewResource {
+        let mut r = new_res(url, title, None);
+        r.tags = tags.iter().map(|s| s.to_string()).collect();
+        r
+    }
+
+    #[tokio::test]
+    async fn rename_tag_renames_everywhere_and_counts() {
+        let pool = test_pool().await;
+        add_resource(&pool, &tagged_res("https://a.com", "A", &["ia", "outils"]))
+            .await
+            .unwrap();
+        add_resource(&pool, &tagged_res("https://b.com", "B", &["IA"]))
+            .await
+            .unwrap();
+        // sensible à la casse : seul « ia » exact est renommé
+        let touched = rename_tag(&pool, "ia", "intelligence").await.unwrap();
+        assert_eq!(touched, 1);
+        let stats = tag_stats(&pool).await.unwrap();
+        assert!(stats.iter().any(|(t, n)| t == "intelligence" && *n == 1));
+        // fusion : « IA » vers « intelligence » — pas de doublon intra-ligne
+        let touched = rename_tag(&pool, "IA", "intelligence").await.unwrap();
+        assert_eq!(touched, 1);
+        let b = get_resource(&pool, 2).await.unwrap();
+        assert_eq!(b.tags, vec!["intelligence"]);
+        assert_eq!(rename_tag(&pool, "ia", "ia").await.unwrap(), 0);
+        assert!(rename_tag(&pool, "", "x").await.is_err());
+        assert!(rename_tag(&pool, "x", "").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn remove_tag_clears_everywhere_and_stats_follow() {
+        let pool = test_pool().await;
+        add_resource(&pool, &tagged_res("https://a.com", "A", &["vieux", "garde"]))
+            .await
+            .unwrap();
+        add_resource(&pool, &tagged_res("https://b.com", "B", &["vieux"]))
+            .await
+            .unwrap();
+        let touched = remove_tag(&pool, "vieux").await.unwrap();
+        assert_eq!(touched, 2);
+        let stats = tag_stats(&pool).await.unwrap();
+        assert!(!stats.iter().any(|(t, _)| t == "vieux"));
+        assert!(stats.iter().any(|(t, n)| t == "garde" && *n == 1));
+        assert!(remove_tag(&pool, "").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn integrity_ok_detects_a_healthy_memory_db() {        let pool = test_pool().await;
+        assert!(integrity_ok(&pool).await, "DB mémoire fraîche = saine");
+        add_resource(&pool, &new_res("https://a.com", "A", None))
+            .await
+            .unwrap();
+        // la relit, l'intégrité reste bonne (le check ne modifie rien)
+        assert!(integrity_ok(&pool).await);
+    }
+
+    #[tokio::test]
+    async fn remind_at_roundtrip_and_due() {
+        let pool = test_pool().await;
+        let a = add_resource(&pool, &new_res("https://a.com", "A", None))
+            .await
+            .unwrap();
+        let b = add_resource(&pool, &new_res("https://b.com", "B", None))
+            .await
+            .unwrap();
+        // passé = échu, futur = pas échu
+        set_remind_at(&pool, a.id, Some("2000-01-01 00:00:00".into()))
+            .await
+            .unwrap();
+        set_remind_at(&pool, b.id, Some("2999-01-01 00:00:00".into()))
+            .await
+            .unwrap();
+        let due = due_reminders(&pool, 10).await.unwrap();
+        assert_eq!(due.len(), 1, "seul le rappel passé est échu");
+        assert_eq!(due[0].id, a.id);
+        // format invalide refusé
+        assert!(set_remind_at(&pool, a.id, Some("demain".into()))
+            .await
+            .is_err());
+        // ouvrir solde le rappel
+        record_open(&pool, a.id).await.unwrap();
+        assert!(due_reminders(&pool, 10).await.unwrap().is_empty());
+        // effacement explicite
+        set_remind_at(&pool, b.id, None).await.unwrap();
+        let b2 = get_resource(&pool, b.id).await.unwrap();
+        assert_eq!(b2.remind_at, None);
+    }
+
+    #[tokio::test]
+    async fn cleanup_legacy_status_folders_unfiles_and_preserves_reused() {
+        let pool = test_pool().await;
+        // dossier-système hérité « Archivés » (racine, sans enfant) → supprimé
+        let arch = create_folder(&pool, "Archivés", "", None).await.unwrap();
+        let a = add_resource(&pool, &new_res("https://a.com", "A", None))
+            .await
+            .unwrap();
+        set_resource_folder(&pool, a.id, Some(arch.id))
+            .await
+            .unwrap();
+        // « À traiter » détourné (a un sous-dossier) → INTACT, ressources préservées
+        let triage = create_folder(&pool, "À traiter", "", None).await.unwrap();
+        create_folder(&pool, "Sous", "", Some(triage.id))
+            .await
+            .unwrap();
+        let b = add_resource(&pool, &new_res("https://b.com", "B", None))
+            .await
+            .unwrap();
+        set_resource_folder(&pool, b.id, Some(triage.id))
+            .await
+            .unwrap();
+
+        let removed = cleanup_legacy_status_folders(&pool).await.unwrap();
+        assert_eq!(removed, 1, "seul le dossier sans enfant part");
+        // ON DELETE SET NULL : A ressort à la racine
+        assert_eq!(get_resource(&pool, a.id).await.unwrap().folder_id, None);
+        // B reste dans « À traiter » (détourné, non supprimé)
+        assert_eq!(
+            get_resource(&pool, b.id).await.unwrap().folder_id,
+            Some(triage.id)
+        );
+        let names: Vec<String> = list_folders(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        assert!(names.iter().any(|n| n == "À traiter"));
+        assert!(!names.iter().any(|n| n == "Archivés"));
     }
 }

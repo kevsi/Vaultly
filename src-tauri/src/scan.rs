@@ -1,7 +1,7 @@
 use rand::RngCore;
 use serde::Deserialize;
 
-/// Un favori importé depuis un navigateur.
+/// Un favori importé depuis un navigateur (ou un fichier : HTML, CSV).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedBookmark {
@@ -9,6 +9,9 @@ pub struct ImportedBookmark {
     pub url: String,
     #[serde(default)]
     pub folder: String,
+    /// tags propres à la ligne (CSV) — fusionnés aux tags par défaut
+    #[serde(default)]
+    pub tags: Vec<String>,
     #[serde(default = "default_true")]
     pub selected: bool,
 }
@@ -132,6 +135,7 @@ fn collect_chromium(node: &ChromiumNode, folder: &str, out: &mut Vec<ImportedBoo
                 title,
                 url: url.clone(),
                 folder: folder_clean,
+                tags: Vec::new(),
                 selected: true,
             });
         }
@@ -261,6 +265,7 @@ fn read_places_sqlite(path: &std::path::Path) -> Vec<ImportedBookmark> {
                 title: if title.is_empty() { url.clone() } else { title },
                 url,
                 folder: folder.unwrap_or_default(),
+                tags: Vec::new(),
                 selected: true,
             });
         }

@@ -18,6 +18,8 @@ export interface Resource {
   folderId: number | null;
   /** statut de traitement : "" = actif, "todo" = à traiter, "archived" */
   status: string;
+  /** rappel « me rappeler le… » (UTC), null = aucun. Ouvrir solde le rappel. */
+  remindAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,16 +73,26 @@ export interface ResourceFilter {
   folderId?: number | null;
   /** "" = actifs, "todo" = à traiter, "archived" = archivés */
   status?: string | null;
+  /** true = exclure les archivés (accueil). Ignoré si `status` explicite. */
+  hideArchived?: boolean;
   /** Some(true) = seulement les ressources sans dossier */
   unfiledOnly?: boolean | null;
 }
 
-export type SortBy = "recent" | "mostUsed" | "manual" | "title" | "added" | "oldest";
+export type SortBy =
+  | "recent"
+  | "mostUsed"
+  | "manual"
+  | "title"
+  | "added"
+  | "oldest";
 
 export interface ImportedBookmark {
   title: string;
   url: string;
   folder: string;
+  /** tags propres à la ligne (import CSV) — fusionnés aux tags par défaut */
+  tags?: string[];
   selected: boolean;
 }
 

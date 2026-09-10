@@ -291,6 +291,19 @@ impl VaultlyMcp {
         match r {
             Ok(res) if res.url.starts_with("exe:") => {
                 let exe = res.meta.get("exePath").cloned().unwrap_or_else(|| res.url[4..].to_string());
+                // via token MCP : .exe uniquement. .bat/.cmd/.lnk ouvrent la
+                // voie à l'exécution de script/arbitraire — réservés au clic
+                // utilisateur direct dans l'UI, jamais à un appel piloté.
+                let ext = std::path::Path::new(&exe)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if ext != "exe" {
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
+                        "lancement distant restreint aux .exe (les .bat/.cmd/.lnk exigent un clic dans l'interface)".to_string(),
+                    )]));
+                }
                 match crate::commands::launch_executable_sync(&exe) {
                     Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(
                         format!("App lancée : {}", res.title),

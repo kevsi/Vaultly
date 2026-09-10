@@ -98,12 +98,21 @@ async fn try_bind(
 
     // middleware d'authentification Bearer (lit les jetons en direct)
     let tokens_for_mw = tokens.clone();
+    // quota du serveur MCP (CRUD + launch_app + check_dead_links coûteux) :
+    // fenêtre large mais plafonnée — sans ça, un token volé martèlerait /mcp.
+    let mcp_rate = std::sync::Arc::new(AddRateLimiter::new(
+        240,
+        std::time::Duration::from_secs(60),
+    ));
     let auth_mw = move |req: Request, next: Next| {
         let tokens = tokens_for_mw.clone();
-        async move { check_bearer(tokens, req, next).await }
+        let rate = mcp_rate.clone();
+        async move { check_bearer(tokens, req, next, rate).await }
     };
 
     let pool_for_api = pool.clone();
+    let pool_add = pool_for_api.clone();
+    let pool_bulk = pool_for_api.clone();
     let mcp_service = StreamableHttpService::new(
         move || Ok(VaultlyMcp::new(pool.clone())),
         Arc::new(LocalSessionManager::default()),
@@ -117,12 +126,18 @@ async fn try_bind(
         30,
         std::time::Duration::from_secs(60),
     ));
+    // le bulk compte comme UNE action (sinon moissonner 40 onglets sauterait
+    // la limite de 30/mois) : quota propre, fenêtre large.
+    let bulk_rate = std::sync::Arc::new(AddRateLimiter::new(
+        20,
+        std::time::Duration::from_secs(60),
+    ));
     let app = Router::new()
         .route("/", get(|| async { "Vaultly MCP" }))
         .route(
             "/api/add",
             post(move |body: Json<ApiAddBody>| {
-                let pool = pool_for_api.clone();
+                let pool = pool_add.clone();
                 let rate = rate.clone();
                 async move {
                     if !rate.allow() {
@@ -135,6 +150,26 @@ async fn try_bind(
                         );
                     }
                     api_add(pool, clamp_api_add_body(body.0)).await
+                }
+            })
+            .options(|| async { json_ok(serde_json::json!({})) }),
+        )
+        .route(
+            "/api/add-bulk",
+            post(move |body: Json<ApiAddBulkBody>| {
+                let pool = pool_bulk.clone();
+                let bulk = bulk_rate.clone();
+                async move {
+                    if !bulk.allow() {
+                        return cors_json(
+                            StatusCode::TOO_MANY_REQUESTS,
+                            serde_json::json!({
+                                "ok": false,
+                                "error": "trop de moissons (20/minute max) — réessaie dans un instant",
+                            }),
+                        );
+                    }
+                    api_add_bulk(pool, body.0).await
                 }
             })
             .options(|| async { json_ok(serde_json::json!({})) }),
@@ -204,7 +239,12 @@ async fn cors_mw(req: Request, next: Next) -> Response {
 /// Portée du jeton : `/api/*` accepte le token add-only (ou le token MCP),
 /// tout le reste (notamment /mcp : delete_resource, launch_app…) exige le
 /// token MCP. L'extension ne peut donc plus rien faire d'autre qu'ajouter.
-async fn check_bearer(tokens: SharedTokens, req: Request, next: Next) -> Response {
+async fn check_bearer(
+    tokens: SharedTokens,
+    req: Request,
+    next: Next,
+    mcp_rate: std::sync::Arc<AddRateLimiter>,
+) -> Response {
     if req.method() == Method::OPTIONS {
         return next.run(req).await;
     }
@@ -231,6 +271,14 @@ async fn check_bearer(tokens: SharedTokens, req: Request, next: Next) -> Respons
         || (is_add_route && !add.is_empty() && constant_time_eq(bearer, &add));
     if !ok {
         return unauthorized();
+    }
+    // quota MCP (après auth : un non-authentifié ne peut pas consommer le
+    // quota d'autrui) — /mcp seulement, /api/add a son propre limiteur.
+    if req.uri().path().starts_with("/mcp") && !mcp_rate.allow() {
+        return Response::builder()
+            .status(StatusCode::TOO_MANY_REQUESTS)
+            .body(Body::from("trop de requêtes MCP — réessaie dans un instant"))
+            .unwrap();
     }
     next.run(req).await
 }
@@ -375,6 +423,25 @@ pub struct ApiAddBody {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub notes: Option<String>,
+}
+
+/// Corps de `POST /api/add-bulk` (moisson d'onglets de l'extension) : une
+/// salve de liens à enregistrer, optionnellement rangés dans un dossier nommé.
+#[derive(Debug, serde::Deserialize)]
+pub struct ApiAddBulkBody {
+    #[serde(default)]
+    pub folder: Option<String>,
+    #[serde(default)]
+    pub items: Vec<ApiAddItem>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ApiAddItem {
+    pub url: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
 }
 
 /// Bornes des champs relayés par l'extension : le corps vient de pages web
@@ -529,6 +596,93 @@ async fn api_add(pool: SqlitePool, body: ApiAddBody) -> Response {
     }
 }
 
+/// POST /api/add-bulk : moisson d'onglets. Une seule action bornée (200 max)
+/// qui range les liens dans un dossier (trouvé ou créé) et ignore doublons +
+/// schémas non-web. Même garde de schéma que `/api/add` (jamais exe:/file:).
+async fn api_add_bulk(pool: SqlitePool, mut body: ApiAddBulkBody) -> Response {
+    const MAX_ITEMS: usize = 200;
+    if body.items.len() > MAX_ITEMS {
+        body.items.truncate(MAX_ITEMS);
+    }
+    // dossier cible : existant (nom insensible à la casse) ou créé à la racine
+    let folder_name = body.folder.map(|f| f.trim().to_string()).filter(|s| !s.is_empty());
+    let mut folder_id: Option<i64> = None;
+    if let Some(name) = &folder_name {
+        let existing: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM folders WHERE name = ? COLLATE NOCASE",
+        )
+        .bind(name)
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+        folder_id = match existing {
+            Some(id) => Some(id),
+            None => crate::db::create_folder(&pool, name, "", None)
+                .await
+                .ok()
+                .map(|f| f.id),
+        };
+    }
+
+    let mut added = 0usize;
+    let mut duplicates = 0usize;
+    let mut invalid = 0usize;
+    for item in body.items {
+        let lower = item.url.trim().to_lowercase();
+        if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+            invalid += 1;
+            continue;
+        }
+        // borne les champs par item (même plafond que /api/add)
+        let clamped = clamp_api_add_body(ApiAddBody {
+            url: item.url,
+            title: item.title,
+            tags: item.tags,
+            notes: None,
+        });
+        let new = crate::db::NewResource {
+            url: clamped.url.trim().to_string(),
+            title: clamped.title.unwrap_or_default(),
+            description: String::new(),
+            resource_type: "site".into(),
+            category: String::new(),
+            tags: clamped.tags.unwrap_or_default(),
+            notes: String::new(),
+            favicon: String::new(),
+            favorite: false,
+            meta: Default::default(),
+            folder_id,
+            status: None,
+        };
+        let new = match crate::commands::normalize_url(new) {
+            Ok(n) => n,
+            Err(_) => {
+                invalid += 1;
+                continue;
+            }
+        };
+        let mut new = new;
+        if new.favicon.is_empty() && new.url.starts_with("http") {
+            new.favicon = crate::commands::favicon_for(&new.url);
+        }
+        match crate::db::add_resource(&pool, &new).await {
+            Ok(_) => added += 1,
+            Err(e) if e.contains("déjà enregistrée") => duplicates += 1,
+            Err(e) => {
+                tracing::warn!("add-bulk : {e}");
+                invalid += 1;
+            }
+        }
+    }
+    json_ok(serde_json::json!({
+        "ok": true,
+        "added": added,
+        "duplicates": duplicates,
+        "invalid": invalid,
+        "folder": folder_name.unwrap_or_default(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,9 +790,14 @@ mod tests {
     /// Router minimal avec le même middleware que le serveur réel.
     fn test_router(tokens: SharedTokens) -> Router {
         let tokens_for_mw = tokens.clone();
+        let mcp_rate = std::sync::Arc::new(AddRateLimiter::new(
+            240,
+            std::time::Duration::from_secs(60),
+        ));
         let auth_mw = move |req: Request, next: Next| {
             let tokens = tokens_for_mw.clone();
-            async move { check_bearer(tokens, req, next).await }
+            let rate = mcp_rate.clone();
+            async move { check_bearer(tokens, req, next, rate).await }
         };
         Router::new()
             .route(
@@ -822,5 +981,54 @@ mod tests {
         };
         let lower = body.url.trim().to_lowercase();
         assert!(!lower.starts_with("exe:"));
+    }
+
+    async fn bulk_pool() -> SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::migrate(&pool).await.unwrap();
+        pool
+    }
+
+    async fn body_json(resp: Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn add_bulk_dedupes_guards_schema_and_folders() {
+        let pool = bulk_pool().await;
+        let body = ApiAddBulkBody {
+            folder: Some("Onglets · 2026-09-09".into()),
+            items: vec![
+                ApiAddItem { url: "https://a.com".into(), title: Some("A".into()), tags: None },
+                // même URL : doublon interne ignoré
+                ApiAddItem { url: "https://a.com".into(), title: Some("A bis".into()), tags: None },
+                // lanceur : refusé par la garde de schéma
+                ApiAddItem { url: "exe:C:\\evil.exe".into(), title: None, tags: None },
+            ],
+        };
+        let j = body_json(api_add_bulk(pool.clone(), body).await).await;
+        assert_eq!(j["ok"], serde_json::json!(true));
+        assert_eq!(j["added"].as_i64().unwrap(), 1);
+        assert_eq!(j["duplicates"].as_i64().unwrap(), 1);
+        assert_eq!(j["invalid"].as_i64().unwrap(), 1);
+        // un dossier unique créé, la ressource y est rangée
+        let folders = crate::db::list_folders(&pool).await.unwrap();
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].name, "Onglets · 2026-09-09");
+        let res = crate::db::list_resources(
+            &pool,
+            &crate::db::ResourceFilter { no_limit: true, ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].folder_id, Some(folders[0].id));
     }
 }

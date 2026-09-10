@@ -118,6 +118,14 @@
       button:hover { background: color-mix(in oklch, var(--primary) 85%, black); }
       button:active { transform: translateY(1px); box-shadow: none; }
       button:disabled { opacity: 0.55; cursor: default; transform: none; }
+      button.secondary {
+        margin-top: 8px;
+        background: var(--muted);
+        color: var(--foreground);
+        box-shadow: none;
+        font-weight: 500;
+      }
+      button.secondary:hover { background: color-mix(in oklch, var(--muted) 75%, var(--foreground)); }
       #status {
         display: none;
         margin-top: 10px;
@@ -183,6 +191,9 @@
     <label for="tags">Tags (séparés par des virgules)</label>
     <input id="tags" placeholder="ex : design, outil" />
     <button id="save">Ajouter à ma bibliothèque</button>
+    <button id="harvest" class="secondary" title="Ranger tous les onglets ouverts de cette fenêtre dans un dossier daté">
+      Enregistrer tous mes onglets
+    </button>
     <div id="status"></div>
     <details>
       <summary>Token de l'extension <span class="dot" id="dot"></span></summary>

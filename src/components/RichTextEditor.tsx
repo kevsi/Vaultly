@@ -1,5 +1,6 @@
 import {
   Bold,
+  Eraser,
   Heading2,
   Italic,
   Link2,
@@ -10,14 +11,17 @@ import {
   Strikethrough,
   Underline,
   Undo2,
-  Eraser,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PromptDialog } from "@/components/PromptDialog";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { cn } from "@/lib/utils";
-import { PromptDialog } from "@/components/PromptDialog";
 
-function statsOf(html: string): { words: number; chars: number; minutes: number } {
+function statsOf(html: string): {
+  words: number;
+  chars: number;
+  minutes: number;
+} {
   const text = html
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;|&#160;/g, " ")
@@ -25,7 +29,11 @@ function statsOf(html: string): { words: number; chars: number; minutes: number 
     .trim();
   if (!text) return { words: 0, chars: 0, minutes: 0 };
   const words = text.split(" ").filter(Boolean).length;
-  return { words, chars: text.length, minutes: Math.max(1, Math.ceil(words / 200)) };
+  return {
+    words,
+    chars: text.length,
+    minutes: Math.max(1, Math.ceil(words / 200)),
+  };
 }
 
 /**
@@ -86,9 +94,10 @@ export function RichTextEditor({
   function onLinkSubmit(url: string | null) {
     setLinkOpen(false);
     if (!url) return;
-    const v = url.startsWith("http://") || url.startsWith("https://")
-      ? url
-      : `https://${url}`;
+    const v =
+      url.startsWith("http://") || url.startsWith("https://")
+        ? url
+        : `https://${url}`;
     exec("createLink", v);
   }
 
@@ -103,23 +112,53 @@ export function RichTextEditor({
         className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 p-1"
         onMouseDown={(e) => e.preventDefault()}
       >
-        <button type="button" title="Annuler (Ctrl+Z)" className={btn} onClick={() => exec("undo")}>
+        <button
+          type="button"
+          title="Annuler (Ctrl+Z)"
+          className={btn}
+          onClick={() => exec("undo")}
+        >
           <Undo2 className="size-4" />
         </button>
-        <button type="button" title="Rétablir (Ctrl+Y)" className={btn} onClick={() => exec("redo")}>
+        <button
+          type="button"
+          title="Rétablir (Ctrl+Y)"
+          className={btn}
+          onClick={() => exec("redo")}
+        >
           <Redo2 className="size-4" />
         </button>
         <span className="mx-1 h-5 w-px bg-border" />
-        <button type="button" title="Gras (Ctrl+B)" className={btn} onClick={() => exec("bold")}>
+        <button
+          type="button"
+          title="Gras (Ctrl+B)"
+          className={btn}
+          onClick={() => exec("bold")}
+        >
           <Bold className="size-4" />
         </button>
-        <button type="button" title="Italique (Ctrl+I)" className={btn} onClick={() => exec("italic")}>
+        <button
+          type="button"
+          title="Italique (Ctrl+I)"
+          className={btn}
+          onClick={() => exec("italic")}
+        >
           <Italic className="size-4" />
         </button>
-        <button type="button" title="Souligné (Ctrl+U)" className={btn} onClick={() => exec("underline")}>
+        <button
+          type="button"
+          title="Souligné (Ctrl+U)"
+          className={btn}
+          onClick={() => exec("underline")}
+        >
           <Underline className="size-4" />
         </button>
-        <button type="button" title="Barré" className={btn} onClick={() => exec("strikeThrough")}>
+        <button
+          type="button"
+          title="Barré"
+          className={btn}
+          onClick={() => exec("strikeThrough")}
+        >
           <Strikethrough className="size-4" />
         </button>
         <span className="mx-1 h-5 w-px bg-border" />
@@ -131,10 +170,20 @@ export function RichTextEditor({
         >
           <Heading2 className="size-4" />
         </button>
-        <button type="button" title="Liste à puces" className={btn} onClick={() => exec("insertUnorderedList")}>
+        <button
+          type="button"
+          title="Liste à puces"
+          className={btn}
+          onClick={() => exec("insertUnorderedList")}
+        >
           <List className="size-4" />
         </button>
-        <button type="button" title="Liste numérotée" className={btn} onClick={() => exec("insertOrderedList")}>
+        <button
+          type="button"
+          title="Liste numérotée"
+          className={btn}
+          onClick={() => exec("insertOrderedList")}
+        >
           <ListOrdered className="size-4" />
         </button>
         <button
@@ -145,11 +194,21 @@ export function RichTextEditor({
         >
           <Quote className="size-4" />
         </button>
-        <button type="button" title="Lien" className={btn} onClick={() => setLinkOpen(true)}>
+        <button
+          type="button"
+          title="Lien"
+          className={btn}
+          onClick={() => setLinkOpen(true)}
+        >
           <Link2 className="size-4" />
         </button>
         <span className="mx-1 h-5 w-px bg-border" />
-        <button type="button" title="Effacer la mise en forme" className={btn} onClick={() => exec("removeFormat")}>
+        <button
+          type="button"
+          title="Effacer la mise en forme"
+          className={btn}
+          onClick={() => exec("removeFormat")}
+        >
           <Eraser className="size-4" />
         </button>
       </div>
@@ -200,11 +259,13 @@ export function RichTextEditor({
       {showStats && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {stats.words} mot{stats.words > 1 ? "s" : ""} · {stats.chars} caractère{stats.chars > 1 ? "s" : ""}
+            {stats.words} mot{stats.words > 1 ? "s" : ""} · {stats.chars}{" "}
+            caractère{stats.chars > 1 ? "s" : ""}
           </span>
           {stats.words > 0 && <span>· lecture ~{stats.minutes} min</span>}
           <span className="ml-auto hidden sm:inline">
-            Ctrl+B gras · Ctrl+I italique · Ctrl+U souligné · listes et citation via la barre
+            Ctrl+B gras · Ctrl+I italique · Ctrl+U souligné · listes et citation
+            via la barre
           </span>
         </div>
       )}
@@ -222,6 +283,9 @@ export function RichTextEditor({
 
 // petit export utilitaire pour l'état « vide »
 export function isHtmlEmpty(html: string): boolean {
-  const text = html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+  const text = html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
   return text.length === 0;
 }

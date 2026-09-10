@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { Command } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 const EXAMPLES = [
@@ -20,10 +20,10 @@ export function Onboarding({ onTryPalette }: { onTryPalette: () => void }) {
     if (!localStorage.getItem("vaultly-onboarded")) setOpen(true);
   }, []);
 
-  function dismiss() {
+  const dismiss = useCallback(() => {
     localStorage.setItem("vaultly-onboarded", "1");
     setOpen(false);
-  }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -32,8 +32,7 @@ export function Onboarding({ onTryPalette }: { onTryPalette: () => void }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, dismiss]);
 
   if (!open) return null;
 
@@ -46,7 +45,11 @@ export function Onboarding({ onTryPalette }: { onTryPalette: () => void }) {
         className="w-full max-w-md animate-pop-in rounded-2xl border bg-card p-6 shadow-2xl"
       >
         <div className="flex items-center gap-2">
-          <img src="/logo.png?v=2" alt="" className="size-9 rounded-xl object-cover" />
+          <img
+            src="/logo.png?v=2"
+            alt=""
+            className="size-9 rounded-xl object-cover"
+          />
           <h2 className="text-lg font-semibold">Bienvenue dans Vaultly</h2>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -64,7 +67,9 @@ export function Onboarding({ onTryPalette }: { onTryPalette: () => void }) {
             >
               <span className="text-3xl">{e.emoji}</span>
               <span className="text-xs font-medium">{e.name}</span>
-              <span className="text-[10px] text-muted-foreground">{e.kind}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {e.kind}
+              </span>
             </div>
           ))}
         </div>

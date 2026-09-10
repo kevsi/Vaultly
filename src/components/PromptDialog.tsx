@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 /**
@@ -67,7 +67,11 @@ export function PromptDialog({
             }}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onDone(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onDone(null)}
+            >
               Annuler
             </Button>
             <Button type="submit">{confirmLabel}</Button>

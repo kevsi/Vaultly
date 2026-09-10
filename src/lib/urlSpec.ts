@@ -79,7 +79,11 @@ export function urlSpecFor(type: string): UrlSpec {
           const base = requireHttps(v);
           if (base) return base;
           const host = hostOf(v);
-          if (!GIT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`) || v.startsWith(h))) {
+          if (
+            !GIT_HOSTS.some(
+              (h) => host === h || host.endsWith(`.${h}`) || v.startsWith(h),
+            )
+          ) {
             return "Utilise un lien GitHub, GitLab, Bitbucket ou Codeberg.";
           }
           return null;
@@ -149,4 +153,25 @@ export function urlSpecFor(type: string): UrlSpec {
         validate: requireHttps,
       };
   }
+}
+
+/**
+ * Devine le type depuis une URL capturée (presse-papiers, drag & drop) :
+ * dépôt git ou vidéo → on va direct au formulaire ; le reste passe par
+ * l'étape de choix du type.
+ */
+export function detectTypeForUrl(url: string): "repo" | "video" | null {
+  const host = hostOf(url);
+  if (!host) return null;
+  if (
+    GIT_HOSTS.some(
+      (h) => host === h || host.endsWith(`.${h}`) || url.startsWith(h),
+    )
+  ) {
+    return "repo";
+  }
+  if (VIDEO_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+    return "video";
+  }
+  return null;
 }

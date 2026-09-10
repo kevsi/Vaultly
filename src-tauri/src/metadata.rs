@@ -1,18 +1,121 @@
+/// Client HTTP pour les requêtes sortantes vers des URL **fournies par
+/// l'utilisateur/la base** (métadonnées, vérification de liens morts). Deux
+/// garde-fous anti-SSRF :
+/// - `redirect(Policy::none())` : une redirection 30x ne peut plus mener la
+///   requête vers un hôte interne (contournement du test d'hôte initial) ;
+/// - timeout borné. Le corps est plafonné par l'appelant (Content-Length).
+pub(crate) fn guarded_web_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Vaultly/0.1")
+        .timeout(std::time::Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::warn!("client web durci indisponible, repli sans garde : {e}");
+            reqwest::Client::new()
+        })
+}
+
+/// Host (minuscule, sans port) extrait d'une URL http(s) ; vide si invalide.
+fn host_of(url: &str) -> String {
+    let rest = url
+        .trim()
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
+    let authority = rest.split('/').next().unwrap_or("");
+    // IPv6 entre crochets : [::1] ou [::1]:8080 → on garde l'IP sans crochets
+    if let Some(idx) = authority.rfind(']') {
+        let inner = &authority[1..idx]; // retire '[' et tout port après ']'
+        return inner.to_lowercase();
+    }
+    // hôte avec port « example.com:8080 » → retire le port numérique
+    match authority.rsplit_once(':') {
+        Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => h.to_lowercase(),
+        _ => authority.to_lowercase(),
+    }
+}
+
+/// Hôte visé « public » = ni loopback, ni RFC1918/CGNAT/link-local, ni
+/// réservations, ni noms internes. Compare les littéraux d'IP et les noms
+/// à bannir ; pas de résolution DNS (évite de bloquer l'async et le TOCTOU).
+/// Une IP publique ne peut pas pointer « par erreur » vers l'interne ; le
+/// seul contournerait restant est un hôte DNS dont l'enregistrement pointe
+/// en interne, cas résiduel pour un desktop mono-utilisateur hors-ligne.
+pub(crate) fn host_is_public(url: &str) -> bool {
+    let lower = url.trim().to_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return false;
+    }
+    let host = host_of(url);
+    if host.is_empty() {
+        return false;
+    }
+    if host == "localhost" || host.ends_with(".localhost") {
+        return false;
+    }
+    if [".local", ".internal", ".home", ".lan", ".home.arpa"]
+        .iter()
+        .any(|suf| host.ends_with(suf))
+    {
+        return false;
+    }
+    // Google/IMDS : métadonnées cloud par nom
+    if host == "metadata.google.internal" || host == "metadata" {
+        return false;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => !ip_is_private(ip),
+        // pas une IP : hostname « public » (la résolution est laissée au
+        // connect ; l'anti-SSRF principal ici est le blocage des redirections)
+        Err(_) => true,
+    }
+}
+
+fn ip_is_private(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                // 0.0.0.0/8 « this network » + 169.254 (IMDS) déjà couverts ;
+                // 100.64.0.0/10 CGNAT + 198.18/15 benchmark + 240/4 réservé
+                || (o[0] == 100 && (o[1] & 0xC0) == 64)
+                || (o[0] == 198 && (o[1] & 0xFE) == 18)
+                || o[0] >= 240
+                || o[0] == 192 && o[1] == 88 && o[2] == 99 // 6to4 relay anycast
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || {
+                    let s = v6.segments();
+                    // fe80::/10 lien-local, fc00::/7 unique-local
+                    (s[0] & 0xFFC0) == 0xFE80 || (s[0] & 0xFE00) == 0xFC00
+                }
+                // IPv4-mapped (::ffff:a.b.c.d) → recontrôle de la partie v4
+                || v6
+                    .to_ipv4_mapped()
+                    .map(std::net::IpAddr::V4)
+                    .map(ip_is_private)
+                    .unwrap_or(false)
+        }
+    }
+}
+
 /// Récupère le titre et le favicon d'une page web.
 /// Le titre vient du HTML (<title>), le favicon du service Google s2
 /// (pas de dépendance CORS ni de parsing de <link rel="icon">).
 pub async fn fetch(url: &str) -> Result<PageMetadata, String> {
-    // seuls les schémas web : evite qu'un schéma exotique (file:, gopher:,
-    // un chemin local…) parte dans reqwest ou serve de sonde locale
-    let lower = url.trim().to_lowercase();
-    if !lower.starts_with("http://") && !lower.starts_with("https://") {
-        return Err("seules les URL http(s) peuvent être récupérées".into());
+    // seuls les schémas web, et hôte public (anti-SSRF/sonde locale)
+    if !host_is_public(url) {
+        return Err("seules les URL http(s) publiques peuvent être récupérées".into());
     }
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Vaultly/0.1")
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+
+    let client = guarded_web_client();
 
     // host percent-encodé (comme favicon_for) : un « & »/« # » dans l'URL
     // tronquait la requête vers le service s2
@@ -36,10 +139,17 @@ pub async fn fetch(url: &str) -> Result<PageMetadata, String> {
 
     let mut title = String::new();
     if let Ok(resp) = client.get(url).send().await {
-        if let Ok(body) = resp.text().await {
-            // page géante : on ne garde que le début, ça suffit pour <title>
-            // et ça évite un pic mémoire sur un HTML monstrueux.
-            let head: String = body.chars().take(200_000).collect();
+        // plafond de corps : ne JAMAIS charger un HTML monstrueux en mémoire ;
+        // 200 ko suffisent pour le <title>. Lecture en flux borné.
+        const MAX_BODY: u64 = 200_000;
+        if resp
+            .content_length()
+            .map(|len| len > MAX_BODY)
+            .unwrap_or(false)
+        {
+            // Content-Length trop gros : on ne télécharge pas.
+        } else if let Ok(bytes) = read_capped(resp, MAX_BODY as usize).await {
+            let head = String::from_utf8_lossy(&bytes);
             title = extract_title(&head).unwrap_or_default();
         }
     }
@@ -50,6 +160,26 @@ pub async fn fetch(url: &str) -> Result<PageMetadata, String> {
     }
 
     Ok(PageMetadata { title, favicon })
+}
+
+/// Lit un corps de réponse jusqu'à `max` octets (arrête au-delà, même si le
+/// serveur annonce une taille plus grosse ou inconnue — chunked).
+async fn read_capped(
+    mut resp: reqwest::Response,
+    max: usize,
+) -> Result<Vec<u8>, reqwest::Error> {
+    let mut buf = Vec::with_capacity(max.min(16 * 1024));
+    while let Some(chunk) = resp.chunk().await? {
+        if buf.len() + chunk.len() > max {
+            buf.extend_from_slice(&chunk[..max.saturating_sub(buf.len())]);
+            break;
+        }
+        buf.extend_from_slice(&chunk);
+        if buf.len() >= max {
+            break;
+        }
+    }
+    Ok(buf)
 }
 
 /// Cherche `needle` (minuscules ASCII) dans `hay` sans tenir compte de la
@@ -281,9 +411,353 @@ pub async fn fetch_github_repo(url: &str) -> Result<RepoDetails, String> {
     })
 }
 
+// --- Smart Clip : deviner le type + extraire les méta riches d'une URL ---
+
+/// Résultat d'un « sniff » : tout ce qu'on peut pré-remplir automatiquement
+/// pour une tuile (type deviné, titre, description, image d'aperçu, tags).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sniff {
+    pub resource_type: String,
+    pub title: String,
+    pub description: String,
+    pub image: String,
+    pub tags: Vec<String>,
+}
+
+/// Id vidéo YouTube (youtube.com/watch?v=…, youtu.be/…, /shorts/…, /embed/…)
+/// — sert à construire la miniature sans appel d'API.
+pub fn youtube_video_id(url: &str) -> Option<String> {
+    let u = url.trim();
+    if let Some(rest) = u
+        .strip_prefix("https://youtu.be/")
+        .or_else(|| u.strip_prefix("http://youtu.be/"))
+    {
+        let id = rest.split(['?', '&', '/']).next().unwrap_or("");
+        return is_video_id(id).then(|| id.to_string());
+    }
+    for prefix in [
+        "https://www.youtube.com/watch",
+        "https://youtube.com/watch",
+        "http://www.youtube.com/watch",
+        "https://m.youtube.com/watch",
+        "https://music.youtube.com/watch",
+    ] {
+        if let Some(q) = u.strip_prefix(prefix) {
+            if let Some(v) = q
+                .trim_start_matches('?')
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("v="))
+            {
+                return is_video_id(v).then(|| v.to_string());
+            }
+        }
+    }
+    for seg in ["/shorts/", "/embed/", "/live/"] {
+        if let Some(i) = u.find(seg) {
+            let id = u[i + seg.len()..]
+                .split(['?', '&', '/'])
+                .next()
+                .unwrap_or("");
+            if is_video_id(id) {
+                return Some(id.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn is_video_id(s: &str) -> bool {
+    s.len() == 11 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Déduit le type de ressource d'après l'hôte / le chemin (sans réseau).
+/// Liste conservatrice — l'inconnu retombe sur « site ».
+pub fn detect_type(url: &str) -> &'static str {
+    let lower = url.trim().to_lowercase();
+    let host = lower
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or("");
+    let path_has = |p: &str| lower.contains(p);
+    let host_is = |h: &str| host == h || host.ends_with(&format!(".{h}"));
+    // dépôts : host git + une forme owner/repo
+    if ["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"]
+        .iter()
+        .any(|h| host_is(h))
+    {
+        let after = lower.splitn(4, '/').nth(3).unwrap_or("");
+        // « owner/repo » (au moins un « / » de plus) = dépôt ; simple profil
+        // « owner » = page de compte → pas un repo
+        if after.contains('/') {
+            return "repo";
+        }
+    }
+    if ["youtube.com", "youtu.be", "yt.be", "vimeo.com", "dailymotion.com", "dai.ly", "twitch.tv", "peertube.tv"]
+        .iter()
+        .any(|h| host_is(h) || host.ends_with(h))
+    {
+        return "video";
+    }
+    if ["arxiv.org", "medium.com", "dev.to", "substack.com", "wikipedia.org", "stackoverflow.com", "news.ycombinator.com"]
+        .iter()
+        .any(|h| host_is(h) || host.ends_with(h))
+    {
+        return "article";
+    }
+    if ["figma.com", "canva.com", "notion.so", "replit.com", "vercel.com", "netlify.com", "npmjs.com", "pypi.org", "huggingface.co"]
+        .iter()
+        .any(|h| host_is(h) || host.ends_with(h))
+        || path_has("/product/")
+    {
+        return "outil";
+    }
+    "site"
+}
+
+/// Valeur d'un attribut d'une balise <meta> (guillemets simples ou doubles).
+/// `tag_lower` = tag en minuscules ASCII (longueur préservée) ; `raw` = tag tel
+/// quel (les valeurs gardent leur casse/accents). Les ancres cherchées sont
+/// ASCII → indices alignés sur des frontières de caractère.
+fn meta_content(raw: &str, tag_lower: &str, want: &[&str]) -> Option<String> {
+    // trouve name="k" / property="k" où k ∈ want, puis lit content="..."
+    let (name_start, _) = find_attr(tag_lower, "name").or_else(|| find_attr(tag_lower, "property"))?;
+    // on ne peut lire qu'un seul name/property par balise : on récupère sa clé
+    let key = read_attr_value(tag_lower, name_start);
+    if !want.contains(&key.as_str()) {
+        return None;
+    }
+    let (cstart, _) = find_attr(tag_lower, "content")?;
+    let val = read_attr_value(raw, cstart); // raw : valeur dans sa casse
+    let v = val.trim();
+    (!v.is_empty()).then(|| decode_entities(v))
+}
+
+/// Position (après le « = ») et longueur de la valeur d'un attribut `name=`.
+/// Retourne l'index du début de la valeur (guillemet ou premier caractère).
+fn find_attr(tag_lower: &str, name: &str) -> Option<(usize, usize)> {
+    let bytes = tag_lower.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // chercher occurrence de « name » précédée d'un séparateur blanc
+        if let Some(rel) = tag_lower[i..].find(name) {
+            let at = i + rel;
+            let ok_left = at == 0 || matches!(bytes[at - 1], b' ' | b'\t' | b'\n' | b'\r' | b'"' | b'\'');
+            let after = at + name.len();
+            if ok_left && tag_lower[after..].trim_start().starts_with('=') {
+                // saute espaces + '='
+                let mut j = after;
+                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'=' {
+                    j += 1;
+                    while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                        j += 1;
+                    }
+                    return Some((j, 0));
+                }
+            }
+            i = at + name.len();
+        } else {
+            break;
+        }
+    }
+    None
+}
+
+/// Lit la valeur d'un attribut à partir de l'indice de son début (gère
+/// « value », 'value', et value nue terminée par espace ou >).
+fn read_attr_value(tag: &str, start: usize) -> String {
+    let bytes = tag.as_bytes();
+    if start >= bytes.len() {
+        return String::new();
+    }
+    match bytes[start] {
+        q @ (b'"' | b'\'') => {
+            let end = (start + 1..bytes.len()).find(|&k| bytes[k] == q).unwrap_or(bytes.len());
+            tag[start + 1..end].to_string()
+        }
+        _ => {
+            let end = (start..bytes.len())
+                .find(|&k| bytes[k] == b' ' || bytes[k] == b'\t' || bytes[k] == b'>')
+                .unwrap_or(bytes.len());
+            tag[start..end].to_string()
+        }
+    }
+}
+
+/// Extrait titre/description/image/mots-clés d'un HTML via ses balises
+/// <meta> Open Graph / Twitter / description / keywords.
+fn parse_meta(html: &str) -> (Option<String>, Option<String>, Option<String>, Vec<String>) {
+    let lower = html.to_ascii_lowercase();
+    let mut title = None;
+    let mut desc = None;
+    let mut image = None;
+    let mut keywords: Vec<String> = Vec::new();
+    let mut i = 0;
+    while let Some(rel) = lower[i..].find("<meta") {
+        let open = i + rel;
+        let Some(gt) = lower[open..].find('>') else { break };
+        let close = open + gt + 1;
+        let tag = &html[open..close];
+        let tagl = &lower[open..close];
+        if title.is_none() {
+            title = meta_content(tag, tagl, &["og:title", "twitter:title"]);
+        }
+        if desc.is_none() {
+            desc = meta_content(tag, tagl, &["og:description", "twitter:description", "description"]);
+        }
+        if image.is_none() {
+            image = meta_content(tag, tagl, &["og:image", "twitter:image"]);
+        }
+        if keywords.is_empty() {
+            if let Some(k) = meta_content(tag, tagl, &["keywords", "article:tag", "news_keywords"]) {
+                keywords = k
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty() && s.chars().count() <= 24)
+                    .take(6)
+                    .collect();
+            }
+        }
+        i = close;
+        if gt == 0 {
+            i += 1; // garde anti-boucle infinie sur « <meta> » dégénéré
+        }
+    }
+    (title, desc, image, keywords)
+}
+
+/// Résout une URL d'image relative (og:image peut être « /img/x.png »).
+fn absolutize_image(base_url: &str, img: &str) -> String {
+    let img = img.trim();
+    if img.starts_with("http://") || img.starts_with("https://") {
+        return img.to_string();
+    }
+    let lower = base_url.to_lowercase();
+    let Some(rest) = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"))
+    else {
+        return img.to_string();
+    };
+    let host = rest.split('/').next().unwrap_or("");
+    if let Some(p) = img.strip_prefix('/') {
+        format!("https://{host}/{p}")
+    } else {
+        format!("https://{host}/{img}")
+    }
+}
+
+/// « Sniff » une URL : type deviné + méta riches (titre, description, image,
+/// tags). N'appelle JAMAIS l'API GitHub (quota) — le détail de dépôt riche
+/// reste via la commande dédiée. Le type + les og: couvrent le « coller → tout
+/// se remplit » pour la grande majorité des sites.
+pub async fn sniff(url: &str) -> Result<Sniff, String> {
+    let u = url.trim();
+    if !host_is_public(u) {
+        return Err("seules les URL http(s) publiques peuvent être analysées".into());
+    }
+    let ty = detect_type(u);
+    let client = guarded_web_client();
+    let (mut title, mut description, mut image, mut tags) =
+        (String::new(), String::new(), String::new(), Vec::new());
+
+    // requête bornée + redirections coupées (host_is_public déjà vérifié)
+    if let Ok(resp) = client.get(u).send().await {
+        if let Ok(bytes) = read_capped(resp, 200_000).await {
+            let html = String::from_utf8_lossy(&bytes);
+            let (t, d, im, kw) = parse_meta(&html);
+            title = t.unwrap_or_default();
+            description = d.unwrap_or_default();
+            image = im.unwrap_or_default();
+            tags = kw;
+            if title.is_empty() {
+                title = extract_title(&html).unwrap_or_default();
+            }
+        }
+    }
+    // YouTube : miniature canonique sans API (i.ytimg) si rien de mieux
+    if image.is_empty() {
+        if let Some(id) = youtube_video_id(u) {
+            image = format!("https://i.ytimg.com/vi/{id}/oardefault.jpg");
+        }
+    }
+    if !image.is_empty() {
+        image = absolutize_image(u, &image);
+    }
+    // repli favicon (service s2) pour l'aperçu de la tuile
+    if image.is_empty() {
+        image = crate::commands::favicon_for(u);
+    }
+    Ok(Sniff {
+        resource_type: ty.to_string(),
+        title: title.chars().take(300).collect(),
+        description: description.chars().take(1000).collect(),
+        image,
+        tags,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sniff_detect_type_matrix() {
+        assert_eq!(detect_type("https://github.com/owner/repo"), "repo");
+        assert_eq!(detect_type("https://github.com/owner"), "site"); // pas de /repo
+        assert_eq!(detect_type("https://gitlab.com/a/b"), "repo");
+        assert_eq!(detect_type("https://youtu.be/dQw4w9WgXcQ"), "video");
+        assert_eq!(detect_type("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "video");
+        assert_eq!(detect_type("https://arxiv.org/abs/2301.00001"), "article");
+        assert_eq!(detect_type("https://www.figma.com/file/xyz"), "outil");
+        assert_eq!(detect_type("https://www.google.com/search?q=x"), "site");
+    }
+
+    #[test]
+    fn youtube_ids_extracted() {
+        assert_eq!(
+            youtube_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ").as_deref(),
+            Some("dQw4w9WgXcQ")
+        );
+        assert_eq!(
+            youtube_video_id("https://youtu.be/dQw4w9WgXcQ?t=1").as_deref(),
+            Some("dQw4w9WgXcQ")
+        );
+        assert_eq!(
+            youtube_video_id("https://www.youtube.com/shorts/abcdefghijk").as_deref(),
+            Some("abcdefghijk")
+        );
+        assert_eq!(youtube_video_id("https://youtube.com/watch?v=bad"), None);
+    }
+
+    #[test]
+    fn parse_meta_reads_og_and_fallbacks() {
+        let html = r#"<head>
+            <meta property="og:title" content="Le titre OG" />
+            <meta name="description" content="une description">
+            <meta name="keywords" content="ia, design, gratuit"/>
+            <meta property="og:image" content="/cover.png">
+            <title>repli</title>
+        </head>"#;
+        let (t, d, im, kw) = parse_meta(html);
+        assert_eq!(t.as_deref(), Some("Le titre OG"));
+        assert_eq!(d.as_deref(), Some("une description"));
+        assert_eq!(im.as_deref(), Some("/cover.png"));
+        assert_eq!(kw, vec!["ia", "design", "gratuit"]);
+        assert_eq!(absolutize_image("https://Ex.com/a/b", "/cover.png"), "https://ex.com/cover.png");
+    }
+
+    #[test]
+    fn parse_meta_title_falls_back_to_tag_and_amp_decoded() {
+        let html = r#"<meta property="og:title" content="A &amp; B"><title>fallback</title>"#;
+        let (t, _, _, _) = parse_meta(html);
+        assert_eq!(t.as_deref(), Some("A & B"));
+    }
 
     #[test]
     fn github_urls_parse() {
@@ -336,5 +810,46 @@ mod tests {
         assert_eq!(extract_title(html).unwrap(), "İstanbul — Café & Théo");
         assert_eq!(extract_title("<html><head></head>"), None);
         assert_eq!(extract_title("<title></title>"), None);
+    }
+
+    #[test]
+    fn host_is_public_rejects_internal_targets() {
+        // schémas non-web refusés d'office
+        assert!(!host_is_public("file:///C:/x"));
+        assert!(!host_is_public("gopher://x"));
+        assert!(!host_is_public("https://"));
+        // loopback / privées / link-local / réservations (IPv4 + IPv6)
+        assert!(!host_is_public("http://127.0.0.1:8080/x"));
+        assert!(!host_is_public("http://localhost/x"));
+        assert!(!host_is_public("http://foo.localhost/x"));
+        assert!(!host_is_public("http://10.1.2.3/"));
+        assert!(!host_is_public("http://172.16.0.1/"));
+        assert!(!host_is_public("http://192.168.1.10/"));
+        assert!(!host_is_public("http://169.254.169.254/latest/meta-data/")); // IMDS
+        assert!(!host_is_public("http://100.64.0.1/")); // CGNAT
+        assert!(!host_is_public("http://0.0.0.0/"));
+        assert!(!host_is_public("http://[::1]/"));
+        assert!(!host_is_public("http://[fe80::1]/"));
+        assert!(!host_is_public("http://[fd00::1]/")); // ULA
+        assert!(!host_is_public("http://[::ffff:127.0.0.1]/")); // IPv4-mapped loopback
+        // noms internes
+        assert!(!host_is_public("http://nas.local/"));
+        assert!(!host_is_public("http://metadata.google.internal/"));
+        // publics autorisés
+        assert!(host_is_public("https://github.com/owner/repo"));
+        assert!(host_is_public("https://example.com:8443/x"));
+        assert!(host_is_public("http://93.184.216.34/")); // IPv4 publique
+        assert!(host_is_public("https://[2606:2800:220:1:248:1893:25c8:194]/"));
+    }
+
+    #[test]
+    fn ip_private_boundaries() {
+        let v6_mapped_loopback: std::net::IpAddr = "::ffff:127.0.0.1".parse().unwrap();
+        assert!(ip_is_private(v6_mapped_loopback));
+        let v4_public: std::net::IpAddr = "8.8.8.8".parse().unwrap();
+        assert!(!ip_is_private(v4_public));
+        // 172.15 est PUBLIC, 172.16 privé (limite du /12)
+        assert!(!ip_is_private("172.15.0.1".parse::<std::net::IpAddr>().unwrap()));
+        assert!(ip_is_private("172.16.0.1".parse::<std::net::IpAddr>().unwrap()));
     }
 }

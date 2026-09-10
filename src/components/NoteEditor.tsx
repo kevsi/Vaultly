@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { addResource, allTags, updateResource } from "@/lib/api";
 import { isHtmlEmpty, RichTextEditor } from "@/components/RichTextEditor";
-import { NOTE_COLORS } from "@/lib/resources";
-import type { Resource } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,6 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { addResource, allTags, updateResource } from "@/lib/api";
+import { NOTE_COLORS } from "@/lib/resources";
+import type { Resource } from "@/lib/types";
+import { cn, describeError } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -25,7 +25,13 @@ interface Props {
   onSaved: () => void;
 }
 
-export function NoteEditor({ open, onOpenChange, note, initialFolderId, onSaved }: Props) {
+export function NoteEditor({
+  open,
+  onOpenChange,
+  note,
+  initialFolderId,
+  onSaved,
+}: Props) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [color, setColor] = useState("amber");
@@ -47,18 +53,27 @@ export function NoteEditor({ open, onOpenChange, note, initialFolderId, onSaved 
   }, [open, note]);
 
   const parsedTags = useMemo(
-    () => tagsInput.split(",").map((t) => t.trim()).filter(Boolean),
+    () =>
+      tagsInput
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
     [tagsInput],
   );
 
   const suggestions = useMemo(() => {
     const current = new Set(parsedTags.map((t) => t.toLowerCase()));
-    return allTagsList.filter((t) => !current.has(t.toLowerCase())).slice(0, 12);
+    return allTagsList
+      .filter((t) => !current.has(t.toLowerCase()))
+      .slice(0, 12);
   }, [allTagsList, parsedTags]);
 
   function toggleTag(tag: string) {
     setTagsInput((prev) => {
-      const list = prev.split(",").map((t) => t.trim()).filter(Boolean);
+      const list = prev
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
       return [...list, tag].join(", ");
     });
   }
@@ -95,7 +110,7 @@ export function NoteEditor({ open, onOpenChange, note, initialFolderId, onSaved 
       onOpenChange(false);
       onSaved();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setSaving(false);
     }
@@ -105,7 +120,9 @@ export function NoteEditor({ open, onOpenChange, note, initialFolderId, onSaved 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{note ? "Modifier la note" : "Nouvelle note"}</DialogTitle>
+          <DialogTitle>
+            {note ? "Modifier la note" : "Nouvelle note"}
+          </DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="grid gap-1.5">
@@ -163,7 +180,8 @@ export function NoteEditor({ open, onOpenChange, note, initialFolderId, onSaved 
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Astuce : sépare par des virgules. Clique un tag suggéré pour l'ajouter.
+              Astuce : sépare par des virgules. Clique un tag suggéré pour
+              l'ajouter.
             </p>
           </div>
 

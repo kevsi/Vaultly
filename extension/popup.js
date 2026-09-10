@@ -63,6 +63,80 @@ $("save").addEventListener("click", () => {
   });
 });
 
+// --- Moisson d'onglets : range tous les onglets web de la fenêtre courante
+// dans un dossier daté (« Onglets · 2026-09-09 »), via POST /api/add-bulk. ---
+$("harvest").addEventListener("click", () => {
+  chrome.storage.local.get(["token", "port"], (s) => {
+    const token = (s.token || "").trim().replace(/^Bearer\s+/i, "");
+    if (token) $("dot").classList.add("on");
+    if (!token) return show("Colle ton token (Réglages de Vaultly)", true);
+    void doHarvest(token, s.port);
+  });
+});
+
+async function doHarvest(token, memoPort) {
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const seen = new Set();
+  const items = [];
+  for (const t of tabs) {
+    const url = (t.url || "").trim();
+    // ne garder que les vrais liens web (ignore chrome://, edge://, about:,
+    // les pages vides de nouvel onglet…)
+    if (!/^https?:\/\//i.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    items.push({ url, title: (t.title || "").trim() });
+  }
+  if (items.length === 0) return show("Aucun onglet web à enregistrer", true);
+
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, "0");
+  const folder = `Onglets · ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+
+  $("save").disabled = true;
+  $("harvest").disabled = true;
+  show(`Enregistrement de ${items.length} onglet(s)…`);
+  const order = memoPort
+    ? [memoPort, ...PORTS.filter((p) => p !== memoPort)]
+    : PORTS;
+  let data = null;
+  let goodPort = null;
+  let authFailed = false;
+  for (const port of order) {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/api/add-bulk`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ folder, items }),
+      });
+      try {
+        data = await resp.json();
+      } catch {
+        data = { ok: false, error: await resp.text().catch(() => "") };
+      }
+      goodPort = port;
+      if (resp.status === 401 || resp.status === 403) authFailed = true;
+      break;
+    } catch (e) {
+      console.warn("port", port, "sans réponse :", e && e.message);
+      continue;
+    }
+  }
+  $("save").disabled = false;
+  $("harvest").disabled = false;
+  if (goodPort) chrome.storage.local.set({ port: goodPort });
+  if (authFailed) show("Token refusé — recolle-le (Réglages de Vaultly)", true);
+  else if (!data) show("Vaultly est-il ouvert sur cette machine ?", true);
+  else if (data.ok)
+    show(
+      `${data.added} ajouté(s) · ${data.duplicates} doublon(s) → « ${data.folder} »`,
+    );
+  else show(data.error || "Erreur inattendue", true);
+}
+
 async function tryPorts(order, token, url, title, tags) {
   try {
     let data = null;

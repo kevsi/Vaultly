@@ -1,6 +1,10 @@
+import { type QueryKey, useQuery } from "@tanstack/react-query";
+import { CheckSquare, History, Loader2, Trash2, Undo2, X } from "lucide-react";
 import { useState } from "react";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { Undo2, Trash2, History, Loader2, CheckSquare, X } from "lucide-react";
+import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   emptyTrash,
   listTrash,
@@ -8,16 +12,12 @@ import {
   restoreTrashBulk,
   type TrashEntry,
 } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { hostOf } from "@/lib/resources";
+import { hostOf, parseDbDate } from "@/lib/resources";
 import { useTauriMutation } from "@/lib/useTauriMutation";
 
 /** Date SQLite « YYYY-MM-DD HH:MM:SS » (UTC) → locale FR lisible. */
 function formatTrashDate(iso: string): string {
-  const d = new Date(iso.replace(" ", "T") + "Z");
+  const d = parseDbDate(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString("fr-FR", {
     day: "2-digit",
@@ -58,7 +58,9 @@ export function TrashView() {
   }
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(entries.map((e) => e.trashId)));
+    setSelected(
+      allSelected ? new Set() : new Set(entries.map((e) => e.trashId)),
+    );
   }
 
   async function runRestore(entry: TrashEntry) {
@@ -142,7 +144,9 @@ export function TrashView() {
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
               <History className="size-8 opacity-40" />
-              <p className="font-medium text-foreground">La corbeille est vide</p>
+              <p className="font-medium text-foreground">
+                La corbeille est vide
+              </p>
               <p className="max-w-sm text-sm">
                 Les ressources supprimées de la bibliothèque apparaîtront ici
                 pendant 30 jours — restaurables d'un clic.
@@ -197,11 +201,7 @@ export function TrashView() {
                       title="Remettre cette ressource dans la bibliothèque"
                       onClick={() => void runRestore(e)}
                     >
-                      {busy ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <Undo2 />
-                      )}
+                      {busy ? <Loader2 className="animate-spin" /> : <Undo2 />}
                       Restaurer
                     </Button>
                   </div>

@@ -1,5 +1,5 @@
+import { type QueryKey, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 /**
@@ -15,7 +15,7 @@ export function useTauriMutation() {
   const [busy, setBusy] = useState(false);
 
   const run = useCallback(
-    async <T,>(
+    async <T>(
       action: () => Promise<T>,
       opts?: {
         /** Message de succès (retourner undefined pour rester silencieux). */

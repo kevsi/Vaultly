@@ -43,12 +43,24 @@ export const META_FIELDS: Record<string, MetaField[]> = {
     },
   ],
   outil: [
-    { key: "use_case", label: "Cas d'usage", placeholder: "ex : retouche photo" },
-    { key: "pricing", label: "Tarif", placeholder: "gratuit, freemium, abonnement…" },
+    {
+      key: "use_case",
+      label: "Cas d'usage",
+      placeholder: "ex : retouche photo",
+    },
+    {
+      key: "pricing",
+      label: "Tarif",
+      placeholder: "gratuit, freemium, abonnement…",
+    },
   ],
   article: [
     { key: "author", label: "Auteur", placeholder: "nom de l'auteur" },
-    { key: "status", label: "Statut de lecture", placeholder: "à lire, en cours, lu" },
+    {
+      key: "status",
+      label: "Statut de lecture",
+      placeholder: "à lire, en cours, lu",
+    },
   ],
   video: [
     { key: "channel", label: "Chaîne", placeholder: "nom de la chaîne" },

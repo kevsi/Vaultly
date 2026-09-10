@@ -23,7 +23,36 @@ pub async fn add_resource(
     resource: NewResource,
 ) -> Result<Resource, String> {
     let resource = normalize_url(resource)?;
-    db::add_resource(&pool, &resource).await
+    let created = db::add_resource(&pool, &resource).await?;
+    // préchauffe la capture mshots : le premier affichage la génère côté
+    // WordPress (10-30 s), les suivants sont instantanés
+    let url = created.url.clone();
+    tauri::async_runtime::spawn(async move {
+        warm_screenshot(&url).await;
+    });
+    Ok(created)
+}
+
+/// Préchauffe la capture mshots d'une URL (tuiles « captures »).
+/// Best-effort en tâche de fond : résultat ignoré, jamais d'erreur visible.
+async fn warm_screenshot(url: &str) {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return;
+    }
+    let encoded: String =
+        percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC)
+            .collect();
+    let shot = format!("https://s.wordpress.com/mshots/v1/{encoded}?w=400");
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Vaultly/0.2")
+        .timeout(std::time::Duration::from_secs(25))
+        .build();
+    if let Ok(client) = client {
+        // lire jusqu'au bout : la génération doit finir côté serveur
+        if let Ok(resp) = client.get(&shot).send().await {
+            let _ = resp.bytes().await;
+        }
+    }
 }
 
 #[tauri::command]
@@ -174,27 +203,50 @@ pub async fn all_tags(pool: State<'_, SqlitePool>) -> Result<Vec<String>, String
     db::all_tags(&pool).await
 }
 
+/// Renomme un tag partout (fusion si le nouveau nom existe déjà).
 #[tauri::command]
-pub async fn categories_with_counts(
+pub async fn rename_tag(
     pool: State<'_, SqlitePool>,
-) -> Result<Vec<CategoryCount>, String> {
-    Ok(db::categories_with_counts(&pool)
-        .await?
-        .into_iter()
-        .map(|(name, count)| CategoryCount { name, count })
-        .collect())
+    old: String,
+    new: String,
+) -> Result<usize, String> {
+    db::rename_tag(&pool, &old, &new).await
+}
+
+/// Supprime un tag de toutes les ressources.
+#[tauri::command]
+pub async fn remove_tag(pool: State<'_, SqlitePool>, tag: String) -> Result<usize, String> {
+    db::remove_tag(&pool, &tag).await
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CategoryCount {
-    name: String,
-    count: i64,
+pub struct TagCount {
+    pub name: String,
+    pub count: i64,
 }
+
+/// Tags + compteurs pour le gestionnaire de tags.
+#[tauri::command]
+pub async fn tag_stats(pool: State<'_, SqlitePool>) -> Result<Vec<TagCount>, String> {
+    Ok(db::tag_stats(&pool)
+        .await?
+        .into_iter()
+        .map(|(name, count)| TagCount { name, count })
+        .collect())
+}
+
 
 #[tauri::command]
 pub async fn fetch_metadata(url: String) -> Result<crate::metadata::PageMetadata, String> {
     crate::metadata::fetch(&url).await
+}
+
+/// Smart Clip : devine le type et extrait les méta riches (titre, description,
+/// image, tags) d'une URL pour pré-remplir la modale d'ajout.
+#[tauri::command]
+pub async fn sniff_resource(url: String) -> Result<crate::metadata::Sniff, String> {
+    crate::metadata::sniff(&url).await
 }
 
 /// Détails d'un dépôt GitHub (description, langage, stars, README…)
@@ -357,6 +409,26 @@ pub struct ImportReport {
     pub errors: Vec<String>,
 }
 
+/// Fusionne tags par défaut + tags propres à la ligne (import CSV) +
+/// dossier — sans doublon, ordre stable (défauts, ligne, dossier).
+fn merge_import_tags(
+    default_tags: &[String],
+    row_tags: &[String],
+    folder: &str,
+) -> Vec<String> {
+    let mut tags: Vec<String> = default_tags.to_vec();
+    for t in row_tags {
+        if !t.is_empty() && !tags.contains(t) {
+            tags.push(t.clone());
+        }
+    }
+    if !folder.is_empty() && !tags.iter().any(|t| t == folder) {
+        // le dossier devient un tag pour rester cherchable
+        tags.push(folder.to_string());
+    }
+    tags
+}
+
 #[tauri::command]
 pub async fn import_bookmarks(
     pool: State<'_, SqlitePool>,
@@ -371,11 +443,7 @@ pub async fn import_bookmarks(
         if !b.selected {
             continue;
         }
-        let mut tags = request.default_tags.clone();
-        if !b.folder.is_empty() && !tags.contains(&b.folder) {
-            // le dossier devient un tag pour rester cherchable
-            tags.push(b.folder.clone());
-        }
+        let tags = merge_import_tags(&request.default_tags, &b.tags, &b.folder);
         let new = NewResource {
             url: b.url.clone(),
             title: b.title.clone(),
@@ -571,16 +639,311 @@ pub fn launch_executable_sync(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+// --- Applications d'ouverture (navigateur + éditeur de notes externes) ---
+
+/// Une application détectée proposable comme navigateur ou éditeur de notes.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenerApp {
+    /// identifiant stable ("brave")
+    pub id: String,
+    /// nom d'affichage ("Brave")
+    pub name: String,
+    /// chemin complet de l'exécutable
+    pub path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Openers {
+    pub browsers: Vec<OpenerApp>,
+    pub note_apps: Vec<OpenerApp>,
+}
+
+/// Binaires qu'on ne lancera JAMAIS comme navigateur/notes, même configurés
+/// à la main : avec un URL/chemin en unique argument positionnel, un shell
+/// ou un interpréteur reste un pivot d'exécution de code.
+const DENIED_BINARIES: &[&str] = &[
+    "cmd", "powershell", "pwsh", "wscript", "cscript", "mshta", "rundll32",
+    "regsvr32", "wt", "bash", "sh", "python", "pythonw", "perl", "ruby",
+    "node", "wmic",
+];
+
+/// Valide un binaire configuré : existe, .exe, pas un shell/interpréteur.
+/// Vérifié à l'enregistrement ET à chaque ouverture (la base peut être
+/// éditée hors de l'app).
+fn validate_opener_binary(path: &str) -> Result<std::path::PathBuf, String> {
+    let p = std::path::PathBuf::from(path.trim());
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext != "exe" {
+        return Err("seul un fichier .exe peut être configuré".into());
+    }
+    let stem = p
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if DENIED_BINARIES.contains(&stem.as_str()) {
+        return Err(format!(
+            "{stem}.exe ne peut pas servir d'application d'ouverture"
+        ));
+    }
+    if !p.is_file() {
+        return Err(format!("fichier introuvable : {path}"));
+    }
+    Ok(p)
+}
+
+/// Premier chemin existant (fichier) parmi les candidats, si présent.
+fn first_existing(candidates: &[std::path::PathBuf]) -> Option<String> {
+    candidates
+        .iter()
+        .find(|p| p.is_file())
+        .map(|p| p.display().to_string())
+}
+
+/// Chemins d'installation connus : Program Files, x86 et profil local.
+fn program_bases() -> Vec<std::path::PathBuf> {
+    let mut bases = Vec::new();
+    for var in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+        if let Ok(base) = std::env::var(var) {
+            bases.push(std::path::PathBuf::from(base));
+        }
+    }
+    bases
+}
+
+fn detect_browsers() -> Vec<OpenerApp> {
+    // (id, nom, chemins relatifs aux bases ci-dessus)
+    const KNOWN: &[(&str, &str, &[&str])] = &[
+        ("brave", "Brave", &["BraveSoftware\\Brave-Browser\\Application\\brave.exe"]),
+        (
+            "chrome",
+            "Google Chrome",
+            &["Google\\Chrome\\Application\\chrome.exe"],
+        ),
+        (
+            "edge",
+            "Microsoft Edge",
+            &["Microsoft\\Edge\\Application\\msedge.exe"],
+        ),
+        (
+            "firefox",
+            "Firefox",
+            &["Mozilla Firefox\\firefox.exe"],
+        ),
+        (
+            "opera",
+            "Opera",
+            &[
+                "Opera\\opera.exe",
+                "Programs\\Opera\\opera.exe",
+            ],
+        ),
+        (
+            "vivaldi",
+            "Vivaldi",
+            &["Vivaldi\\Application\\vivaldi.exe"],
+        ),
+    ];
+    // Chrome existe aussi en installation par utilisateur (LOCALAPPDATA)
+    let mut out = Vec::new();
+    for (id, name, rels) in KNOWN {
+        let mut cands = Vec::new();
+        for base in program_bases() {
+            for rel in *rels {
+                cands.push(base.join(rel));
+            }
+        }
+        // cas particulier : Chrome per-user sous LOCALAPPDATA
+        if *id == "chrome" {
+            if let Ok(local) = std::env::var("LOCALAPPDATA") {
+                cands.push(
+                    std::path::PathBuf::from(local)
+                        .join("Google\\Chrome\\Application\\chrome.exe"),
+                );
+            }
+        }
+        if let Some(path) = first_existing(&cands) {
+            out.push(OpenerApp {
+                id: id.to_string(),
+                name: name.to_string(),
+                path,
+            });
+        }
+    }
+    out
+}
+
+fn detect_note_apps() -> Vec<OpenerApp> {
+    let mut out = Vec::new();
+    // Bloc-notes Windows (toujours présent)
+    if let Ok(system_root) = std::env::var("SystemRoot") {
+        let p = std::path::PathBuf::from(system_root).join("System32\\notepad.exe");
+        if p.is_file() {
+            out.push(OpenerApp {
+                id: "notepad".into(),
+                name: "Bloc-notes".into(),
+                path: p.display().to_string(),
+            });
+        }
+    }
+    const KNOWN: &[(&str, &str, &[&str])] = &[
+        (
+            "notepad++",
+            "Notepad++",
+            &["Notepad++\\notepad++.exe"],
+        ),
+        (
+            "vscode",
+            "Visual Studio Code",
+            &[
+                "Microsoft VS Code\\Code.exe",
+                "Programs\\Microsoft VS Code\\Code.exe",
+            ],
+        ),
+        ("obsidian", "Obsidian", &["Obsidian\\Obsidian.exe"]),
+        ("vscodium", "VSCodium", &["VSCodium\\VSCodium.exe"]),
+    ];
+    for (id, name, rels) in KNOWN {
+        let cands: Vec<std::path::PathBuf> = program_bases()
+            .iter()
+            .flat_map(|b| rels.iter().map(|r| b.join(r)))
+            .collect();
+        if let Some(path) = first_existing(&cands) {
+            out.push(OpenerApp {
+                id: id.to_string(),
+                name: name.to_string(),
+                path,
+            });
+        }
+    }
+    out
+}
+
+#[tauri::command]
+pub async fn detect_openers() -> Result<Openers, String> {
+    Ok(Openers {
+        browsers: detect_browsers(),
+        note_apps: detect_note_apps(),
+    })
+}
+
+/// Préférences d'ouverture : chemins vides = défauts (navigateur Windows,
+/// lecteur de notes intégré).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenPrefs {
+    pub browser_path: String,
+    pub note_app_path: String,
+}
+
+#[tauri::command]
+pub async fn get_open_prefs(pool: State<'_, SqlitePool>) -> Result<OpenPrefs, String> {
+    Ok(OpenPrefs {
+        browser_path: db::get_setting(&pool, "open_browser_path")
+            .await
+            .unwrap_or_default(),
+        note_app_path: db::get_setting(&pool, "note_app_path")
+            .await
+            .unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+pub async fn set_open_prefs(
+    pool: State<'_, SqlitePool>,
+    browser_path: String,
+    note_app_path: String,
+) -> Result<(), String> {
+    let browser_path = browser_path.trim().to_string();
+    let note_app_path = note_app_path.trim().to_string();
+    if !browser_path.is_empty() {
+        validate_opener_binary(&browser_path)?;
+    }
+    if !note_app_path.is_empty() {
+        validate_opener_binary(&note_app_path)?;
+    }
+    db::set_setting(&pool, "open_browser_path", &browser_path).await?;
+    db::set_setting(&pool, "note_app_path", &note_app_path).await?;
+    Ok(())
+}
+
+/// Nom de fichier sûr pour l'export d'une note : `12_mon-titre.html`.
+fn safe_note_filename(id: i64, title: &str) -> String {
+    let slug: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c
+            } else if c == ' ' || c == '-' || c == '_' {
+                '-'
+            } else {
+                '\0'
+            }
+        })
+        .filter(|c| *c != '\0')
+        .collect();
+    let slug = slug.trim_matches('-').chars().take(60).collect::<String>();
+    if slug.is_empty() {
+        format!("{id}_note.html")
+    } else {
+        format!("{id}_{slug}.html")
+    }
+}
+
 /// Ouvre une ressource ENTIÈREMENT côté Rust, d'après la base : la webview ne
 /// donne qu'un id, jamais un chemin ni une URL. C'est le verrou des anciennes
 /// commandes launch_executable/open_file_path qui acceptaient un chemin
 /// arbitraire (pivot OS pour une webview compromise). La précédence est la
 /// même que l'ancien openResource.ts : exePath → filePath → url exe:/file: →
-/// local: → URL web.
+/// local: → URL web. Deux réglages peuvent dérouter l'ouverture : un
+/// navigateur par défaut (liens http) et une application de notes externe
+/// (export HTML vers Documents\Vaultly\Notes puis lancement).
 #[tauri::command]
 pub async fn open_resource(pool: State<'_, SqlitePool>, resource_id: i64) -> Result<(), String> {
     let r = db::get_resource(&pool, resource_id).await?;
     let lower = r.url.to_lowercase();
+
+    // note + application externe configurée : export HTML vers
+    // Documents\Vaultly\Notes puis lancement. Les modifications faites
+    // dehors ne reviennent PAS dans Vaultly (dit dans les réglages).
+    // Sans app configurée : rien (le lecteur intégré gère l'UI).
+    if r.resource_type == "note" {
+        let pref = db::get_setting(&pool, "note_app_path")
+            .await
+            .unwrap_or_default();
+        if pref.trim().is_empty() {
+            return Ok(());
+        }
+        let exe = validate_opener_binary(pref.trim())?;
+        let notes_dir = directories::UserDirs::new()
+            .and_then(|d| {
+                d.document_dir()
+                    .map(|p| p.to_path_buf().join("Vaultly").join("Notes"))
+            })
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&notes_dir).map_err(|e| e.to_string())?;
+        let path = notes_dir.join(safe_note_filename(r.id, &r.title));
+        let content = format!(
+            "<!-- Exporté depuis Vaultly — les modifications de ce fichier ne reviennent pas dans Vaultly. -->\n{}",
+            r.notes
+        );
+        tokio::fs::write(&path, content.as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+        std::process::Command::new(&exe)
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("ouverture impossible : {e}"))?;
+        db::record_open(&pool, resource_id).await?;
+        return Ok(());
+    }
 
     let opened = if r.resource_type == "app" {
         if let Some(exe) = r.meta.get("exePath").filter(|s| !s.is_empty()) {
@@ -615,9 +978,22 @@ pub async fn open_resource(pool: State<'_, SqlitePool>, resource_id: i64) -> Res
         // sans lien : rien à ouvrir, rien à compter
         false
     } else if lower.starts_with("http://") || lower.starts_with("https://") {
-        // garde de défense en profondeur : seul un schéma web atteint open_url
-        tauri_plugin_opener::open_url(&r.url, None::<&str>)
-            .map_err(|e| format!("ouverture impossible : {e}"))?;
+        // navigateur par défaut configuré ? sinon handler Windows.
+        // Garde inchangée : seul un schéma web atteint open_url / l'exe.
+        let pref = db::get_setting(&pool, "open_browser_path")
+            .await
+            .unwrap_or_default();
+        if pref.trim().is_empty() {
+            // garde de défense en profondeur : seul un schéma web atteint open_url
+            tauri_plugin_opener::open_url(&r.url, None::<&str>)
+                .map_err(|e| format!("ouverture impossible : {e}"))?;
+        } else {
+            let exe = validate_opener_binary(pref.trim())?;
+            std::process::Command::new(&exe)
+                .arg(&r.url)
+                .spawn()
+                .map_err(|e| format!("ouverture impossible : {e}"))?;
+        }
         true
     } else {
         return Err(format!("schéma de lien non pris en charge : {}", r.url));
@@ -696,6 +1072,26 @@ pub async fn set_resource_status(
     db::set_resource_status(&pool, id, &status).await
 }
 
+// --- Rappels (« me rappeler le… ») ---
+
+/// Pose (None = efface) un rappel sur une ressource.
+#[tauri::command]
+pub async fn set_remind_at(
+    pool: State<'_, SqlitePool>,
+    id: i64,
+    remind_at: Option<String>,
+) -> Result<(), String> {
+    db::set_remind_at(&pool, id, remind_at).await
+}
+
+/// Rappels échus (non archivés) pour le contrôle au lancement.
+#[tauri::command]
+pub async fn due_reminders(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<db::Resource>, String> {
+    db::due_reminders(&pool, 10).await
+}
+
 // --- Détection de liens morts ---
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -712,6 +1108,25 @@ pub struct DeadLink {
 /// (protection/anti-bot) comptent comme vivants. Version sans State,
 /// partagée par la commande Tauri et l'outil MCP.
 pub async fn run_dead_link_check(pool: &SqlitePool) -> Result<Vec<DeadLink>, String> {
+    // single-flight : la vérification ouvre des centaines de sockets ; deux
+    // appels concurrents (UI + client MCP) se télescoperaient. Un seul à la
+    // fois, relâché au retour (le garde fait le cleanup même sur `?`).
+    static DEADLINK_BUSY: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    struct BusyGuard;
+    impl Drop for BusyGuard {
+        fn drop(&mut self) {
+            DEADLINK_BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    if DEADLINK_BUSY
+        .compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("une vérification des liens est déjà en cours".into());
+    }
+    let _busy = BusyGuard;
+
     // vérification exhaustive : pas de garde-fou LIMIT.
     let resources = db::list_resources(
         pool,
@@ -721,17 +1136,16 @@ pub async fn run_dead_link_check(pool: &SqlitePool) -> Result<Vec<DeadLink>, Str
         },
     )
     .await?;
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Vaultly/0.1")
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::metadata::guarded_web_client();
 
     // concurrence bornée : sans sémaphore, des milliers de sockets seraient
     // ouvertes en même temps sur une grosse bibliothèque.
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(32));
     let mut set = tokio::task::JoinSet::new();
-    for r in resources.iter().filter(|r| r.url.starts_with("http")) {
+    for r in resources
+        .iter()
+        .filter(|r| r.url.starts_with("http") && crate::metadata::host_is_public(&r.url))
+    {
         let client = client.clone();
         let url = r.url.clone();
         let title = r.title.clone();
@@ -1372,5 +1786,47 @@ mod tests {
         assert_eq!(n, 1, "seule l'entrée de plus de 30 jours est purgée");
         assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM deleted_resources")
             .fetch_one(&pool).await.unwrap(), 1);
+    }
+
+    #[test]
+    fn validate_opener_binary_gates_shells_and_types() {
+        // extensions non-exe refusées
+        assert!(validate_opener_binary("C:\\x\\outil.bat").is_err());
+        assert!(validate_opener_binary("C:\\x\\notes.txt").is_err());
+        // shells et interpréteurs refusés même en .exe
+        assert!(validate_opener_binary("C:\\Windows\\System32\\cmd.exe").is_err());
+        assert!(validate_opener_binary(
+            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        )
+        .is_err());
+        // inexistant refusé
+        assert!(validate_opener_binary("C:\\n\\existe\\pas.exe").is_err());
+        // un vrai .exe passe
+        let p = std::env::temp_dir().join("vaultly-test-tool.exe");
+        std::fs::write(&p, b"fake").unwrap();
+        assert!(validate_opener_binary(p.to_str().unwrap()).is_ok());
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn safe_note_filename_slugs_titles() {
+        assert_eq!(
+            safe_note_filename(7, "Mes idées géniales !"),
+            "7_mes-idées-géniales.html"
+        );
+        assert_eq!(safe_note_filename(7, "!!!"), "7_note.html");
+        assert_eq!(safe_note_filename(7, ""), "7_note.html");
+    }
+
+    #[test]
+    fn merge_import_tags_dedupes_and_orders() {
+        let s = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // défauts, puis ligne, puis dossier ; doublons éliminés
+        assert_eq!(
+            merge_import_tags(&s(&["import"]), &s(&["lecture", "import"]), "Dev"),
+            vec!["import", "lecture", "Dev"],
+        );
+        assert!(merge_import_tags(&[], &[], "").is_empty());
+        assert_eq!(merge_import_tags(&[], &[], "D"), vec!["D"]);
     }
 }

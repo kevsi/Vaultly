@@ -127,6 +127,97 @@ async fn prune_old_backups(dir: &std::path::Path, keep: usize) {
         let _ = tokio::fs::remove_file(oldest.path()).await;
     }
 }
+
+/// Message d'un démarrage sur base récupérée, lu une fois par le frontend
+/// (commande `startup_notice`) : l'événement émis pendant le setup arriverait
+/// avant que l'UI n'écoute et serait perdu.
+static STARTUP_NOTICE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Plus récente sauvegarde JSON (auto ou manuelle) du dossier indiqué.
+fn newest_backup(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|f| f.path())
+        .filter(|p| {
+            p.extension().and_then(|e| e.to_str()) == Some("json")
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with("vaultly-") || n.starts_with("connectall-"))
+                    .unwrap_or(false)
+        })
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
+}
+
+/// Base corrompue : mise de côté (`vaultly.db.corrupt-<horodatage>`, jamais
+/// écrasée) puis restauration de la plus récente sauvegarde dans une base
+/// neuve. Retourne le message pour l'UI. Ne bloque JAMAIS : au pire, base
+/// vide + message explicite.
+async fn recover_corrupt_db(
+    app: &tauri::AppHandle,
+    db_path: &std::path::Path,
+) -> String {
+    let stamp = chrono_like_stamp();
+    let moved = std::fs::rename(
+        db_path,
+        db_path.with_file_name(format!("vaultly.db.corrupt-{stamp}")),
+    )
+    .is_ok();
+    if !moved {
+        return "Base de données illisible et impossible à déplacer : démarrage sur une base vide. Ouvre le dossier des logs (Réglages › Général) pour diagnostiquer.".into();
+    }
+    let Some(backup) = newest_backup(&commands::resources_root_dir(app).join("Sauvegardes")) else {
+        return "Base de données corrompue, aucune sauvegarde trouvée : démarrage sur une base vide. L'originale est conservée (*.corrupt-*).".into();
+    };
+    let name = backup
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("sauvegarde")
+        .to_string();
+    // base neuve + schéma + import (transactionnel : tout ou rien)
+    let pool = match db::open_pool(db_path).await {
+        Ok(p) => p,
+        Err(e) => {
+            return format!("Restauration impossible (réouverture : {e}). L'originale est conservée (*.corrupt-*).");
+        }
+    };
+    if let Err(e) = db::migrate(&pool).await {
+        return format!("Restauration impossible (migrations : {e}).");
+    }
+    let text = match tokio::fs::read_to_string(&backup).await {
+        Ok(t) => t,
+        Err(e) => return format!("Sauvegarde {name} illisible ({e})."),
+    };
+    match commands::import_payload_from_str(&pool, &text).await {
+        Ok(s) => format!(
+            "Base corrompue restaurée depuis {name} ({} ressource(s), {} dossier(s)). L'originale est conservée (*.corrupt-*).",
+            s.resources_added, s.folders_added
+        ),
+        Err(e) => format!("Restauration depuis {name} échouée ({e}) : démarrage sur une base vide."),
+    }
+}
+
+/// Message de démarrage (récupération de base) à afficher une fois côté UI.
+#[tauri::command]
+fn startup_notice() -> Option<String> {
+    STARTUP_NOTICE.get().cloned()
+}
+
+/// Ouvre le dossier des logs (%APPDATA%\com.kevsi.vaultly\logs) dans
+/// l'Explorateur — à joindre en cas de bug (Réglages › Général).
+#[tauri::command]
+fn open_logs_folder() -> Result<String, String> {
+    let Some(base) = directories::BaseDirs::new().map(|d| d.data_dir().to_path_buf()) else {
+        return Err("dossier de données introuvable".into());
+    };
+    let dir = base.join("com.kevsi.vaultly").join("logs");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer")
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(dir.display().to_string())
+}
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 // statut MCP partagé entre le spawn de démarrage et les commandes Tauri
@@ -338,6 +429,10 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // mises à jour automatiques (GitHub Releases, clé dans
+        // tauri.conf.json > plugins.updater.pubkey)
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(move |app| {
             // base de données dans %APPDATA%/com.kevsi.vaultly
             let app_data = app.path().app_data_dir()?;
@@ -364,6 +459,18 @@ pub fn run() {
 
             let db_path = app_data.join("vaultly.db");
             let pool = tauri::async_runtime::block_on(async {
+                let pool = db::open_pool(&db_path).await?;
+                if db::integrity_ok(&pool).await {
+                    db::migrate(&pool).await?;
+                    return Ok::<SqlitePool, sqlx::Error>(pool);
+                }
+                // base corrompue : récupération (mise de côté + restore de
+                // la dernière sauvegarde), puis démarrage normal. Le pool
+                // est fermé d'abord (verrou Windows sur le fichier).
+                pool.close().await;
+                let msg = recover_corrupt_db(app.handle(), &db_path).await;
+                tracing::error!("récupération base : {msg}");
+                STARTUP_NOTICE.set(msg).ok();
                 let pool = db::open_pool(&db_path).await?;
                 db::migrate(&pool).await?;
                 Ok::<SqlitePool, sqlx::Error>(pool)
@@ -397,6 +504,23 @@ pub fn run() {
                     if n > 0 {
                         tracing::warn!("corbeille : {n} entrée(s) expirée(s) purgée(s)");
                     }
+                }
+                // one-shot : suppression des dossiers-système hérités de
+                // l'ancien modèle (« À traiter » / « Archivés »). Le `status`
+                // est seul source de vérité ; les ressources ressortent à la
+                // racine en gardant leur statut. Le flag évite de rejouer.
+                if db::get_setting(&pool, "legacy_status_folders_cleaned")
+                    .await
+                    .is_none()
+                {
+                    match db::cleanup_legacy_status_folders(&pool).await {
+                        Ok(n) if n > 0 => tracing::warn!(
+                            "nettoyage : {n} dossier(s)-système hérité(s) supprimé(s)"
+                        ),
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!("nettoyage dossiers-système hérités : {e}"),
+                    }
+                    let _ = db::set_setting(&pool, "legacy_status_folders_cleaned", "1").await;
                 }
             });
 
@@ -631,14 +755,20 @@ pub fn run() {
             commands::record_open,
             commands::reorder_resources,
             commands::all_tags,
-            commands::categories_with_counts,
+            commands::rename_tag,
+            commands::remove_tag,
+            commands::tag_stats,
             commands::fetch_metadata,
+            commands::sniff_resource,
             commands::fetch_repo_details,
             commands::detect_browser_profiles,
             commands::import_bookmarks,
             commands::open_resources_folder,
             commands::read_image_data_url,
             commands::open_resource,
+            commands::detect_openers,
+            commands::get_open_prefs,
+            commands::set_open_prefs,
             commands::list_folders,
             commands::create_folder,
             commands::rename_folder,
@@ -646,6 +776,8 @@ pub fn run() {
             commands::move_folder,
             commands::dissolve_folder,
             commands::set_resource_status,
+            commands::set_remind_at,
+            commands::due_reminders,
             commands::check_dead_links,
             commands::set_resource_folder,
             commands::get_stats,
@@ -670,6 +802,8 @@ pub fn run() {
             get_mcp_status,
             server::mcp_regenerate_token,
             server::api_regenerate_token,
+            startup_notice,
+            open_logs_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

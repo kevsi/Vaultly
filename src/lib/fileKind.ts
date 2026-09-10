@@ -8,10 +8,10 @@ import {
   Film,
   FolderOpen,
   Image,
+  type LucideIcon,
   Music,
   Presentation,
   Terminal,
-  type LucideIcon,
 } from "lucide-react";
 
 /** Icône + couleur par extension de fichier local : la tuile « fichier »
@@ -41,16 +41,34 @@ const KINDS: { exts: string[]; kind: FileKind }[] = [
   // tableurs
   {
     exts: ["xls", "xlsx", "ods", "csv", "numbers"],
-    kind: { icon: FileSpreadsheet, className: "text-emerald-600 dark:text-emerald-400" },
+    kind: {
+      icon: FileSpreadsheet,
+      className: "text-emerald-600 dark:text-emerald-400",
+    },
   },
   // présentations
   {
     exts: ["ppt", "pptx", "odp", "key"],
-    kind: { icon: Presentation, className: "text-orange-600 dark:text-orange-400" },
+    kind: {
+      icon: Presentation,
+      className: "text-orange-600 dark:text-orange-400",
+    },
   },
   // images
   {
-    exts: ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "tiff", "heic", "avif"],
+    exts: [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "svg",
+      "ico",
+      "bmp",
+      "tiff",
+      "heic",
+      "avif",
+    ],
     kind: { icon: Image, className: "text-fuchsia-600 dark:text-fuchsia-400" },
   },
   // audio
@@ -65,7 +83,37 @@ const KINDS: { exts: string[]; kind: FileKind }[] = [
   },
   // code
   {
-    exts: ["rs", "ts", "tsx", "js", "jsx", "py", "go", "c", "cpp", "h", "cs", "java", "kt", "swift", "rb", "php", "lua", "sh", "ps1", "bat", "json", "yaml", "yml", "toml", "xml", "html", "css", "sql", "ipynb"],
+    exts: [
+      "rs",
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "py",
+      "go",
+      "c",
+      "cpp",
+      "h",
+      "cs",
+      "java",
+      "kt",
+      "swift",
+      "rb",
+      "php",
+      "lua",
+      "sh",
+      "ps1",
+      "bat",
+      "json",
+      "yaml",
+      "yml",
+      "toml",
+      "xml",
+      "html",
+      "css",
+      "sql",
+      "ipynb",
+    ],
     kind: { icon: FileCode, className: "text-cyan-600 dark:text-cyan-400" },
   },
   // scripts shell / terminal
@@ -76,7 +124,10 @@ const KINDS: { exts: string[]; kind: FileKind }[] = [
   // archives
   {
     exts: ["zip", "rar", "7z", "tar", "gz", "xz", "bz2", "tgz", "iso"],
-    kind: { icon: FileArchive, className: "text-amber-600 dark:text-amber-400" },
+    kind: {
+      icon: FileArchive,
+      className: "text-amber-600 dark:text-amber-400",
+    },
   },
   // audio courts / sonneries — couvert par Music plus haut
 ];
@@ -87,8 +138,14 @@ const FALLBACK: FileKind = {
 };
 
 /** Chemin le plus fiable : meta.filePath (sélecteur), sinon l'URL « file:… ». */
-function rawPath(resource: { url: string; meta?: Record<string, string> }): string {
-  return resource.meta?.filePath ?? (resource.url.startsWith("file:") ? resource.url.slice(5) : "");
+function rawPath(resource: {
+  url: string;
+  meta?: Record<string, string>;
+}): string {
+  return (
+    resource.meta?.filePath ??
+    (resource.url.startsWith("file:") ? resource.url.slice(5) : "")
+  );
 }
 
 /** Icône de fichier selon l'extension du chemin local. */
@@ -100,7 +157,9 @@ export function fileKindFor(resource: {
   if (!p) return FALLBACK;
   // on ignore les arguments (?…) et on prend la dernière extension
   const name = p.split(/[\\/]/).pop()?.split("?")[0] ?? "";
-  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  const ext = name.includes(".")
+    ? (name.split(".").pop() ?? "").toLowerCase()
+    : "";
   if (!ext) return FALLBACK;
   return KINDS.find((k) => k.exts.includes(ext))?.kind ?? FALLBACK;
 }

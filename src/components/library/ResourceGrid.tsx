@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Copy,
   FolderOpen,
@@ -11,19 +9,10 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { fileKindFor } from "@/lib/fileKind";
-import { metaSummary } from "@/lib/metaFields";
-import { hostOf, typeLabel } from "@/lib/resources";
-import { openResource } from "@/lib/openResource";
-import {
-  getVirtualMode,
-  virtualThresholdFor,
-} from "@/lib/gridVirtualization";
-import type { Resource, Folder, SortBy } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { ResourceTile } from "@/components/ResourceTile";
 import { FolderTile } from "@/components/FolderTile";
+import { ResourceTile } from "@/components/ResourceTile";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -33,6 +22,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { fileKindFor } from "@/lib/fileKind";
+import { getPageDensity, rowsPerPageFor } from "@/lib/gridPagination";
+import { metaSummary } from "@/lib/metaFields";
+import { openResource } from "@/lib/openResource";
+import { hostOf, typeLabel } from "@/lib/resources";
+import type { Folder, Resource, SortBy } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export type DropZone = {
   id: number;
@@ -68,7 +64,10 @@ export interface ResourceGridProps {
   setDragFolderId: (id: number | null) => void;
   // --- callbacks LibraryView ---
   handleDragStarted: (r: Resource) => void;
-  handleDropOnTile: (target: Resource, zone: "left" | "right" | "center") => void;
+  handleDropOnTile: (
+    target: Resource,
+    zone: "left" | "right" | "center",
+  ) => void;
   handleDropOnFolder: (f: Folder) => void;
   handleFolderDrop: (target: Folder) => void;
   moveTileByKey: (r: Resource, dir: -1 | 1) => void;
@@ -85,6 +84,11 @@ export interface ResourceGridProps {
   setFolderStack: (f: (s: Folder[]) => Folder[]) => void;
   setFolderName: (n: string) => void;
   setFolderDialog: (d: FolderDialogState) => void;
+  // --- pagination (état porté par LibraryView, rendu dans sa toolbar) ---
+  /** page courante (indexée à 0) ; la tranche est découpée ici, à la source */
+  page: number;
+  /** remonte le nb de pages + le total pour que la toolbar affiche la barre */
+  onPagination: (info: { pages: number; total: number }) => void;
 }
 
 /** Zone du pointeur sur la tuile cible : 30 % extérieurs = insertion
@@ -102,7 +106,8 @@ function zoneFor(e: React.DragEvent): "left" | "right" | "center" {
  *  fichiers, initiales en repli — avec gestion locale de l'erreur image. */
 function RowIcon({ resource }: { resource: Resource }) {
   const [imgError, setImgError] = useState(false);
-  const kind = resource.resourceType === "fichier" ? fileKindFor(resource) : null;
+  const kind =
+    resource.resourceType === "fichier" ? fileKindFor(resource) : null;
   const KindIcon = kind?.icon;
   return (
     <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
@@ -172,7 +177,10 @@ function RowMenu({
             <Pencil />
             Modifier
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={() => onDelete(resource)}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onDelete(resource)}
+          >
             <Trash2 />
             Supprimer
           </DropdownMenuItem>
@@ -234,77 +242,90 @@ export function ResourceGrid(props: ResourceGridProps) {
     setFolderStack,
     setFolderName,
     setFolderDialog,
+    page,
+    onPagination,
   } = props;
 
   const qc = useQueryClient();
 
-  // --- réglage de virtualisation (Réglages → Général → Rendu de la grille) ---
-  const [virtualMode, setVirtualModeState] = useState(getVirtualMode);
+  // --- densité de pagination (Réglages → Général) : rangées par page ---
+  const [rowsPerPage, setRowsPerPage] = useState(() =>
+    rowsPerPageFor(getPageDensity()),
+  );
   useEffect(() => {
-    const onChange = () => setVirtualModeState(getVirtualMode());
-    window.addEventListener("vaultly:virtualization-changed", onChange);
+    const onChange = () => setRowsPerPage(rowsPerPageFor(getPageDensity()));
+    window.addEventListener("vaultly:page-density-changed", onChange);
     return () =>
-      window.removeEventListener("vaultly:virtualization-changed", onChange);
+      window.removeEventListener("vaultly:page-density-changed", onChange);
   }, []);
-  const threshold = virtualThresholdFor(virtualMode);
-  const tileCount = resources.length + visibleFolders.length;
-  // la vue Liste n'a pas besoin de virtualisation (lignes légères)
-  const virtualizing =
-    viewMode === "grid" && tileCount > 0 && tileCount >= threshold;
 
-  // respiration entre la barre de filtres et la première ligne : le
-  // conteneur virtualisé a un padding-top ÉGAL, compensé via scrollMargin
-  const GRID_TOP_PAD = 12;
-
-  // colonnes du mode virtualisé : recalculées à la largeur du conteneur.
-  // Le conteneur a un padding horizontal (px-4) : clientWidth l'inclut alors
-  // que les lignes s'arrêtent 32 px plus étroit — on le retranche, sinon une
-  // colonne de trop est demandée à certaines largeurs (tuile éjectée à la
-  // ligne suivante, saut de hauteur de ligne).
-  const virtualScrollRef = useRef<HTMLDivElement | null>(null);
+  // colonnes calculées à la largeur du conteneur (les tuiles font exactement
+  // une colonne : pas d'auto-fill, sinon des lignes incomplètes flottent entre
+  // deux largeurs et cassent le découpage par page).
+  const gridWrapRef = useRef<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState(4);
   useEffect(() => {
-    if (!virtualizing) return;
-    const el = virtualScrollRef.current;
+    // ré-abonné à CHAQUE retour en vue grille : le conteneur est démonté
+    // quand on passe en liste/tableau, sinon l'ResizeObserver reste collé à
+    // l'ancien nœud et `columns` se fige → tuiles qui « grandissent » au retour.
+    if (viewMode !== "grid") return;
+    const el = gridWrapRef.current;
     if (!el) return;
-    const H_PADDING = 32; // px-4 des lignes
+    const H_PADDING = 32; // px-4 du conteneur
+    const GAP = 12; // gap-x-3 entre colonnes
     const compute = () =>
       setColumns(
         Math.min(
           12,
-          Math.max(2, Math.floor((el.clientWidth - H_PADDING) / (tileMin + 12))),
+          Math.max(
+            2,
+            Math.floor((el.clientWidth - H_PADDING + GAP) / (tileMin + GAP)),
+          ),
         ),
       );
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [virtualizing, tileMin]);
+  }, [tileMin, viewMode]);
 
-  // items de la grille dans l'ordre : dossiers, tuile « créer », ressources
+  // items de la grille dans l'ordre : tuile « créer » EN TÊTE, puis dossiers,
+  // puis ressources — la création est toujours la première carte visible
   const gridItems = useMemo(
     () => [
-      ...visibleFolders.map((f) => ({ k: "folder" as const, f })),
       { k: "create" as const },
+      ...visibleFolders.map((f) => ({ k: "folder" as const, f })),
       ...resources.map((r) => ({ k: "res" as const, r })),
     ],
     [visibleFolders, resources],
   );
 
-  // lignes virtuelles : hauteur estimée puis MESURÉE (measureElement)
-  const rowCount = virtualizing ? Math.ceil(gridItems.length / columns) : 0;
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => virtualScrollRef.current,
-    estimateSize: () => 176, // tuile carrée ~tileMin + gap 12 + marge hover
-    overscan: 4,
-    scrollMargin: GRID_TOP_PAD,
-  });
+  const pageSize = columns * rowsPerPage;
+  const totalPages = Math.max(1, Math.ceil(gridItems.length / pageSize));
+  // l'état de page vit dans LibraryView (la barre de pagination y est rendue).
+  // On borne localement pour tronquer sûrement même si le parent est à jour.
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const pageItems = gridItems.slice(
+    safePage * pageSize,
+    (safePage + 1) * pageSize,
+  );
 
-  // grille native fluide : largeur min par tuile, le navigateur remplit
-  const nativeGridStyle = {
-    gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`,
-  } as const;
+  // Délai d'apparition par RANGÉE (toute une ligne ensemble, de haut en bas) :
+  // un stagger par index linéaire décalait les tuiles de droite par rapport à
+  // la ligne suivante → le déballage paraissait « en désordre » (bas puis
+  // premier). Borné pour que les grandes pages ne traînent pas.
+  const tileDelay = (index: number): string =>
+    `${Math.min(Math.floor(index / columns), 6) * 45}ms`;
+
+  // remonte pages + total (grille uniquement : la liste ne paginer pas).
+  // Dépend de columns/rowsPerPage/données ; resize et filtre déclenchent.
+  useEffect(() => {
+    if (viewMode !== "grid") {
+      onPagination({ pages: 1, total: 0 });
+      return;
+    }
+    onPagination({ pages: totalPages, total: gridItems.length });
+  }, [onPagination, viewMode, totalPages, gridItems.length]);
 
   /** Ouverture d'une ressource depuis la vue LISTE (même sémantique que
    *  la tuile : note → lecteur, sans lien → édition, sinon openResource). */
@@ -362,6 +383,7 @@ export function ResourceGrid(props: ResourceGridProps) {
     return (
       <div className="animate-tile-in relative rounded-xl">
         <button
+          type="button"
           onClick={() => {
             setFolderName("");
             setFolderDialog({ mode: "create" });
@@ -386,7 +408,7 @@ export function ResourceGrid(props: ResourceGridProps) {
     return (
       <div
         key={r.id}
-        style={{ animationDelay: `${index * 40}ms` }}
+        style={{ animationDelay: tileDelay(index) }}
         onKeyDown={(e) => {
           // réordonnancement clavier de la tuile focusée (tri manuel)
           if (
@@ -542,7 +564,9 @@ export function ResourceGrid(props: ResourceGridProps) {
                   }}
                   role="button"
                   tabIndex={0}
-                  onClick={() => (selectMode ? toggleSelect(r) : void openRow(r))}
+                  onClick={() =>
+                    selectMode ? toggleSelect(r) : void openRow(r)
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -574,9 +598,7 @@ export function ResourceGrid(props: ResourceGridProps) {
                   )}
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5">
-                      {r.favorite && (
-                        <StarFav />
-                      )}
+                      {r.favorite && <StarFav />}
                       <span className="truncate font-medium">{r.title}</span>
                     </span>
                   </span>
@@ -612,85 +634,46 @@ export function ResourceGrid(props: ResourceGridProps) {
     );
   }
 
-  // ---------- VUE GRILLE (virtualisée ou native) ----------
-
-  if (virtualizing) {
-    return (
-      <div
-        ref={virtualScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4"
-      >
-        <div
-          style={{
-            height: rowVirtualizer.getTotalSize(),
-            position: "relative",
-            width: "100%",
-          }}
-        >
-          {rowVirtualizer.getVirtualItems().map((vi) => (
-            <div
-              key={vi.key}
-              data-index={vi.index}
-              ref={rowVirtualizer.measureElement}
-              className="grid gap-3"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                transform: `translateY(${vi.start - GRID_TOP_PAD}px)`,
-              }}
-            >
-              {gridItems
-                .slice(vi.index * columns, (vi.index + 1) * columns)
-                .map((it, i) =>
-                  it.k === "folder" ? (
-                    <div
-                      key={`folder-${it.f.id}`}
-                      className="animate-tile-in"
-                      style={{
-                        animationDelay: `${(vi.index * columns + i) * 40}ms`,
-                      }}
-                    >
-                      {renderFolderTile(it.f)}
-                    </div>
-                  ) : it.k === "create" ? (
-                    <div key="create">{renderCreateFolderTile()}</div>
-                  ) : (
-                    renderResourceTile(it.r, vi.index * columns + i)
-                  ),
-                )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // ---------- VUE GRILLE (paginée : plus de scroll) ----------
+  // La barre de pagination n'est PAS ici : elle vit dans la toolbar de
+  // LibraryView (fil d'Ariane quand un dossier est ouvert, à droite de
+  // « Statut » à la racine). ResourceGrid ne fait que trancher `pageItems`.
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <div className="px-4 pt-3 pb-4">
-        <div className="grid gap-3" style={nativeGridStyle}>
-          {/* dossiers : racine sur l'accueil, sous-dossiers dans un dossier */}
-          {visibleFolders.map((f, i) => (
+    <div
+      ref={gridWrapRef}
+      className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-4"
+    >
+      <div
+        className="grid gap-x-3 gap-y-5"
+        style={{
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        }}
+      >
+        {pageItems.map((it, i) =>
+          it.k === "folder" ? (
             <div
-              key={`folder-${f.id}`}
-              {...folderDragProps(f, setDragFolderId)}
+              key={`folder-${it.f.id}`}
+              {...folderDragProps(it.f, setDragFolderId)}
               className="animate-tile-in"
-              style={{ animationDelay: `${i * 40}ms` }}
+              style={{ animationDelay: tileDelay(i) }}
             >
-              {renderFolderTile(f)}
+              {renderFolderTile(it.f)}
             </div>
-          ))}
-          {/* tuile créer un dossier — partout : à la racine comme dans
-              un sous-dossier (la création se fait dans le dossier courant) */}
-          {renderCreateFolderTile()}
-          {/* ressources */}
-          {resources.map((r, i) => renderResourceTile(r, i + visibleFolders.length))}
-        </div>
+          ) : it.k === "create" ? (
+            <div
+              key="create"
+              className="animate-tile-in"
+              style={{ animationDelay: tileDelay(i) }}
+            >
+              {renderCreateFolderTile()}
+            </div>
+          ) : (
+            renderResourceTile(it.r, i)
+          ),
+        )}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 
@@ -701,7 +684,10 @@ function StarFav() {
 
 /** Drag de dossier dans la vue liste : setData obligatoire pour un drag
  *  HTML5 fiable (sans lui, Chromium/WebView2 peut l'ignorer). */
-function folderDragProps(f: Folder, setDragFolderId: (id: number | null) => void) {
+function folderDragProps(
+  f: Folder,
+  setDragFolderId: (id: number | null) => void,
+) {
   return {
     draggable: true,
     onDragStart: (e: React.DragEvent) => {

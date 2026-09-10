@@ -116,7 +116,10 @@ export function FolderTile({
             <FolderMinus />
             Dissoudre
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={() => onDelete(folder)}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onDelete(folder)}
+          >
             <Trash2 />
             Supprimer
           </DropdownMenuItem>

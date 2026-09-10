@@ -1,10 +1,12 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
+  Bell,
   CircleSlash,
   CloudUpload,
-  FolderOpen,
   Copy,
   ExternalLink,
+  FolderOpen,
   Info,
   ListTodo,
   Loader2,
@@ -13,16 +15,18 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { memo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cloudAppendLink, cloudListShareLists, toggleFavorite } from "@/lib/api";
-import { metaSummary } from "@/lib/metaFields";
-import { fileKindFor } from "@/lib/fileKind";
-import { isStale, noteColorClass } from "@/lib/resources";
-import { openResource } from "@/lib/openResource";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,16 +37,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Folder, Resource, ShareListInfo } from "@/lib/types";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -52,6 +46,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  cloudAppendLink,
+  cloudListShareLists,
+  setRemindAt,
+  toggleFavorite,
+} from "@/lib/api";
+import { fileKindFor } from "@/lib/fileKind";
+import { metaSummary } from "@/lib/metaFields";
+import { openResource } from "@/lib/openResource";
+import {
+  formatRemindAt,
+  isStale,
+  noteColorClass,
+  sqliteDatePlusDays,
+} from "@/lib/resources";
+import type { Folder, Resource, ShareListInfo } from "@/lib/types";
+import { cn, describeError } from "@/lib/utils";
 
 interface Props {
   resource: Resource;
@@ -99,6 +110,14 @@ export const ResourceTile = memo(function ResourceTile({
 }: Props) {
   const [imgError, setImgError] = useState(false);
   const [captureError, setCaptureError] = useState(false);
+  const [captureLoaded, setCaptureLoaded] = useState(false);
+  const resourceUrl = resource.url;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resourceUrl est la primitive stable derivee (resource change d'identite)
+  useEffect(() => {
+    // nouvelle URL (édition) : on réarme le shimmer et la bascule d'erreur
+    setCaptureLoaded(false);
+    setCaptureError(false);
+  }, [resourceUrl]);
   const qc = useQueryClient();
   const summary = metaSummary(resource);
   const isNote = resource.resourceType === "note";
@@ -146,10 +165,27 @@ export const ResourceTile = memo(function ResourceTile({
     favBusy.current = true;
     toggleFavorite(resource.id)
       .then(onToggled)
-      .catch((e) => toast.error(String(e)))
+      .catch((e) => toast.error(describeError(e)))
       .finally(() => {
         favBusy.current = false;
       });
+  }
+
+  /** Rappel « me rappeler dans… » (null = effacer). Ouvrir la ressource
+   *  solde le rappel automatiquement. */
+  async function remind(days: number | null) {
+    try {
+      await setRemindAt(
+        resource.id,
+        days === null ? null : sqliteDatePlusDays(days),
+      );
+      toast.success(
+        days === null ? "Rappel effacé" : "Rappel enregistré — bonne lecture",
+      );
+      onToggled?.();
+    } catch (e) {
+      toast.error(describeError(e));
+    }
   }
 
   // --- Partage vers une liste JSON sur le cloud (WebDAV) ---
@@ -169,7 +205,7 @@ export const ResourceTile = memo(function ResourceTile({
       setShareLists(lists);
       setShareTarget(lists.length > 0 ? lists[0].name : "__new");
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
       setShareLists([]);
     } finally {
       setShareLoading(false);
@@ -203,7 +239,7 @@ export const ResourceTile = memo(function ResourceTile({
       setShareOpen(false);
       setNewFileName("");
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setSharing(false);
     }
@@ -260,7 +296,9 @@ export const ResourceTile = memo(function ResourceTile({
           className="flex aspect-square cursor-pointer select-none flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-3 transition-all duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
         >
           <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-muted">
-            <FileKindIcon className={`size-8 ${fileKind?.className ?? "text-muted-foreground"}`} />
+            <FileKindIcon
+              className={`size-8 ${fileKind?.className ?? "text-muted-foreground"}`}
+            />
           </div>
           <span className="line-clamp-2 min-h-8 text-center text-xs font-medium leading-tight">
             {resource.title}
@@ -280,12 +318,23 @@ export const ResourceTile = memo(function ResourceTile({
           }}
           className="relative aspect-square cursor-pointer select-none overflow-hidden rounded-2xl border transition-all duration-200 ease-out outline-none hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
         >
+          {/* shimmer pendant la génération mshots (10-30 s la 1re fois) */}
+          {!captureLoaded && !captureError && (
+            <div
+              className="absolute inset-0 animate-pulse bg-muted/60"
+              aria-hidden="true"
+            />
+          )}
           <img
             src={`https://s.wordpress.com/mshots/v1/${encodeURIComponent(resource.url)}?w=400`}
             alt=""
             loading="lazy"
-            className="absolute inset-0 size-full object-cover"
+            onLoad={() => setCaptureLoaded(true)}
             onError={() => setCaptureError(true)}
+            className={cn(
+              "absolute inset-0 size-full object-cover transition-opacity duration-500",
+              !captureLoaded && "opacity-0",
+            )}
           />
           <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-2 pb-2 pt-6 text-center text-xs font-semibold text-white">
             {resource.title}
@@ -378,6 +427,17 @@ export const ResourceTile = memo(function ResourceTile({
         </div>
       )}
 
+      {/* rappel programmé : s'efface à l'ouverture */}
+      {resource.remindAt && !selectMode && (
+        <div
+          className="absolute right-1.5 bottom-1.5 z-10 flex items-center gap-1 rounded-full border bg-background/85 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-300"
+          title={`Rappel programmé — s'efface à l'ouverture`}
+        >
+          <Bell className="size-3" />
+          {formatRemindAt(resource.remindAt)}
+        </div>
+      )}
+
       {/* menu ⋯ flottant, en dehors de la tuile — toujours visible */}
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -390,7 +450,9 @@ export const ResourceTile = memo(function ResourceTile({
           {isNote ? (
             <>
               <DropdownMenuItem
-                onClick={() => (onOpenNote ? onOpenNote(resource) : void open())}
+                onClick={() =>
+                  onOpenNote ? onOpenNote(resource) : void open()
+                }
               >
                 <ExternalLink />
                 Ouvrir la note
@@ -429,19 +491,20 @@ export const ResourceTile = memo(function ResourceTile({
                 </DropdownMenuItem>
               )}
               {/* fichier local : envoi réel vers le cloud WebDAV */}
-              {(resource.url.startsWith("file:") || resource.meta?.filePath) && onUploadToCloud && (
-                <DropdownMenuItem
-                  onClick={() => onUploadToCloud(resource)}
-                >
-                  <CloudUpload />
-                  Envoyer vers le cloud
-                </DropdownMenuItem>
-              )}
+              {(resource.url.startsWith("file:") || resource.meta?.filePath) &&
+                onUploadToCloud && (
+                  <DropdownMenuItem onClick={() => onUploadToCloud(resource)}>
+                    <CloudUpload />
+                    Envoyer vers le cloud
+                  </DropdownMenuItem>
+                )}
             </>
           )}
           <DropdownMenuItem onClick={toggle}>
             <Star
-              className={resource.favorite ? "fill-yellow-400 text-yellow-400" : ""}
+              className={
+                resource.favorite ? "fill-yellow-400 text-yellow-400" : ""
+              }
             />
             {resource.favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
           </DropdownMenuItem>
@@ -452,6 +515,35 @@ export const ResourceTile = memo(function ResourceTile({
               Marquer à traiter
             </DropdownMenuItem>
           )}
+          {/* rappel « me rappeler dans… » */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Bell />
+              Me rappeler…
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {[
+                { label: "Demain", days: 1 },
+                { label: "Dans 3 jours", days: 3 },
+                { label: "Dans 1 semaine", days: 7 },
+              ].map((o) => (
+                <DropdownMenuItem
+                  key={o.days}
+                  onClick={() => void remind(o.days)}
+                >
+                  {o.label}
+                </DropdownMenuItem>
+              ))}
+              {resource.remindAt && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void remind(null)}>
+                    Effacer le rappel ({formatRemindAt(resource.remindAt)})
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           {onSetStatus && resource.status !== "archived" && (
             <DropdownMenuItem onClick={() => onSetStatus(resource, "archived")}>
               <Archive />
@@ -467,11 +559,9 @@ export const ResourceTile = memo(function ResourceTile({
           {/* déplacer vers un dossier */}
           {onMoveToFolder && (folders?.length ?? 0) > 0 && (
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                Déplacer vers…
-              </DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger>Déplacer vers…</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {folders!.map((f) => (
+                {(folders ?? []).map((f) => (
                   <DropdownMenuItem
                     key={f.id}
                     disabled={resource.folderId === f.id}
@@ -500,7 +590,10 @@ export const ResourceTile = memo(function ResourceTile({
               Modifier
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem variant="destructive" onClick={() => onDelete(resource)}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onDelete(resource)}
+          >
             <Trash2 />
             Supprimer
           </DropdownMenuItem>
@@ -514,8 +607,8 @@ export const ResourceTile = memo(function ResourceTile({
             <DialogTitle>Partager vers le cloud</DialogTitle>
             <DialogDescription>
               Le lien sera enregistré dans un fichier JSON de ton dossier
-              WebDAV. Choisis une liste existante ou crées-en une nouvelle
-              (ex. Design, AIAPI).
+              WebDAV. Choisis une liste existante ou crées-en une nouvelle (ex.
+              Design, AIAPI).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">

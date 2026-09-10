@@ -14,7 +14,7 @@ export const TILE_SIZES: { value: TileSize; label: string; minPx: number }[] = [
   { value: "large", label: "Grand", minPx: 192 },
 ];
 
-export type ViewMode = "grid" | "list";
+export type ViewMode = "grid" | "list" | "board";
 
 const KEY_SIZE = "vaultly-tile-size";
 const KEY_VIEW = "vaultly-view-mode";
@@ -35,7 +35,7 @@ export function tileMinPx(size: TileSize): number {
 
 export function getViewMode(): ViewMode {
   const v = localStorage.getItem(KEY_VIEW);
-  return v === "list" ? "list" : "grid";
+  return v === "list" ? "list" : v === "board" ? "board" : "grid";
 }
 
 export function setViewMode(mode: ViewMode): void {

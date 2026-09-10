@@ -1,0 +1,52 @@
+# Release + mise à jour automatique.
+#
+# Déclenché par un tag `v*` (ex : git tag v0.3.0 && git push origin v0.3.0).
+# Construit l'app Windows, signe les artefacts et publie une Release
+# GitHub (brouillon) avec le `latest.json` consommé par l'updater intégré
+# (Réglages › Mise à jour).
+#
+# PRÉREQUIS — clés de signature (une seule fois) :
+#   1. `pnpm tauri signer generate -w ~/.tauri/vaultly.key`
+#      (protège avec un mot de passe)
+#   2. Colle la CLÉ PUBLIQUE affichée dans
+#      src-tauri/tauri.conf.json › plugins › updater › pubkey
+#   3. GitHub › Settings › Secrets and variables › Actions :
+#      - TAURI_SIGNING_PRIVATE_KEY = contenu de ~/.tauri/vaultly.key
+#      - TAURI_SIGNING_PRIVATE_KEY_PASSWORD = le mot de passe
+#   Sans clé publique configurée, l'app détecte les versions mais refuse
+#   l'installation (signature invérifiable) — jamais de crash.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    name: Build + publie (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Vaultly ${{ github.ref_name }}"
+          releaseBody: "Voir les changements sur la page du tag."
+          releaseDraft: true
+          includeUpdaterJson: true

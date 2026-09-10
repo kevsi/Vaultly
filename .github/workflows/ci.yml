@@ -7,7 +7,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend (tsc + vite build)
+    name: Frontend (lint + tests + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+      - run: pnpm exec biome check src
+      - run: pnpm test
       - run: pnpm build
 
   backend:
@@ -36,6 +39,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      # scan RustSec : non-bloquant (continue-on-error) car l'écosystème Tauri
+      # traîne parfois des avis « unmaintained » transitifs hors de notre
+      # contrôle ; une vraie vulnérabilité reste signalée en rouge dans le job.
+      - name: Installer cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+      - name: Audit des dépendances Rust (RustSec)
+        run: cargo audit
+        continue-on-error: true
       # le binaire tauri-build a besoin des headers webview2 sur windows-runner :
       # fournis par le runner. La config frontend dist/ n'est pas requise
       # pour cargo test (le contexte generate_context! est compilé à partir

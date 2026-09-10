@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Copy,
   ExternalLink,
@@ -12,14 +13,16 @@ import {
   Tag,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchRepoDetails } from "@/lib/api";
-import { fileKindFor } from "@/lib/fileKind";
-import { openResource } from "@/lib/openResource";
-import { parseDbDate, typeLabel } from "@/lib/resources";
-import { metaFieldsFor } from "@/lib/metaFields";
-import type { Resource } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { fetchRepoDetails } from "@/lib/api";
+import { fileKindFor } from "@/lib/fileKind";
+import { metaFieldsFor } from "@/lib/metaFields";
+import { openResource } from "@/lib/openResource";
+import { parseDbDate, typeLabel } from "@/lib/resources";
+import { isSafeLinkHref } from "@/lib/sanitize";
+import type { Resource } from "@/lib/types";
+import { describeError } from "@/lib/utils";
 
 interface Props {
   resource: Resource | null;
@@ -29,8 +32,13 @@ interface Props {
 
 /** Mini-rendu Markdown pour un README : titres, gras/italique, code inline,
  *  blocs de code, listes, liens. Volontairement simple (aperçu de lecture),
- *  tout passe par l'échappement HTML avant l'ajout des balises. */
+ *  tout passe par l'échappement HTML avant l'ajout des balises. Le contenu
+ *  vient de GitHub (entièrement distant) : on borne sa taille (perf/ReDoS) et
+ *  on ne rend un lien que si son schéma est inoffensif (jamais javascript:…). */
 function renderMarkdown(md: string): string {
+  // README de plusieurs Mo = latence/regex coûteuse : plafond généreux.
+  const capped =
+    md.length > 200_000 ? Array.from(md).slice(0, 200_000).join("") : md;
   const esc = (s: string) =>
     s
       .replace(/&/g, "&amp;")
@@ -40,8 +48,10 @@ function renderMarkdown(md: string): string {
 
   // blocs de code ``` extraits d'abord (le contenu doit rester brut)
   const codeBlocks: string[] = [];
-  let text = md.replace(/```[^\n]*\n([\s\S]*?)```/g, (_, code) => {
-    codeBlocks.push(`<pre class="rounded-lg bg-muted/60 p-3 text-xs overflow-x-auto my-2"><code>${esc(code.trimEnd())}</code></pre>`);
+  let text = capped.replace(/```[^\n]*\n([\s\S]*?)```/g, (_, code) => {
+    codeBlocks.push(
+      `<pre class="rounded-lg bg-muted/60 p-3 text-xs overflow-x-auto my-2"><code>${esc(code.trimEnd())}</code></pre>`,
+    );
     return `\u0000CODE${codeBlocks.length - 1}\u0000`;
   });
 
@@ -58,13 +68,23 @@ function renderMarkdown(md: string): string {
   };
   const inline = (s: string) =>
     s
-      .replace(/`([^`]+)`/g, '<code class="rounded bg-muted/60 px-1 py-0.5 text-[0.85em]">$1</code>')
+      .replace(
+        /`([^`]+)`/g,
+        '<code class="rounded bg-muted/60 px-1 py-0.5 text-[0.85em]">$1</code>',
+      )
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" class="text-primary underline underline-offset-2">$1</a>');
+      .replace(
+        /\[([^\]]+)\]\(([^)\s]+)\)/g,
+        (_full, label: string, href: string) =>
+          isSafeLinkHref(href)
+            ? `<a href="${href}" class="text-primary underline underline-offset-2">${label}</a>`
+            : label,
+      );
 
   for (const raw of lines) {
     const line = raw.trimEnd();
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: sentinelles NUL volontaires (blocs de code extraits)
     const codeMatch = line.match(/^\u0000CODE(\d+)\u0000$/);
     if (codeMatch) {
       closeList();
@@ -110,18 +130,22 @@ function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
  *  dépôt GitHub, la fiche du repo (description, langage, stars, licence)
  *  et son README rendu en Markdown léger. */
 export function ResourceDetails({ resource, onClose, onEdit }: Props) {
-  if (!resource) return null;
-
+  // hooks AVANT tout return : `resource` passe de null à défini et
+  // inversement, un return précoce avant les hooks casserait leur ordre
+  // (erreur React « fewer hooks » à la fermeture de la fiche)
   const isRepo =
+    !!resource &&
     resource.resourceType === "repo" &&
     /github\.com\/[^/]+\/[^/]/.test(resource.url);
   const { data: repo, isLoading: repoLoading } = useQuery({
-    queryKey: ["repo-details", resource.url],
-    queryFn: () => fetchRepoDetails(resource.url),
+    queryKey: ["repo-details", resource?.url],
+    queryFn: () => fetchRepoDetails(resource?.url ?? ""),
     enabled: isRepo,
     staleTime: 60 * 60_000, // 1 h : les étoiles bougent lentement
     retry: 1,
   });
+
+  if (!resource) return null;
 
   // fichier local : icône selon l'extension (pas d'initiales génériques)
   const isFileRes = resource.resourceType === "fichier";
@@ -168,12 +192,12 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
             </div>
           )}
           <div className="min-w-0 grow">
-            <h2 className="text-xl font-bold leading-tight">{resource.title}</h2>
+            <h2 className="text-xl font-bold leading-tight">
+              {resource.title}
+            </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {typeLabel(resource.resourceType)} · ajoutée le {created} ·{" "}
-              {opened > 0
-                ? `ouverte ${opened} fois`
-                : "jamais ouverte"}
+              {opened > 0 ? `ouverte ${opened} fois` : "jamais ouverte"}
             </p>
           </div>
           <div className="flex shrink-0 gap-1">
@@ -205,7 +229,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
                 // échouait sur les apps et ne comptait jamais l'ouverture)
                 onClick={() =>
                   openResource(resource).catch((e) =>
-                    toast.error(String(e)),
+                    toast.error(describeError(e)),
                   )
                 }
               >
@@ -220,6 +244,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
           {/* lien */}
           {!resource.url.startsWith("local:") && (
             <button
+              type="button"
               onClick={() => copy(resource.url)}
               title="Cliquer pour copier"
               className="flex w-full cursor-pointer items-center gap-2 truncate rounded-lg border bg-muted/30 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -239,15 +264,28 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
           {/* tags + favori */}
           {(resource.tags.length > 0 || resource.favorite) && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              {resource.favorite && <StatChip icon={<Star className="size-3.5 fill-yellow-400 text-yellow-400" />} label="Favori" />}
+              {resource.favorite && (
+                <StatChip
+                  icon={
+                    <Star className="size-3.5 fill-yellow-400 text-yellow-400" />
+                  }
+                  label="Favori"
+                />
+              )}
               {resource.tags.map((t) => (
-                <StatChip key={t} icon={<Tag className="size-3.5 text-muted-foreground" />} label={t} />
+                <StatChip
+                  key={t}
+                  icon={<Tag className="size-3.5 text-muted-foreground" />}
+                  label={t}
+                />
               ))}
             </div>
           )}
 
           {/* champs meta du type */}
-          {metaFieldsFor(resource.resourceType).some((f) => resource.meta?.[f.key]) && (
+          {metaFieldsFor(resource.resourceType).some(
+            (f) => resource.meta?.[f.key],
+          ) && (
             <div className="mt-3 grid gap-2 rounded-xl border bg-muted/20 p-3 sm:grid-cols-2">
               {metaFieldsFor(resource.resourceType)
                 .filter((f) => resource.meta?.[f.key])
@@ -256,7 +294,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
                     <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       {f.label}
                     </span>
-                    <p className="text-sm">{resource.meta![f.key]}</p>
+                    <p className="text-sm">{resource.meta?.[f.key] ?? ""}</p>
                   </div>
                 ))}
             </div>
@@ -278,12 +316,26 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
                 <>
                   <div className="flex flex-wrap gap-1.5">
                     {repo.language && (
-                      <StatChip icon={<span className="size-2.5 rounded-full bg-primary" />} label={repo.language} />
+                      <StatChip
+                        icon={
+                          <span className="size-2.5 rounded-full bg-primary" />
+                        }
+                        label={repo.language}
+                      />
                     )}
-                    <StatChip icon={<Star className="size-3.5" />} label={repo.stars.toLocaleString("fr-FR")} />
-                    <StatChip icon={<GitFork className="size-3.5" />} label={repo.forks.toLocaleString("fr-FR")} />
+                    <StatChip
+                      icon={<Star className="size-3.5" />}
+                      label={repo.stars.toLocaleString("fr-FR")}
+                    />
+                    <StatChip
+                      icon={<GitFork className="size-3.5" />}
+                      label={repo.forks.toLocaleString("fr-FR")}
+                    />
                     {repo.license && (
-                      <StatChip icon={<Scale className="size-3.5" />} label={repo.license} />
+                      <StatChip
+                        icon={<Scale className="size-3.5" />}
+                        label={repo.license}
+                      />
                     )}
                   </div>
                   {repo.topics.length > 0 && (
@@ -310,9 +362,24 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
                         <FileText className="size-3.5" />
                         README
                       </div>
+                      {/* liens du README : ouverts dans le navigateur externe,
+                          jamais en navigation de la webview (hameçonnage/DoS).
+                          Les href dangereux sont déjà neutralisés par
+                          renderMarkdown ; ceci est la défense en profondeur. */}
                       <div
                         className="note-content text-sm"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(repo.readme) }}
+                        onClick={(e) => {
+                          const anchor = (e.target as HTMLElement).closest("a");
+                          const href = anchor?.getAttribute("href");
+                          if (!href) return;
+                          e.preventDefault();
+                          if (/^https?:\/\//i.test(href)) {
+                            void openUrl(href).catch(() => {});
+                          }
+                        }}
+                        dangerouslySetInnerHTML={{
+                          __html: renderMarkdown(repo.readme),
+                        }}
                       />
                     </div>
                   ) : (

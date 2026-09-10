@@ -1,14 +1,14 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 import { addResource, fetchMetadata, listResources } from "@/lib/api";
 import { fuzzyMatch } from "@/lib/fuzzy";
 import { openResource } from "@/lib/openResource";
 import { hostOf, typeLabel } from "@/lib/resources";
 import type { Resource } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
+import { cn, describeError } from "@/lib/utils";
 
 /** Ligne de la palette : un résultat, ou l'action « ajouter cette URL ». */
 type PaletteItem =
@@ -73,7 +73,10 @@ export function CommandPalette({
   // une saisie qui est une URL → première ligne = proposition d'ajout
   const urlLike = /^https?:\/\/\S+$/i.test(query.trim()) ? query.trim() : null;
   const items = useMemo<PaletteItem[]>(() => {
-    const res: PaletteItem[] = results.map((resource) => ({ kind: "res", resource }));
+    const res: PaletteItem[] = results.map((resource) => ({
+      kind: "res",
+      resource,
+    }));
     if (urlLike) return [{ kind: "add", url: urlLike }, ...res];
     return res;
   }, [results, urlLike]);
@@ -87,6 +90,7 @@ export function CommandPalette({
     return () => clearTimeout(t);
   }, [open]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset declenche par chaque frappe, setter stable
   useEffect(() => setSelected(0), [query]);
 
   /** Extrait ~60 caractères autour du terme cherché (description ou notes),
@@ -115,7 +119,7 @@ export function CommandPalette({
       void qc.invalidateQueries({ queryKey: ["resources"] });
       onOpenChange(false);
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }
 
@@ -136,7 +140,9 @@ export function CommandPalette({
       onOpenChange(false);
     } catch (e) {
       const msg = String(e);
-      toast.error(msg.includes("déjà enregistrée") ? "Déjà dans ta bibliothèque" : msg);
+      toast.error(
+        msg.includes("déjà enregistrée") ? "Déjà dans ta bibliothèque" : msg,
+      );
     } finally {
       setAdding(false);
     }
@@ -201,6 +207,7 @@ export function CommandPalette({
               it.kind === "add" ? (
                 <button
                   key={`add:${it.url}`}
+                  type="button"
                   onClick={() => void addUrl(it.url)}
                   onMouseEnter={() => setSelected(i)}
                   disabled={adding}
@@ -216,7 +223,9 @@ export function CommandPalette({
                   <span className="min-w-0 flex-1 truncate font-medium">
                     Ajouter « {hostOf(it.url)} » à la bibliothèque
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">Entrée ↵</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    Entrée ↵
+                  </span>
                 </button>
               ) : (
                 (() => {
@@ -225,6 +234,7 @@ export function CommandPalette({
                   return (
                     <button
                       key={r.id}
+                      type="button"
                       onClick={() => void launch(r)}
                       onMouseEnter={() => setSelected(i)}
                       className={cn(
@@ -233,7 +243,11 @@ export function CommandPalette({
                       )}
                     >
                       {r.favicon ? (
-                        <img src={r.favicon} alt="" className="size-6 rounded" />
+                        <img
+                          src={r.favicon}
+                          alt=""
+                          className="size-6 rounded"
+                        />
                       ) : (
                         <div className="flex size-6 items-center justify-center rounded bg-muted text-[10px] font-bold uppercase">
                           {r.title.slice(0, 2)}

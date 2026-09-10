@@ -17,16 +17,19 @@
         "height": 800,
         "minWidth": 900,
         "minHeight": 600,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "decorations": false,
+        "resizable": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://www.google.com https://s.wordpress.com https://github.com https://avatars.githubusercontent.com; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; frame-src 'self'; object-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://www.google.com https://s.wordpress.com https://github.com https://avatars.githubusercontent.com https://cdn.simpleicons.org https://api.iconify.design; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://cdn.simpleicons.org https://api.iconify.design; frame-src 'self'; object-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,5 +37,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/kevsi/Vaultly/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

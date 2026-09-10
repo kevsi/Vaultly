@@ -1,18 +1,21 @@
-import { Pencil, Star, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { ExternalLink, Pencil, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { deleteResource, toggleFavorite } from "@/lib/api";
+import { toast } from "sonner";
+import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  deleteResource,
+  getOpenPrefs,
+  openResourceById,
+  toggleFavorite,
+} from "@/lib/api";
 import { noteColorClass, parseDbDate } from "@/lib/resources";
 import { sanitizeHtml } from "@/lib/sanitize";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Resource } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog";
+import { cn, describeError } from "@/lib/utils";
 
 interface Props {
   note: Resource | null;
@@ -21,9 +24,26 @@ interface Props {
   onChanged: () => void;
 }
 
+/** Nom court d'un exécutable configuré (« Code », « notepad++ »…). */
+function exeShortName(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? path;
+  return base.replace(/\.exe$/i, "");
+}
+
 /** Lecture d'une note : titre + corps mis en forme, actions en pied de carte. */
 export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  // application de notes externe (Réglages › Ouverture) : bouton proposé
+  // seulement si configurée — hooks avant tout return (règles de React)
+  const { data: openPrefs } = useQuery({
+    queryKey: ["openPrefs"],
+    queryFn: getOpenPrefs,
+    enabled: note !== null,
+    staleTime: 60_000,
+  });
+  const noteApp = openPrefs?.noteAppPath?.trim()
+    ? openPrefs.noteAppPath.trim()
+    : null;
 
   if (!note) return null;
 
@@ -35,7 +55,7 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
       onClose();
       onChanged();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }
 
@@ -46,7 +66,19 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
       onChanged();
       onClose();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
+    }
+  }
+
+  /** Ouverture externe : export HTML vers Documents\Vaultly\Notes puis
+   *  lancement (les modifications externes ne reviennent pas dans Vaultly). */
+  async function openExternal() {
+    if (!note || !noteApp) return;
+    try {
+      await openResourceById(note.id);
+      toast.success(`Ouvert dans ${exeShortName(noteApp)}`);
+    } catch (e) {
+      toast.error(describeError(e));
     }
   }
 
@@ -54,18 +86,15 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
    *  interception, le clic ferait naviguer le WebView entier hors de l'app. */
   function onBodyClick(e: React.MouseEvent<HTMLDivElement>) {
     const anchor = (e.target as HTMLElement).closest("a");
-    if (anchor && anchor.getAttribute("href")) {
-      e.preventDefault();
-      const href = anchor.getAttribute("href")!;
-      if (href.startsWith("#")) return; // ancre interne : laisser faire
-      // href vide (lien inséré sans adresse) : silencieux, pas un toast
-      // d'erreur global venu du rejet d'openUrl("")
-      if (!href.trim() || !href.trim().startsWith("#")) {
-        if (href.startsWith("http://") || href.startsWith("https://")) {
-          void openUrl(href);
-        }
-        return;
-      }
+    const raw = anchor?.getAttribute("href");
+    if (raw === null || raw === undefined) return;
+    e.preventDefault();
+    // ancre interne ou href vide : laisser faire / silencieux (pas de toast
+    // d'erreur global venu du rejet d'openUrl("")). Seuls les liens http(s)
+    // partent vers le navigateur externe.
+    const href = raw.trim();
+    if (href.startsWith("http://") || href.startsWith("https://")) {
+      void openUrl(href);
     }
   }
 
@@ -89,9 +118,7 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
         <div className="flex items-start justify-between gap-3 px-6 pt-6">
           <div className="min-w-0">
             <h2 className="text-2xl font-bold leading-tight">{note.title}</h2>
-            {date && (
-              <p className="mt-1 text-xs opacity-60">Le {date}</p>
-            )}
+            {date && <p className="mt-1 text-xs opacity-60">Le {date}</p>}
           </div>
           <Button
             variant="ghost"
@@ -128,6 +155,18 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
             />
             {note.favorite ? "Retiré des favoris" : "Favori"}
           </Button>
+          {noteApp && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void openExternal()}
+              className="border-current/20 bg-transparent"
+              title="La note est exportée vers Documents\Vaultly\Notes à chaque ouverture"
+            >
+              <ExternalLink />
+              Ouvrir avec {exeShortName(noteApp)}
+            </Button>
+          )}
           <span className="grow" />
           <Button
             variant="ghost"

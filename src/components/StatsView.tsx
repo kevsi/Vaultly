@@ -1,17 +1,29 @@
-import { Activity, Flame, Star, Tag } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getStats } from "@/lib/api";
-import { hostOf, typeLabel } from "@/lib/resources";
+import { Activity, Flame, Star, Tag } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { getStats } from "@/lib/api";
+import { hostOf, parseDbDate, typeLabel } from "@/lib/resources";
 
 const MONTHS = [
-  "janv.", "févr.", "mars", "avr.", "mai", "juin",
-  "juil.", "août", "sept.", "oct.", "nov.", "déc.",
+  "janv.",
+  "févr.",
+  "mars",
+  "avr.",
+  "mai",
+  "juin",
+  "juil.",
+  "août",
+  "sept.",
+  "oct.",
+  "nov.",
+  "déc.",
 ];
 
 /** 12 derniers mois, trous comblés à zéro : ["YYYY-MM", n] → série dense. */
-function activitySeries(activity: [string, number][]): { label: string; n: number }[] {
+function activitySeries(
+  activity: [string, number][],
+): { label: string; n: number }[] {
   const map = new Map(activity);
   const out: { label: string; n: number }[] = [];
   const now = new Date();
@@ -29,9 +41,9 @@ function ActivityChart({ activity }: { activity: [string, number][] }) {
   const max = Math.max(...series.map((s) => s.n), 1);
   return (
     <div className="mt-3 flex h-24 items-end gap-1.5">
-      {series.map((s, i) => (
+      {series.map((s) => (
         <div
-          key={i}
+          key={s.label}
           className="group flex min-w-0 flex-1 flex-col items-center gap-1"
           title={`${s.label} : ${s.n} ajout${s.n > 1 ? "s" : ""}`}
         >
@@ -39,11 +51,11 @@ function ActivityChart({ activity }: { activity: [string, number][] }) {
             <div
               className={
                 "w-full rounded-t-md transition-colors " +
-                (s.n > 0
-                  ? "bg-primary/70 group-hover:bg-primary"
-                  : "bg-muted")
+                (s.n > 0 ? "bg-primary/70 group-hover:bg-primary" : "bg-muted")
               }
-              style={{ height: `${Math.max(s.n > 0 ? (s.n / max) * 100 : 0, 3)}%` }}
+              style={{
+                height: `${Math.max(s.n > 0 ? (s.n / max) * 100 : 0, 3)}%`,
+              }}
             />
           </div>
           <span className="text-[10px] text-muted-foreground">{s.label}</span>
@@ -54,7 +66,12 @@ function ActivityChart({ activity }: { activity: [string, number][] }) {
 }
 
 export function StatsView() {
-  const { data: s, isLoading, isError, error } = useQuery({
+  const {
+    data: s,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["stats"],
     queryFn: getStats,
   });
@@ -118,25 +135,27 @@ export function StatsView() {
           <div className="rounded-xl border p-4">
             <h3 className="font-medium">Par type</h3>
             <div className="mt-3 space-y-2">
-              {s.byType.filter(([t]) => t !== "").map(([t, n]) => {
-                const pct = s.total > 0 ? Math.round((n / s.total) * 100) : 0;
-                return (
-                  <div key={t}>
-                    <div className="flex justify-between text-sm">
-                      <span>{typeLabel(t)}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {n} ({pct} %)
-                      </span>
+              {s.byType
+                .filter(([t]) => t !== "")
+                .map(([t, n]) => {
+                  const pct = s.total > 0 ? Math.round((n / s.total) * 100) : 0;
+                  return (
+                    <div key={t}>
+                      <div className="flex justify-between text-sm">
+                        <span>{typeLabel(t)}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {n} ({pct} %)
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary/70"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary/70"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
 
@@ -153,7 +172,9 @@ export function StatsView() {
                   <div key={tag}>
                     <div className="flex justify-between text-sm">
                       <span className="min-w-0 truncate">{tag}</span>
-                      <span className="tabular-nums text-muted-foreground">{n}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {n}
+                      </span>
                     </div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
                       <div
@@ -208,10 +229,13 @@ export function StatsView() {
             ) : (
               <div className="mt-3 space-y-1.5">
                 {s.neverOpenedList.map((r) => {
-                  const d = new Date(r.createdAt.replace(" ", "T") + "Z");
+                  const d = parseDbDate(r.createdAt);
                   const when = Number.isNaN(d.getTime())
                     ? ""
-                    : d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+                    : d.toLocaleDateString("fr-FR", {
+                        month: "short",
+                        year: "numeric",
+                      });
                   return (
                     <div key={r.id} className="flex items-center gap-2 text-sm">
                       <span className="min-w-0 flex-1 truncate">{r.title}</span>

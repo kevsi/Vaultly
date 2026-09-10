@@ -1,18 +1,22 @@
-import type { Resource } from "./types";
 import {
   AppWindow,
-  Circle,
+  Files,
   FileText,
-  FolderOpen,
   GitBranch,
   Globe,
+  type LucideIcon,
   Play,
+  Shapes,
   StickyNote,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
+import type { Resource } from "./types";
 
-export const RESOURCE_TYPES: { value: string; label: string; icon: LucideIcon }[] = [
+export const RESOURCE_TYPES: {
+  value: string;
+  label: string;
+  icon: LucideIcon;
+}[] = [
   { value: "site", label: "Sites", icon: Globe },
   { value: "app", label: "Apps", icon: AppWindow },
   { value: "repo", label: "Repositories", icon: GitBranch },
@@ -20,21 +24,53 @@ export const RESOURCE_TYPES: { value: string; label: string; icon: LucideIcon }[
   { value: "article", label: "Articles", icon: FileText },
   { value: "video", label: "Vidéos", icon: Play },
   { value: "note", label: "Notes", icon: StickyNote },
-  { value: "fichier", label: "Fichiers", icon: FolderOpen },
-  { value: "autre", label: "Autres", icon: Circle },
+  { value: "fichier", label: "Fichiers", icon: Files },
+  { value: "autre", label: "Autres", icon: Shapes },
 ];
 
 /** Couleurs de post-it disponibles. */
-export const NOTE_COLORS: { value: string; label: string; tile: string; dot: string }[] = [
-  { value: "amber", label: "Miel", tile: "bg-amber-100 text-amber-950 border-amber-200 dark:bg-amber-400/15 dark:text-amber-100 dark:border-amber-400/25", dot: "bg-amber-300" },
-  { value: "rose", label: "Saumon", tile: "bg-rose-100 text-rose-950 border-rose-200 dark:bg-rose-400/15 dark:text-rose-100 dark:border-rose-400/25", dot: "bg-rose-300" },
-  { value: "sky", label: "Ciel", tile: "bg-sky-100 text-sky-950 border-sky-200 dark:bg-sky-400/15 dark:text-sky-100 dark:border-sky-400/25", dot: "bg-sky-300" },
-  { value: "emerald", label: "Menthe", tile: "bg-emerald-100 text-emerald-950 border-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-100 dark:border-emerald-400/25", dot: "bg-emerald-300" },
-  { value: "violet", label: "Lilas", tile: "bg-violet-100 text-violet-950 border-violet-200 dark:bg-violet-400/15 dark:text-violet-100 dark:border-violet-400/25", dot: "bg-violet-300" },
+export const NOTE_COLORS: {
+  value: string;
+  label: string;
+  tile: string;
+  dot: string;
+}[] = [
+  {
+    value: "amber",
+    label: "Miel",
+    tile: "bg-amber-100 text-amber-950 border-amber-200 dark:bg-amber-400/15 dark:text-amber-100 dark:border-amber-400/25",
+    dot: "bg-amber-300",
+  },
+  {
+    value: "rose",
+    label: "Saumon",
+    tile: "bg-rose-100 text-rose-950 border-rose-200 dark:bg-rose-400/15 dark:text-rose-100 dark:border-rose-400/25",
+    dot: "bg-rose-300",
+  },
+  {
+    value: "sky",
+    label: "Ciel",
+    tile: "bg-sky-100 text-sky-950 border-sky-200 dark:bg-sky-400/15 dark:text-sky-100 dark:border-sky-400/25",
+    dot: "bg-sky-300",
+  },
+  {
+    value: "emerald",
+    label: "Menthe",
+    tile: "bg-emerald-100 text-emerald-950 border-emerald-200 dark:bg-emerald-400/15 dark:text-emerald-100 dark:border-emerald-400/25",
+    dot: "bg-emerald-300",
+  },
+  {
+    value: "violet",
+    label: "Lilas",
+    tile: "bg-violet-100 text-violet-950 border-violet-200 dark:bg-violet-400/15 dark:text-violet-100 dark:border-violet-400/25",
+    dot: "bg-violet-300",
+  },
 ];
 
 export function noteColorClass(color: string | undefined): string {
-  return NOTE_COLORS.find((c) => c.value === color)?.tile ?? NOTE_COLORS[0].tile;
+  return (
+    NOTE_COLORS.find((c) => c.value === color)?.tile ?? NOTE_COLORS[0].tile
+  );
 }
 
 export function typeLabel(t: string): string {
@@ -56,6 +92,28 @@ export function hostOf(url: string): string {
  *  source unique pour tout le front (tuiles, notes, stats). */
 export function parseDbDate(raw: string): Date {
   return new Date(raw.replace(" ", "T") + (raw.endsWith("Z") ? "" : "Z"));
+}
+
+/** Date SQLite UTC dans `days` jours (« YYYY-MM-DD HH:MM:SS ») — rappels. */
+export function sqliteDatePlusDays(days: number): string {
+  const d = new Date(Date.now() + days * 86_400_000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+/** Libellé relatif d'un rappel : « aujourd'hui », « demain », « dans 5 j »,
+ *  puis date courte. */
+export function formatRemindAt(iso: string): string {
+  const t = parseDbDate(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const days = Math.round((t - Date.now()) / 86_400_000);
+  if (days <= 0) return "aujourd'hui";
+  if (days === 1) return "demain";
+  if (days < 7) return `dans ${days} j`;
+  return parseDbDate(iso).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
 /** Délai (en jours) après lequel une ressource jamais ouverte est "à revisiter". */

@@ -16,7 +16,10 @@ export interface FuzzyMatch {
   indices: number[];
 }
 
-export function fuzzyMatch(needle: string, haystack: string): FuzzyMatch | null {
+export function fuzzyMatch(
+  needle: string,
+  haystack: string,
+): FuzzyMatch | null {
   if (!needle) return { score: 0, indices: [] };
   const n = needle.toLowerCase();
   const h = haystack.toLowerCase();
@@ -39,7 +42,8 @@ export function fuzzyMatch(needle: string, haystack: string): FuzzyMatch | null 
     score += found === prevMatched + 1 ? 8 : 2;
     // début de mot (début de chaîne, séparateur, ou majuscule en camelCase)
     const prev = found > 0 ? h[found - 1] : "";
-    const wordStart = found === 0 || /[\s\-_/.\[]/.test(prev) || (h[found] !== haystack[found]);
+    const wordStart =
+      found === 0 || /[\s\-_/.[]/.test(prev) || h[found] !== haystack[found];
     if (wordStart) score += 6;
     // bonus léger de précocité
     score += Math.max(0, 4 - Math.floor(found / 8));

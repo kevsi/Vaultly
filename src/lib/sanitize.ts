@@ -4,6 +4,28 @@
  * forme (titres, listes, gras, citations, liens http).
  */
 
+/**
+ * Schéma d'un lien Markdown (chaîne déjà HTML-échappée, ex. `&amp;` présent) :
+ * n'autorise que http(s), mailto, ancre (#) ou relatif. Un schéma inconnu
+ * (javascript:, data:, vbscript:…) ne doit JAMAIS devenir un <a href> cliquable.
+ * Les caractères de contrôle sont ignorés (« java\tscript: » ne contourne pas).
+ */
+export function isSafeLinkHref(raw: string): boolean {
+  const h = raw
+    .replace(/&amp;/gi, "&")
+    .split("")
+    .filter((c) => c.charCodeAt(0) >= 0x20)
+    .join("")
+    .trim()
+    .toLowerCase();
+  if (h === "" || h.startsWith("#") || h.startsWith("/")) return true;
+  const colon = h.indexOf(":");
+  const slash = h.indexOf("/");
+  // pas de « : » avant le premier « / » = URL relative : sans risque
+  if (colon === -1 || (slash !== -1 && slash < colon)) return true;
+  return /^(https?:|mailto:)/.test(h);
+}
+
 /** Schémas d'URL autorisés dans href/src (allowlist : tout le reste —
  *  javascript:, data:, vbscript:… — est retiré). */
 const SAFE_URL_SCHEMES = ["http:", "https:", "mailto:"];
@@ -33,8 +55,26 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
 };
 
 const ALLOWED_TAGS = new Set([
-  "H1", "H2", "H3", "P", "BR", "STRONG", "B", "EM", "I", "U", "S",
-  "UL", "OL", "LI", "BLOCKQUOTE", "A", "CODE", "PRE", "SPAN", "DIV",
+  "H1",
+  "H2",
+  "H3",
+  "P",
+  "BR",
+  "STRONG",
+  "B",
+  "EM",
+  "I",
+  "U",
+  "S",
+  "UL",
+  "OL",
+  "LI",
+  "BLOCKQUOTE",
+  "A",
+  "CODE",
+  "PRE",
+  "SPAN",
+  "DIV",
   "IMG",
 ]);
 
@@ -45,8 +85,12 @@ export function sanitizeHtml(html: string): string {
   // éléments dangereux retirés entièrement (sur TOUT le document : les
   // <script>/<style> peuvent être dans le <head>)
   doc
-    .querySelectorAll("script, style, iframe, object, embed, link, meta, base, form, input, button")
-    .forEach((el) => el.remove());
+    .querySelectorAll(
+      "script, style, iframe, object, embed, link, meta, base, form, input, button",
+    )
+    .forEach((el) => {
+      el.remove();
+    });
 
   // On itère sur les DESCENDANTS de <body>, jamais sur doc.querySelectorAll("*")
   // : celui-ci inclut <html>/<head>/<body>, et déplier <html> en ses deux

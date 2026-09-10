@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
@@ -20,6 +20,10 @@ export default defineConfig(async () => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"],
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,

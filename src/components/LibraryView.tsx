@@ -1,14 +1,19 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Archive,
   ArrowDownAZ,
   ArrowLeft,
   CalendarDays,
   Camera,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  Cloud,
   Flame,
   FolderOpen,
   History,
+  KanbanSquare,
   LayoutGrid,
-  Cloud,
   List,
   ListChecks,
   Loader2,
@@ -16,46 +21,19 @@ import {
   Search,
   Star,
   StickyNote,
+  Tags,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { cloudImportFile, cloudListFiles, cloudUploadFile, type CloudFile } from "@/lib/api";
-import {
-  allTags,
-  createFolder,
-  deleteFolder,
-  deleteResource,
-  deleteResources,
-  dissolveFolder,
-  listFolders,
-  listResources,
-  moveFolder,
-  openResourcesFolder,
-  reorderResources,
-  renameFolder,
-  setResourceFolder,
-  setResourceStatus,
-} from "@/lib/api";
-import { RESOURCE_TYPES } from "@/lib/resources";
-import { ensureSystemFolder } from "@/lib/systemFolders";
-import {
-  getTileSize,
-  tileMinPx,
-  getViewMode,
-  setViewMode as persistViewMode,
-  type ViewMode,
-} from "@/lib/tileSize";
-import type { Folder, Resource, SortBy } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { BoardView } from "@/components/BoardView";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
-
+import { ResourceGrid } from "@/components/library/ResourceGrid";
 import { NoteEditor } from "@/components/NoteEditor";
 import { NoteViewer } from "@/components/NoteViewer";
-import { ResourceDialog } from "@/components/ResourceDialog";
-import { ResourceGrid } from "@/components/library/ResourceGrid";
 import { ResourceDetails } from "@/components/ResourceDetails";
+import { ResourceDialog } from "@/components/ResourceDialog";
+import { TagManagerDialog } from "@/components/TagManagerDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -72,6 +50,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  allTags,
+  type CloudFile,
+  cloudImportFile,
+  cloudListFiles,
+  cloudUploadFile,
+  createFolder,
+  deleteFolder,
+  deleteResource,
+  deleteResources,
+  dissolveFolder,
+  listFolders,
+  listResources,
+  moveFolder,
+  openResourcesFolder,
+  renameFolder,
+  reorderResources,
+  setResourceFolder,
+  setResourceStatus,
+} from "@/lib/api";
+import { openResource } from "@/lib/openResource";
+import { isStale, RESOURCE_TYPES } from "@/lib/resources";
+import {
+  getTileSize,
+  getViewMode,
+  setViewMode as persistViewMode,
+  tileMinPx,
+  type ViewMode,
+} from "@/lib/tileSize";
+import type { Folder, Resource, SortBy } from "@/lib/types";
+import { cn, describeError } from "@/lib/utils";
 
 const SORTS: { value: SortBy; label: string; icon: typeof Clock }[] = [
   { value: "recent", label: "Récents", icon: Clock },
@@ -82,15 +91,20 @@ const SORTS: { value: SortBy; label: string; icon: typeof Clock }[] = [
   { value: "title", label: "A→Z", icon: ArrowDownAZ },
 ];
 
+/** Clés stables des 12 squelettes de chargement (jamais réordonnés). */
+const SKELETON_KEYS = Array.from({ length: 12 }, (_, i) => `skeleton-${i}`);
+
 export function LibraryView() {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [category, setCategory] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [favOnly, setFavOnly] = useState(false);
+  /** Revue « À revisiter » : jamais ouvertes depuis 60 jours (isStale),
+   *  triées ici (ouvrir / archiver / supprimer en sélection multiple) */
+  const [staleOnly, setStaleOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   // pile de navigation des dossiers : « Retour » remonte au dossier PARENT
   // (pas à la racine) quand on est dans un dossier imbriqué
@@ -112,6 +126,7 @@ export function LibraryView() {
   } | null>(null);
   const [folderDropHint, setFolderDropHint] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [editing, setEditing] = useState<Resource | null>(null);
   const [prefillUrl, setPrefillUrl] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -135,6 +150,18 @@ export function LibraryView() {
     { mode: "create" } | { mode: "rename"; folder: Folder } | null
   >(null);
   const [folderName, setFolderName] = useState("");
+  // --- pagination de la grille : l'état vit ici (la barre est rendue dans la
+  // toolbar) ; ResourceGrid tranche `pageItems` et remonte pages/total ---
+  const [page, setPage] = useState(0);
+  const [pagination, setPagination] = useState({ pages: 1, total: 0 });
+  const handlePagination = useCallback(
+    (info: { pages: number; total: number }) => {
+      setPagination((prev) =>
+        prev.pages === info.pages && prev.total === info.total ? prev : info,
+      );
+    },
+    [],
+  );
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -169,7 +196,13 @@ export function LibraryView() {
     function onKey(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey;
       const anyDialogOpen =
-        dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || cloudDialogOpen || confirm !== null;
+        dialogOpen ||
+        noteEditorOpen ||
+        noteViewing !== null ||
+        detailsViewing !== null ||
+        folderDialog !== null ||
+        cloudDialogOpen ||
+        confirm !== null;
       if (ctrl && e.altKey && e.key.toLowerCase() === "n") {
         if (anyDialogOpen) return;
         e.preventDefault();
@@ -186,20 +219,45 @@ export function LibraryView() {
         e.preventDefault();
         searchRef.current?.focus();
       } else if (e.key === "Escape" && openFolder && !anyDialogOpen) {
-        goUp();
+        // goUp() inliné : la fonction recréée à chaque render ferait
+        // ré-abonner le listener en boucle comme dep d'effet
+        setFolderStack((s) => s.slice(0, -1));
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openFolder, dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, cloudDialogOpen, confirm]);
+  }, [
+    openFolder,
+    dialogOpen,
+    noteEditorOpen,
+    noteViewing,
+    detailsViewing,
+    folderDialog,
+    cloudDialogOpen,
+    confirm,
+  ]);
 
   // URL capturée depuis le presse-papiers : modale pré-remplie.
   // Ignorée si un dialogue est déjà ouvert : elle écraserait la saisie en cours.
   const anyDialogRef = useRef(false);
   useEffect(() => {
     anyDialogRef.current =
-      dialogOpen || noteEditorOpen || noteViewing !== null || detailsViewing !== null || folderDialog !== null || cloudDialogOpen || confirm !== null;
-  }, [dialogOpen, noteEditorOpen, noteViewing, detailsViewing, folderDialog, cloudDialogOpen, confirm]);
+      dialogOpen ||
+      noteEditorOpen ||
+      noteViewing !== null ||
+      detailsViewing !== null ||
+      folderDialog !== null ||
+      cloudDialogOpen ||
+      confirm !== null;
+  }, [
+    dialogOpen,
+    noteEditorOpen,
+    noteViewing,
+    detailsViewing,
+    folderDialog,
+    cloudDialogOpen,
+    confirm,
+  ]);
   useEffect(() => {
     function onAddUrl(e: Event) {
       if (anyDialogRef.current) return;
@@ -216,7 +274,6 @@ export function LibraryView() {
     "resources",
     debounced,
     typeFilter,
-    category,
     tagFilter,
     statusFilter,
     favOnly,
@@ -235,9 +292,11 @@ export function LibraryView() {
       listResources({
         query: debounced,
         resourceType: typeFilter,
-        category,
         tag: tagFilter,
         status: statusFilter,
+        // accueil (racine, aucun statut choisi) : masquer les archivés —
+        // ce sont les « faits », à ne pas encombrer la vue courante.
+        hideArchived: !openFolder && !statusFilter,
         favorite: favOnly,
         sortBy,
         // accueil = ressources sans dossier ; dossier ouvert = son contenu
@@ -259,6 +318,31 @@ export function LibraryView() {
   // stable entre les renders : passé aux tuiles mémoïsées (sinon `?? []`
   // crée un nouveau tableau à chaque render et invalide le memo).
   const foldersList = useMemo(() => folders ?? [], [folders]);
+  // revue « À revisiter » : filtre client sur les résultats chargés
+  // (jamais ouvertes depuis 60 jours, non archivées)
+  const displayed = useMemo(
+    () =>
+      staleOnly
+        ? (resources ?? []).filter((r) => r.status !== "archived" && isStale(r))
+        : (resources ?? []),
+    [resources, staleOnly],
+  );
+  const hasFilter = Boolean(
+    debounced ||
+      favOnly ||
+      staleOnly ||
+      typeFilter ||
+      tagFilter ||
+      statusFilter,
+  );
+  // revue seule (sans autre filtre) et vide = tout est à jour 🎉
+  const staleAlone =
+    staleOnly &&
+    !debounced &&
+    !favOnly &&
+    !typeFilter &&
+    !tagFilter &&
+    !statusFilter;
   const visibleFolders = useMemo(
     () =>
       foldersList.filter((f) =>
@@ -282,6 +366,53 @@ export function LibraryView() {
   }, []);
   const tileMin = tileMinPx(tileSize);
 
+  // Kanban : sa propre lecture TOUS statuts (les 3 colonnes doivent exister
+  // même quand l'accueil masque les archivés). Suit dossier + recherche +
+  // type + tag + favoris, ignore le filtre statut. Actif en vue tableau seul.
+  const { data: boardResources } = useQuery({
+    queryKey: [
+      "resources",
+      "board",
+      debounced,
+      typeFilter,
+      tagFilter,
+      favOnly,
+      openFolder?.id ?? null,
+    ],
+    queryFn: () =>
+      listResources({
+        query: debounced,
+        resourceType: typeFilter,
+        tag: tagFilter,
+        favorite: favOnly,
+        status: null,
+        hideArchived: false,
+        folderId: openFolder?.id ?? null,
+        unfiledOnly: !openFolder,
+      }),
+    enabled: viewMode === "board",
+  });
+
+  // pagination : changer de dossier/filtres (ou la vue) ramène à la page 1
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset voulu quand ces critères changent ; leurs valeurs ne sont pas lues dans l'effet
+  useEffect(() => {
+    setPage(0);
+  }, [
+    openFolder?.id,
+    viewMode,
+    debounced,
+    typeFilter,
+    tagFilter,
+    statusFilter,
+    favOnly,
+    staleOnly,
+    sortBy,
+  ]);
+  // recale la page si le nb de pages se réduit (filtre, resize, suppression)
+  useEffect(() => {
+    if (page > pagination.pages - 1) setPage(Math.max(0, pagination.pages - 1));
+  }, [pagination.pages, page]);
+
   function toggleCaptures() {
     const next = !captures;
     setCaptures(next);
@@ -303,7 +434,10 @@ export function LibraryView() {
   /** Dépose d'une tuile pendant le drag d'une ressource :
    *  - zone CENTRALE de la cible → crée un dossier avec les deux (fusion) ;
    *  - moitiés gauche/droite → insère la tuile à cet interstice (trait). */
-  async function handleDropOnTile(target: Resource, zone: "left" | "right" | "center") {
+  async function handleDropOnTile(
+    target: Resource,
+    zone: "left" | "right" | "center",
+  ) {
     setDropZone(null);
     setFolderDropHint(null);
     const srcId = dragId;
@@ -318,10 +452,17 @@ export function LibraryView() {
     try {
       if (zone === "center") {
         const name = `Dossier — ${moved.title.slice(0, 20)} & ${target.title.slice(0, 20)}`;
-        const folder = await createFolder(name, undefined, openFolder?.id ?? null);
+        const folder = await createFolder(
+          name,
+          undefined,
+          openFolder?.id ?? null,
+        );
         await setResourceFolder(moved.id, folder.id);
         await setResourceFolder(target.id, folder.id);
-        const shown = folder.name.length > 45 ? `${folder.name.slice(0, 45)}…` : folder.name;
+        const shown =
+          folder.name.length > 45
+            ? `${folder.name.slice(0, 45)}…`
+            : folder.name;
         toast.success(`Dossier « ${shown} » créé`, {
           description: "Renomme-le depuis son menu ⋯ si besoin.",
         });
@@ -343,7 +484,7 @@ export function LibraryView() {
       if (sortBy !== "manual") setSortBy("manual");
       refresh();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
       refresh();
     }
   }
@@ -362,7 +503,7 @@ export function LibraryView() {
       toast.success(`Déplacé dans « ${target.name} »`);
       refresh();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }
 
@@ -377,7 +518,7 @@ export function LibraryView() {
       toast.success(`Rangée dans « ${folder.name} »`);
       refresh();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }
 
@@ -392,7 +533,7 @@ export function LibraryView() {
         );
         refresh();
       } catch (e) {
-        toast.error(String(e));
+        toast.error(describeError(e));
       }
     },
     [foldersList, refresh],
@@ -410,7 +551,7 @@ export function LibraryView() {
       const name = await cloudUploadFile(path);
       toast.success(`Envoyé vers le cloud sous « ${name} »`);
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }, []);
 
@@ -419,7 +560,7 @@ export function LibraryView() {
     try {
       setCloudResults(await cloudListFiles(cloudQuery.trim() || null));
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setCloudSearching(false);
     }
@@ -436,7 +577,7 @@ export function LibraryView() {
       refresh();
       setCloudDialogOpen(false);
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     } finally {
       setCloudAddingId(null);
     }
@@ -470,7 +611,7 @@ export function LibraryView() {
       try {
         await reorderResources(list.map((x) => x.id));
       } catch (e) {
-        toast.error(String(e));
+        toast.error(describeError(e));
       }
       refresh();
     },
@@ -482,7 +623,8 @@ export function LibraryView() {
     if (ids.length === 0) return;
     setConfirm({
       title: `Supprimer ${ids.length} ressource${ids.length > 1 ? "s" : ""} ?`,
-      message: "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
+      message:
+        "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
       confirmLabel: "Supprimer",
       destructive: true,
       action: async () => {
@@ -493,36 +635,63 @@ export function LibraryView() {
           setSelectMode(false);
           refresh();
         } catch (e) {
-          toast.error(String(e));
+          toast.error(describeError(e));
         }
       },
     });
   }
 
+  /** Archivage en masse (revue « À revisiter ») : statut seul, un toast.
+   *  Les ressources gardent leur dossier (le statut est la source de vérité). */
+  async function handleBulkArchive() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      await Promise.all(ids.map((id) => setResourceStatus(id, "archived")));
+      toast.success(`${ids.length} ressource(s) archivée(s)`);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      refresh();
+    } catch (e) {
+      toast.error(describeError(e));
+    }
+  }
+
   /**
-   * Statut lié aux dossiers système : « À traiter » et « Archivés » sont
-   * créés automatiquement (une seule fois) et la ressource y est rangée.
-   * Réactiver la sort de son dossier et remet le statut à vide.
-   * Un verrou module-scope sérialise la création : deux statuts posés en
-   * rafale faisaient la course (listFolders → createFolder non atomique)
-   * et créaient deux dossiers homonymes.
+   * Statut de traitement = SEULE source de vérité (le champ `status`).
+   * Fini les dossiers-système auto-créés (« À traiter » / « Archivés ») qui
+   * arrachaient la ressource de son vrai dossier : ici on ne touche que le
+   * statut. L'accueil masque les archivés (hideArchived) ; le filtre « Statut »
+   * et le Kanban les rendent visibles.
    */
   const handleSetStatus = useCallback(
     async (r: Resource, status: "" | "todo" | "archived") => {
       try {
         await setResourceStatus(r.id, status);
-        if (status === "todo" || status === "archived") {
-          const name = status === "todo" ? "À traiter" : "Archivés";
-          const folder = await ensureSystemFolder(name);
-          await setResourceFolder(r.id, folder.id);
-          toast.success(`Rangée dans « ${name} »`);
-        } else {
-          await setResourceFolder(r.id, null);
-          toast.success("Réactivée");
-        }
+        toast.success(
+          status === "archived"
+            ? "Archivée"
+            : status === "todo"
+              ? "Marquée à traiter"
+              : "Réactivée",
+        );
         refresh();
       } catch (e) {
-        toast.error(String(e));
+        toast.error(describeError(e));
+      }
+    },
+    [refresh],
+  );
+
+  /** Kanban : change le `status` (source de vérité), sans jamais déplacer la
+   *  ressource de son dossier. */
+  const handleMoveStatusColumn = useCallback(
+    async (id: number, status: "" | "todo" | "archived") => {
+      try {
+        await setResourceStatus(id, status);
+        refresh();
+      } catch (e) {
+        toast.error(describeError(e));
       }
     },
     [refresh],
@@ -530,18 +699,18 @@ export function LibraryView() {
 
   const handleDelete = useCallback(
     (r: Resource) => {
-    setConfirm({
-      title: `Supprimer « ${r.title} » ?`,
-      message: "Elle sera restaurable 30 jours dans la corbeille (Réglages).",
-      confirmLabel: "Supprimer",
-      destructive: true,
-      action: async () => {
-        try {
-          await deleteResource(r.id);
-          toast.success("Déplacée dans la corbeille");
-          refresh();
+      setConfirm({
+        title: `Supprimer « ${r.title} » ?`,
+        message: "Elle sera restaurable 30 jours dans la corbeille (Réglages).",
+        confirmLabel: "Supprimer",
+        destructive: true,
+        action: async () => {
+          try {
+            await deleteResource(r.id);
+            toast.success("Déplacée dans la corbeille");
+            refresh();
           } catch (e) {
-            toast.error(String(e));
+            toast.error(describeError(e));
           }
         },
       });
@@ -559,6 +728,29 @@ export function LibraryView() {
       setDialogOpen(true);
     }
   }, []);
+
+  /** Kanban : clic sur une carte — note → lecteur, sans lien → édition, sinon
+   *  ouverture réelle (même logique que la tuile / la liste). */
+  const handleBoardOpen = useCallback(
+    async (r: Resource) => {
+      if (r.resourceType === "note") {
+        setNoteViewing(r);
+        return;
+      }
+      if (r.url.startsWith("local:") && !r.meta?.filePath) {
+        setEditing(r);
+        setDialogOpen(true);
+        return;
+      }
+      try {
+        await openResource(r);
+        refresh();
+      } catch (e) {
+        toast.error(`Ouverture impossible : ${e}`);
+      }
+    },
+    [refresh],
+  );
 
   async function submitFolderDialog() {
     if (!folderDialog) return;
@@ -583,7 +775,7 @@ export function LibraryView() {
       setFolderDialog(null);
       refresh();
     } catch (e) {
-      toast.error(String(e));
+      toast.error(describeError(e));
     }
   }
 
@@ -600,7 +792,7 @@ export function LibraryView() {
           toast.success("Dossier supprimé");
           refresh();
         } catch (e) {
-          toast.error(String(e));
+          toast.error(describeError(e));
         }
       },
     });
@@ -619,7 +811,7 @@ export function LibraryView() {
           toast.success(`Dossier « ${f.name} » dissous`);
           refresh();
         } catch (e) {
-          toast.error(String(e));
+          toast.error(describeError(e));
         }
       },
     });
@@ -632,15 +824,6 @@ export function LibraryView() {
       m.set(r.resourceType, (m.get(r.resourceType) ?? 0) + 1);
     }
     return m;
-  }, [resources]);
-
-  // catégories présentes (pour le menu déroulant)
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of resources ?? []) {
-      if (r.category) set.add(r.category);
-    }
-    return [...set].sort((a, b) => a.localeCompare(b, "fr"));
   }, [resources]);
 
   // onglets : types connus + types libres éventuels
@@ -690,6 +873,18 @@ export function LibraryView() {
         >
           <Star className={favOnly ? "fill-yellow-400 text-yellow-400" : ""} />
         </Button>
+        {/* « À revisiter » = filtre propre à la grille ; ignoré en tableau
+            (le tableau affiche déjà toutes les colonnes de statut). */}
+        {viewMode !== "board" && (
+          <Button
+            variant={staleOnly ? "default" : "outline"}
+            size="icon"
+            onClick={() => setStaleOnly((v) => !v)}
+            title="À revisiter : jamais ouvertes depuis 60 jours"
+          >
+            <History />
+          </Button>
+        )}
         <Button
           variant={captures ? "default" : "outline"}
           size="icon"
@@ -698,7 +893,7 @@ export function LibraryView() {
         >
           <Camera />
         </Button>
-        {/* bascule Tuiles / Liste : l'apparence se mémorise */}
+        {/* bascule Tuiles / Liste / Tableau : l'apparence se mémorise */}
         <div className="flex items-center rounded-lg border p-0.5">
           <Button
             variant={viewMode === "grid" ? "default" : "ghost"}
@@ -716,6 +911,14 @@ export function LibraryView() {
           >
             <List />
           </Button>
+          <Button
+            variant={viewMode === "board" ? "default" : "ghost"}
+            size="icon-sm"
+            onClick={() => persistViewMode("board")}
+            title="Tableau (kanban par statut)"
+          >
+            <KanbanSquare />
+          </Button>
         </div>
         <Button
           variant="outline"
@@ -724,7 +927,7 @@ export function LibraryView() {
           onClick={() =>
             openResourcesFolder()
               .then(() => toast.success("Dossier de ressources ouvert"))
-              .catch((e) => toast.error(String(e)))
+              .catch((e) => toast.error(describeError(e)))
           }
         >
           <FolderOpen />
@@ -751,6 +954,14 @@ export function LibraryView() {
         >
           <Cloud />
           Depuis le cloud
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setTagManagerOpen(true)}
+          title="Gérer les tags (renommer, fusionner, supprimer)"
+        >
+          <Tags />
+          Tags
         </Button>
         <Button
           variant="outline"
@@ -792,38 +1003,14 @@ export function LibraryView() {
             onClick={() => setTypeFilter(typeFilter === t ? null : t)}
           />
         ))}
-        {/* filtres combinés : catégorie · tag · statut, côte à côte */}
+        {/* filtres combinés : tag · statut, côte à côte */}
         <span className="grow" />
-        {categories.length > 0 && (
-          <Select
-            value={category ?? "__all"}
-            onValueChange={(v) => setCategory(v === "__all" ? null : (v ?? null))}
-          >
-            <SelectTrigger
-              size="sm"
-              className={cn(
-                "my-1 shrink-0",
-                category && "border-primary/60 text-foreground",
-              )}
-            >
-              <SelectValue placeholder="Catégorie">
-                {category ?? "Catégories"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="w-auto min-w-[9rem] max-w-[24rem]">
-              <SelectItem value="__all">Toutes</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
         {(allTagsList?.length ?? 0) > 0 && (
           <Select
             value={tagFilter ?? "__all"}
-            onValueChange={(v) => setTagFilter(v === "__all" ? null : (v ?? null))}
+            onValueChange={(v) =>
+              setTagFilter(v === "__all" ? null : (v ?? null))
+            }
           >
             <SelectTrigger
               size="default"
@@ -838,7 +1025,7 @@ export function LibraryView() {
             </SelectTrigger>
             <SelectContent className="w-auto min-w-[9rem] max-w-[24rem]">
               <SelectItem value="__all">Tous les tags</SelectItem>
-              {allTagsList!.map((t) => (
+              {(allTagsList ?? []).map((t) => (
                 <SelectItem key={t} value={t}>
                   #{t}
                 </SelectItem>
@@ -846,38 +1033,56 @@ export function LibraryView() {
             </SelectContent>
           </Select>
         )}
-        <Select
-          value={statusFilter === "" ? "__active" : (statusFilter ?? "__all")}
-          onValueChange={(v) =>
-            setStatusFilter(
-              v === "__all" ? null : v === "__active" ? "" : (v ?? null),
-            )
-          }
-        >
-          <SelectTrigger
-            size="sm"
-            className={cn(
-              "my-1 shrink-0",
-              statusFilter && "border-primary/60 text-foreground",
+        {/* « Statut » + pagination : propres à la grille ; le tableau affiche
+            déjà toutes les colonnes de statut et n'est pas paginé. */}
+        {viewMode !== "board" && (
+          <>
+            <Select
+              value={
+                statusFilter === "" ? "__active" : (statusFilter ?? "__all")
+              }
+              onValueChange={(v) =>
+                setStatusFilter(
+                  v === "__all" ? null : v === "__active" ? "" : (v ?? null),
+                )
+              }
+            >
+              <SelectTrigger
+                size="sm"
+                className={cn(
+                  "my-1 shrink-0",
+                  statusFilter && "border-primary/60 text-foreground",
+                )}
+              >
+                <SelectValue placeholder="Statut">
+                  {statusFilter === "todo"
+                    ? "À traiter"
+                    : statusFilter === "archived"
+                      ? "Archivés"
+                      : statusFilter === ""
+                        ? "Actifs"
+                        : "Statut"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Tous</SelectItem>
+                <SelectItem value="__active">Actifs</SelectItem>
+                <SelectItem value="todo">À traiter</SelectItem>
+                <SelectItem value="archived">Archivés</SelectItem>
+              </SelectContent>
+            </Select>
+            {/* pagination : à la racine, collée à droite du filtre « Statut » */}
+            {!openFolder && (
+              <GridPager
+                page={page}
+                pages={pagination.pages}
+                total={pagination.total}
+                onPage={setPage}
+                className="mx-1"
+              />
             )}
-          >
-            <SelectValue placeholder="Statut">
-              {statusFilter === "todo"
-                ? "À traiter"
-                : statusFilter === "archived"
-                  ? "Archivés"
-                  : statusFilter === ""
-                    ? "Actifs"
-                    : "Statut"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all">Tous</SelectItem>
-            <SelectItem value="__active">Actifs</SelectItem>
-            <SelectItem value="todo">À traiter</SelectItem>
-            <SelectItem value="archived">Archivés</SelectItem>
-          </SelectContent>
-        </Select>
+          </>
+        )}
       </div>
 
       {/* fil d'ariane : Racine > ... > dossier ouvert, chaque segment cliquable */}
@@ -902,9 +1107,8 @@ export function LibraryView() {
                     <span className="truncate font-medium">{f.name}</span>
                   ) : (
                     <button
-                      onClick={() =>
-                        setFolderStack((s) => s.slice(0, i + 1))
-                      }
+                      type="button"
+                      onClick={() => setFolderStack((s) => s.slice(0, i + 1))}
                       className="cursor-pointer truncate text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                       title={`Aller à « ${f.name} »`}
                     >
@@ -919,24 +1123,37 @@ export function LibraryView() {
             {(resources ?? []).length} ressource
             {(resources ?? []).length > 1 ? "s" : ""}
           </span>
+          {/* pagination : dans un dossier, alignée à droite de la ligne du
+              fil d'Ariane (même ligne que « Retour »). Masquée en mode tableau. */}
+          {viewMode !== "board" && (
+            <>
+              <span className="grow" />
+              <GridPager
+                page={page}
+                pages={pagination.pages}
+                total={pagination.total}
+                onPage={setPage}
+              />
+            </>
+          )}
         </div>
       )}
 
       {/* hint tri manuel */}
       {sortBy === "manual" && !openFolder && (
         <div className="px-4 pt-2 text-xs text-muted-foreground">
-          Glisse une tuile : un trait entre deux cartes les réordonne — lâche
-          au centre d'une carte pour créer un dossier avec les deux — pose sur
-          un dossier pour la ranger dedans. Au clavier : Ctrl+Maj+←/→ déplace
-          la tuile sélectionnée.
+          Glisse une tuile : un trait entre deux cartes les réordonne — lâche au
+          centre d'une carte pour créer un dossier avec les deux — pose sur un
+          dossier pour la ranger dedans. Au clavier : Ctrl+Maj+←/→ déplace la
+          tuile sélectionnée.
         </div>
       )}
 
       {/* le backend plafonne la vue à 500 lignes : le dire, pas le cacher */}
       {(resources ?? []).length >= 500 && (
         <div className="px-4 pt-2 text-xs text-amber-600 dark:text-amber-500">
-          Affichage limité aux 500 premières ressources — affine la recherche
-          ou un filtre pour voir le reste.
+          Affichage limité aux 500 premières ressources — affine la recherche ou
+          un filtre pour voir le reste.
         </div>
       )}
 
@@ -946,7 +1163,8 @@ export function LibraryView() {
       {isError && (
         <div className="mx-6 mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm">
           <span>
-            Le chargement de la bibliothèque a échoué (base verrouillée ou erreur interne).
+            Le chargement de la bibliothèque a échoué (base verrouillée ou
+            erreur interne).
           </span>
           <Button size="sm" variant="outline" onClick={() => void refetch()}>
             Réessayer
@@ -954,28 +1172,44 @@ export function LibraryView() {
         </div>
       )}
       {isLoading ? (
-        <div className="grid gap-3 px-6 pt-4 pb-6" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))` }}>
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="aspect-square animate-pulse rounded-xl bg-muted/60" />
+        <div
+          className="grid gap-3 px-6 pt-4 pb-6"
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`,
+          }}
+        >
+          {SKELETON_KEYS.map((k) => (
+            <div
+              key={k}
+              className="aspect-square animate-pulse rounded-xl bg-muted/60"
+            />
           ))}
         </div>
-      ) : (resources ?? []).length === 0 &&
+      ) : displayed.length === 0 &&
         visibleFolders.length === 0 &&
         !isError &&
         !openFolder ? (
         <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
-          <Search className="size-8 opacity-40" />
+          {staleAlone ? (
+            <History className="size-8 opacity-40" />
+          ) : (
+            <Search className="size-8 opacity-40" />
+          )}
           <p className="font-medium text-foreground">
-            {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
-              ? "Aucun résultat"
-              : "Ta bibliothèque est vide"}
+            {staleAlone
+              ? "Rien à revisiter 🎉"
+              : hasFilter
+                ? "Aucun résultat"
+                : "Ta bibliothèque est vide"}
           </p>
           <p className="max-w-sm text-sm">
-            {debounced || favOnly || category || typeFilter || tagFilter || statusFilter
-              ? "Essaie une autre recherche ou retire les filtres."
-              : "Ajoute ta première ressource, ou importe tes favoris depuis l'onglet Importer."}
+            {staleAlone
+              ? "Toutes tes ressources ont été ouvertes récemment."
+              : hasFilter
+                ? "Essaie une autre recherche ou retire les filtres."
+                : "Ajoute ta première ressource, ou importe tes favoris depuis l'onglet Importer."}
           </p>
-          {!debounced && !favOnly && !category && !typeFilter && !tagFilter && !statusFilter && (
+          {!hasFilter && (
             <Button
               className="mt-2"
               onClick={() => {
@@ -989,46 +1223,54 @@ export function LibraryView() {
             </Button>
           )}
         </div>
+      ) : viewMode === "board" ? (
+        <BoardView
+          resources={boardResources ?? []}
+          onOpen={(r) => void handleBoardOpen(r)}
+          onMove={handleMoveStatusColumn}
+        />
       ) : (
-      <ResourceGrid
-        resources={resources ?? []}
-        visibleFolders={visibleFolders}
-        foldersList={foldersList}
-        captures={captures}
-        selectMode={selectMode}
-        selectedIds={selectedIds}
-        toggleSelect={toggleSelect}
-        viewMode={viewMode}
-        tileMin={tileMin}
-        sortBy={sortBy}
-        openFolder={openFolder}
-        dragId={dragId}
-        dragFolderId={dragFolderId}
-        dropZone={dropZone}
-        setDropZone={setDropZone}
-        folderDropHint={folderDropHint}
-        setFolderDropHint={setFolderDropHint}
-        setDragId={setDragId}
-        setDragFolderId={setDragFolderId}
-        handleDragStarted={handleDragStarted}
-        handleDropOnTile={handleDropOnTile}
-        handleDropOnFolder={handleDropOnFolder}
-        handleFolderDrop={handleFolderDrop}
-        moveTileByKey={moveTileByKey}
-        handleDissolveFolder={handleDissolveFolder}
-        handleDeleteFolder={handleDeleteFolder}
-        setDetailsViewing={setDetailsViewing}
-        handleEdit={handleEdit}
-        handleDelete={handleDelete}
-        setNoteViewing={setNoteViewing}
-        handleSetStatus={handleSetStatus}
-        handleMoveToFolder={handleMoveToFolder}
-        handleUploadToCloud={handleUploadToCloud}
-        refresh={refresh}
-        setFolderStack={setFolderStack}
-        setFolderName={setFolderName}
-        setFolderDialog={setFolderDialog}
-      />
+        <ResourceGrid
+          resources={displayed}
+          visibleFolders={visibleFolders}
+          foldersList={foldersList}
+          captures={captures}
+          selectMode={selectMode}
+          selectedIds={selectedIds}
+          toggleSelect={toggleSelect}
+          viewMode={viewMode}
+          tileMin={tileMin}
+          sortBy={sortBy}
+          openFolder={openFolder}
+          dragId={dragId}
+          dragFolderId={dragFolderId}
+          dropZone={dropZone}
+          setDropZone={setDropZone}
+          folderDropHint={folderDropHint}
+          setFolderDropHint={setFolderDropHint}
+          setDragId={setDragId}
+          setDragFolderId={setDragFolderId}
+          handleDragStarted={handleDragStarted}
+          handleDropOnTile={handleDropOnTile}
+          handleDropOnFolder={handleDropOnFolder}
+          handleFolderDrop={handleFolderDrop}
+          moveTileByKey={moveTileByKey}
+          handleDissolveFolder={handleDissolveFolder}
+          handleDeleteFolder={handleDeleteFolder}
+          setDetailsViewing={setDetailsViewing}
+          handleEdit={handleEdit}
+          handleDelete={handleDelete}
+          setNoteViewing={setNoteViewing}
+          handleSetStatus={handleSetStatus}
+          handleMoveToFolder={handleMoveToFolder}
+          handleUploadToCloud={handleUploadToCloud}
+          refresh={refresh}
+          setFolderStack={setFolderStack}
+          setFolderName={setFolderName}
+          setFolderDialog={setFolderDialog}
+          page={page}
+          onPagination={handlePagination}
+        />
       )}
       {/* barre d'actions de la sélection */}
       {selectMode && selectedIds.size > 0 && (
@@ -1040,9 +1282,7 @@ export function LibraryView() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
-              setSelectedIds(new Set((resources ?? []).map((r) => r.id)))
-            }
+            onClick={() => setSelectedIds(new Set(displayed.map((r) => r.id)))}
           >
             Tout sélectionner
           </Button>
@@ -1052,6 +1292,14 @@ export function LibraryView() {
             onClick={() => setSelectedIds(new Set())}
           >
             Désélectionner
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleBulkArchive()}
+          >
+            <Archive />
+            Archiver
           </Button>
           <Button
             variant="destructive"
@@ -1075,7 +1323,14 @@ export function LibraryView() {
         editing={editing}
         prefillUrl={prefillUrl}
         initialFolderId={editing ? undefined : (openFolder?.id ?? null)}
+        onShowExisting={(res) => setDetailsViewing(res)}
         onSaved={refresh}
+      />
+
+      <TagManagerDialog
+        open={tagManagerOpen}
+        onOpenChange={setTagManagerOpen}
+        onChanged={refresh}
       />
 
       <NoteEditor
@@ -1231,7 +1486,9 @@ export function LibraryView() {
             <Button variant="outline" onClick={() => setFolderDialog(null)}>
               Annuler
             </Button>
-            <Button onClick={() => void submitFolderDialog()}>Enregistrer</Button>
+            <Button onClick={() => void submitFolderDialog()}>
+              Enregistrer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1253,6 +1510,7 @@ function FilterTab({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       aria-pressed={active}
       className={cn(
@@ -1272,5 +1530,53 @@ function FilterTab({
         <span className="absolute inset-x-2 bottom-1 h-0.5 rounded-full bg-primary" />
       )}
     </button>
+  );
+}
+
+/** Barre de pagination de la grille, rendue dans la toolbar (fil d'Ariane en
+ *  dossier, à droite de « Statut » à la racine). Masquée s'il n'y a qu'une
+ *  page (liste incluse : la liste ne paginer pas → pages = 1). */
+function GridPager({
+  page,
+  pages,
+  total,
+  onPage,
+  className,
+}: {
+  page: number;
+  pages: number;
+  total: number;
+  onPage: (p: number) => void;
+  className?: string;
+}) {
+  if (pages <= 1) return null;
+  const current = Math.min(page, pages - 1);
+  return (
+    <div className={cn("flex shrink-0 items-center gap-1", className)}>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        disabled={current <= 0}
+        onClick={() => onPage(current - 1)}
+        title="Page précédente"
+        aria-label="Page précédente"
+      >
+        <ChevronLeft />
+      </Button>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {current + 1} / {pages}
+        <span className="ml-1 opacity-70">· {total}</span>
+      </span>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        disabled={current >= pages - 1}
+        onClick={() => onPage(current + 1)}
+        title="Page suivante"
+        aria-label="Page suivante"
+      >
+        <ChevronRight />
+      </Button>
+    </div>
   );
 }

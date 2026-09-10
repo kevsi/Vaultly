@@ -2,6 +2,16 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { applyAppearance, readAppearance } from "./lib/appearance";
+
+// Application immédiate (avant le premier rendu) pour éviter tout flash du
+// style par défaut quand l'utilisateur a personnalisé l'interface.
+applyAppearance(readAppearance());
+
+// Thème sombre natif : forcé avant le premier rendu (aucun flash clair),
+// sans interrupteur. Les déclinaisons `.dark` du CSS s'appliquent partout.
+document.documentElement.classList.add("dark");
+localStorage.removeItem("vaultly-theme");
 
 /** Un crash de render sinon = écran blanc sans recours : on affiche au
  *  moins un message avec bouton de rechargement. */
@@ -22,6 +32,7 @@ class ErrorBoundary extends React.Component<
             {String(this.state.error)}
           </p>
           <button
+            type="button"
             className="cursor-pointer rounded-lg border bg-card px-4 py-2 text-sm hover:bg-accent"
             onClick={() => window.location.reload()}
           >

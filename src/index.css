@@ -4,8 +4,6 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Segoe UI', 'Inter', system-ui, sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -46,7 +44,24 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Polices en thème standard (surtout PAS `inline`) : les utilitaires
+   `font-sans` / `font-heading` référencent alors `var(--font-sans)`, ce qui
+   permet de changer la police via `:root[data-font=…]` (Réglages →
+   Apparence). En `inline`, la valeur serait figée dans le CSS compilé et
+   le changement de police systématiquement ignoré. */
+@theme {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Segoe UI', 'Inter', system-ui, sans-serif;
+}
+
 :root {
+    /* halo chaud très discret pour l'ambiance carnet — réutilisé sous les
+       arrière-plans personnalisés (dégradés / images) */
+    --bg-halo: radial-gradient(
+      1200px 600px at 50% -10%,
+      color-mix(in oklch, var(--primary) 7%, transparent),
+      transparent 60%
+    );
     /* Chaud & doux — crème + terracotta, ambiance carnet */
     --background: oklch(0.975 0.012 85);
     --foreground: oklch(0.36 0.028 60);
@@ -117,18 +132,254 @@
     --sidebar-ring: oklch(0.6 0.1 45);
 }
 
+/* ---- Styles d'ambiance (Réglages → Apparence) ----
+   Sélecteurs `:root[data-style]` : plus spécifiques que `.dark`, les
+   déclinaisons sombres (`:root[data-style].dark`) gagnent à coup sûr. */
+
+/* Pro — sobre & net, bleu corporate */
+:root[data-style="pro"] {
+    --background: oklch(0.985 0.004 255);
+    --foreground: oklch(0.27 0.02 260);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.27 0.02 260);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.27 0.02 260);
+    --primary: oklch(0.55 0.17 255);
+    --primary-foreground: oklch(0.985 0.005 255);
+    --secondary: oklch(0.945 0.01 255);
+    --secondary-foreground: oklch(0.32 0.025 260);
+    --muted: oklch(0.955 0.008 255);
+    --muted-foreground: oklch(0.5 0.025 260);
+    --accent: oklch(0.94 0.015 255);
+    --accent-foreground: oklch(0.3 0.02 260);
+    --border: oklch(0.895 0.012 258);
+    --input: oklch(0.895 0.012 258);
+    --ring: oklch(0.62 0.14 255);
+    --radius: 0.55rem;
+}
+:root[data-style="pro"].dark {
+    --background: oklch(0.215 0.015 260);
+    --foreground: oklch(0.93 0.008 255);
+    --card: oklch(0.265 0.018 260);
+    --card-foreground: oklch(0.93 0.008 255);
+    --popover: oklch(0.265 0.018 260);
+    --popover-foreground: oklch(0.93 0.008 255);
+    --primary: oklch(0.66 0.15 255);
+    --primary-foreground: oklch(0.2 0.02 260);
+    --secondary: oklch(0.33 0.02 260);
+    --secondary-foreground: oklch(0.93 0.008 255);
+    --muted: oklch(0.33 0.02 260);
+    --muted-foreground: oklch(0.68 0.02 260);
+    --accent: oklch(0.35 0.025 260);
+    --accent-foreground: oklch(0.93 0.008 255);
+    --border: oklch(0.4 0.02 260);
+    --input: oklch(0.4 0.02 260);
+    --ring: oklch(0.6 0.13 255);
+    --radius: 0.55rem;
+}
+
+/* Anime — manga : rose vif, ciel pastel, nuit violette */
+:root[data-style="anime"] {
+    --background: oklch(0.975 0.03 345);
+    --foreground: oklch(0.32 0.06 340);
+    --card: oklch(0.995 0.015 345);
+    --card-foreground: oklch(0.32 0.06 340);
+    --popover: oklch(0.995 0.015 345);
+    --popover-foreground: oklch(0.32 0.06 340);
+    --primary: oklch(0.65 0.22 350);
+    --primary-foreground: oklch(0.99 0.01 350);
+    --secondary: oklch(0.9 0.055 225);
+    --secondary-foreground: oklch(0.35 0.07 250);
+    --muted: oklch(0.935 0.04 340);
+    --muted-foreground: oklch(0.54 0.06 340);
+    --accent: oklch(0.9 0.06 200);
+    --accent-foreground: oklch(0.35 0.07 250);
+    --border: oklch(0.87 0.055 340);
+    --input: oklch(0.87 0.055 340);
+    --ring: oklch(0.7 0.18 350);
+    --radius: 1.4rem;
+}
+:root[data-style="anime"].dark {
+    --background: oklch(0.22 0.05 300);
+    --foreground: oklch(0.93 0.03 340);
+    --card: oklch(0.27 0.06 300);
+    --card-foreground: oklch(0.93 0.03 340);
+    --popover: oklch(0.27 0.06 300);
+    --popover-foreground: oklch(0.93 0.03 340);
+    --primary: oklch(0.72 0.2 350);
+    --primary-foreground: oklch(0.2 0.04 300);
+    --secondary: oklch(0.34 0.06 290);
+    --secondary-foreground: oklch(0.93 0.03 340);
+    --muted: oklch(0.34 0.06 290);
+    --muted-foreground: oklch(0.72 0.05 330);
+    --accent: oklch(0.36 0.07 275);
+    --accent-foreground: oklch(0.93 0.03 340);
+    --border: oklch(0.42 0.07 300);
+    --input: oklch(0.42 0.07 300);
+    --ring: oklch(0.7 0.18 350);
+    --radius: 1.4rem;
+}
+
+/* Néon — cyberpunk : cyan électrique & magenta */
+:root[data-style="neon"] {
+    --background: oklch(0.96 0.01 260);
+    --foreground: oklch(0.28 0.03 260);
+    --card: oklch(0.99 0.005 260);
+    --card-foreground: oklch(0.28 0.03 260);
+    --popover: oklch(0.99 0.005 260);
+    --popover-foreground: oklch(0.28 0.03 260);
+    --primary: oklch(0.6 0.19 280);
+    --primary-foreground: oklch(0.98 0.005 280);
+    --secondary: oklch(0.92 0.05 230);
+    --secondary-foreground: oklch(0.32 0.05 265);
+    --muted: oklch(0.94 0.02 260);
+    --muted-foreground: oklch(0.52 0.03 260);
+    --accent: oklch(0.88 0.08 200);
+    --accent-foreground: oklch(0.3 0.06 240);
+    --border: oklch(0.86 0.03 265);
+    --input: oklch(0.86 0.03 265);
+    --ring: oklch(0.68 0.18 280);
+    --radius: 0.9rem;
+}
+:root[data-style="neon"].dark {
+    --background: oklch(0.17 0.03 280);
+    --foreground: oklch(0.9 0.03 200);
+    --card: oklch(0.22 0.04 280);
+    --card-foreground: oklch(0.9 0.03 200);
+    --popover: oklch(0.22 0.04 280);
+    --popover-foreground: oklch(0.9 0.03 200);
+    --primary: oklch(0.78 0.15 215);
+    --primary-foreground: oklch(0.16 0.03 230);
+    --secondary: oklch(0.3 0.05 285);
+    --secondary-foreground: oklch(0.9 0.03 200);
+    --muted: oklch(0.3 0.05 285);
+    --muted-foreground: oklch(0.68 0.04 240);
+    --accent: oklch(0.32 0.08 320);
+    --accent-foreground: oklch(0.93 0.02 320);
+    --border: oklch(0.36 0.06 285);
+    --input: oklch(0.36 0.06 285);
+    --ring: oklch(0.75 0.14 215);
+    --radius: 0.9rem;
+}
+
+/* Forêt — vert nature, calme & apaisant */
+:root[data-style="foret"] {
+    --background: oklch(0.975 0.015 140);
+    --foreground: oklch(0.3 0.04 150);
+    --card: oklch(0.99 0.01 140);
+    --card-foreground: oklch(0.3 0.04 150);
+    --popover: oklch(0.99 0.01 140);
+    --popover-foreground: oklch(0.3 0.04 150);
+    --primary: oklch(0.55 0.13 155);
+    --primary-foreground: oklch(0.985 0.01 150);
+    --secondary: oklch(0.93 0.03 140);
+    --secondary-foreground: oklch(0.34 0.045 150);
+    --muted: oklch(0.94 0.025 140);
+    --muted-foreground: oklch(0.52 0.035 150);
+    --accent: oklch(0.9 0.05 120);
+    --accent-foreground: oklch(0.33 0.045 150);
+    --border: oklch(0.88 0.03 140);
+    --input: oklch(0.88 0.03 140);
+    --ring: oklch(0.65 0.11 155);
+    --radius: 1rem;
+}
+:root[data-style="foret"].dark {
+    --background: oklch(0.21 0.03 150);
+    --foreground: oklch(0.92 0.02 140);
+    --card: oklch(0.26 0.035 150);
+    --card-foreground: oklch(0.92 0.02 140);
+    --popover: oklch(0.26 0.035 150);
+    --popover-foreground: oklch(0.92 0.02 140);
+    --primary: oklch(0.68 0.12 155);
+    --primary-foreground: oklch(0.18 0.03 150);
+    --secondary: oklch(0.32 0.04 150);
+    --secondary-foreground: oklch(0.92 0.02 140);
+    --muted: oklch(0.32 0.04 150);
+    --muted-foreground: oklch(0.7 0.03 145);
+    --accent: oklch(0.34 0.045 145);
+    --accent-foreground: oklch(0.92 0.02 140);
+    --border: oklch(0.4 0.04 150);
+    --input: oklch(0.4 0.04 150);
+    --ring: oklch(0.65 0.11 155);
+    --radius: 1rem;
+}
+
+/* ---- Typographies (Réglages → Apparence) ----
+   `--font-sans` pilote les classes `font-sans` / `font-heading` partout. */
+:root[data-font="serif"] {
+    --font-sans: Georgia, Cambria, 'Times New Roman', serif;
+}
+:root[data-font="mono"] {
+    --font-sans: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+:root[data-font="techno"] {
+    --font-sans: Bahnschrift, 'Segoe UI', system-ui, sans-serif;
+}
+:root[data-font="fun"] {
+    --font-sans: 'Comic Sans MS', 'Segoe Print', 'Bradley Hand', cursive;
+}
+
+/* ---- Styles de boutons (Réglages → Apparence) ----
+   Règles hors couches Tailwind : elles gagnent sur les utilitaires, sans
+   `!important`. `ghost` et `link` restent discrets quel que soit le style. */
+
+/* Pilule — entièrement arrondis */
+html[data-btn="pill"] [data-slot="button"] {
+    border-radius: 999px;
+}
+
+/* Nets — angles droits, épurés */
+html[data-btn="net"] [data-slot="button"] {
+    border-radius: 3px;
+}
+
+/* Manga — contours épais + ombre décalée, esprit sticker */
+html[data-btn="manga"] [data-slot="button"]:not([data-variant="ghost"]):not([data-variant="link"]) {
+    border: 2px solid var(--foreground);
+    border-radius: 0.6rem;
+    box-shadow: 3px 3px 0 0 var(--foreground);
+    font-weight: 600;
+}
+html[data-btn="manga"] [data-slot="button"]:not([data-variant="ghost"]):not([data-variant="link"]):hover {
+    filter: brightness(1.04);
+}
+html[data-btn="manga"] [data-slot="button"]:not([data-variant="ghost"]):not([data-variant="link"]):active {
+    transform: translate(3px, 3px);
+    box-shadow: 0 0 0 0 var(--foreground);
+}
+
+/* Néon — lueur colorée autour des boutons */
+html[data-btn="neon"] [data-slot="button"]:not([data-variant="ghost"]):not([data-variant="link"]) {
+    border-color: color-mix(in oklch, var(--primary) 60%, transparent);
+    box-shadow:
+      0 0 10px 0 color-mix(in oklch, var(--primary) 45%, transparent),
+      0 0 2px 0 color-mix(in oklch, var(--primary) 60%, transparent);
+}
+html[data-btn="neon"] [data-slot="button"]:not([data-variant="ghost"]):not([data-variant="link"]):hover {
+    box-shadow:
+      0 0 14px 0 color-mix(in oklch, var(--primary) 60%, transparent),
+      0 0 3px 0 color-mix(in oklch, var(--primary) 75%, transparent);
+}
+
+/* ---- Arrière-plan personnalisé : voile de lisibilité ----
+   `body::before` en z-index négatif recouvre le fond du body (dégradé ou
+   image) sans masquer le contenu. Intensité pilotée par `--bg-dim` (0–1). */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: rgb(0 0 0 / calc(var(--bg-dim, 0) * 100%));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
     }
   body {
     @apply bg-background text-foreground;
-    /* halo chaud très discret pour l'ambiance carnet */
-    background-image: radial-gradient(
-      1200px 600px at 50% -10%,
-      color-mix(in oklch, var(--primary) 7%, transparent),
-      transparent 60%
-    );
+    background-image: var(--bg-halo);
     background-attachment: fixed;
     }
   html {

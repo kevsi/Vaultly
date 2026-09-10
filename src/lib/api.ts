@@ -1,27 +1,27 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AppendLinkResult,
   BrowserProfile,
   CloudFile,
   DeadLink,
-  ShareListInfo,
-  AppendLinkResult,
   Folder,
-  ImportReport,
   ImportedBookmark,
+  ImportReport,
   McpServerStatus,
   NewResource,
   PageMetadata,
   Resource,
   ResourceFilter,
+  ShareListInfo,
 } from "./types";
 
 export type { AppendLinkResult, CloudFile, DeadLink, ShareListInfo };
 
-export async function listResources(filter: ResourceFilter): Promise<Resource[]> {
+export async function listResources(
+  filter: ResourceFilter,
+): Promise<Resource[]> {
   return invoke("list_resources", { filter });
 }
-
-
 
 export async function addResource(resource: NewResource): Promise<Resource> {
   return invoke("add_resource", { resource });
@@ -65,7 +65,9 @@ export interface BulkRestoreResult {
   missing: number[];
 }
 
-export async function restoreTrashBulk(trashIds: number[]): Promise<BulkRestoreResult> {
+export async function restoreTrashBulk(
+  trashIds: number[],
+): Promise<BulkRestoreResult> {
   return invoke("restore_trash_bulk", { trashIds });
 }
 
@@ -82,7 +84,9 @@ export interface WaybackSnapshot {
 }
 
 /** Cherche une capture existante sur archive.org (aucune si null). */
-export async function waybackAvailable(url: string): Promise<WaybackSnapshot | null> {
+export async function waybackAvailable(
+  url: string,
+): Promise<WaybackSnapshot | null> {
   return invoke("wayback_available", { url });
 }
 
@@ -108,8 +112,45 @@ export async function allTags(): Promise<string[]> {
   return invoke("all_tags");
 }
 
+/** Tag + compteur pour le gestionnaire de tags. */
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
+export async function tagStats(): Promise<TagCount[]> {
+  return invoke("tag_stats");
+}
+
+/** Renomme un tag partout (fusion si le nouveau nom existe déjà).
+ *  Retourne le nombre de ressources touchées. */
+export async function renameTag(
+  oldTag: string,
+  newTag: string,
+): Promise<number> {
+  return invoke("rename_tag", { old: oldTag, new: newTag });
+}
+
+/** Supprime un tag de toutes les ressources. Retourne les touchées. */
+export async function removeTag(tag: string): Promise<number> {
+  return invoke("remove_tag", { tag });
+}
+
 export async function fetchMetadata(url: string): Promise<PageMetadata> {
   return invoke("fetch_metadata", { url });
+}
+
+/** Résultat du « Smart Clip » : type deviné + méta riches extraites. */
+export interface Sniffed {
+  resourceType: string;
+  title: string;
+  description: string;
+  image: string;
+  tags: string[];
+}
+
+export async function sniffResource(url: string): Promise<Sniffed> {
+  return invoke("sniff_resource", { url });
 }
 
 /** Détails d'un dépôt GitHub (fetch_repo_details). */
@@ -161,6 +202,16 @@ export async function openResourcesFolder(): Promise<string> {
   return invoke("open_resources_folder");
 }
 
+/** Message de démarrage (récupération de base) à afficher une fois, si présent. */
+export async function startupNotice(): Promise<string | null> {
+  return invoke("startup_notice");
+}
+
+/** Ouvre le dossier des logs dans l'Explorateur (support). */
+export async function openLogsFolder(): Promise<string> {
+  return invoke("open_logs_folder");
+}
+
 export async function readImageDataUrl(path: string): Promise<string> {
   return invoke("read_image_data_url", { path });
 }
@@ -210,6 +261,19 @@ export async function setResourceStatus(
   return invoke("set_resource_status", { id, status });
 }
 
+/** Pose (null = efface) un rappel « me rappeler le… » (UTC). */
+export async function setRemindAt(
+  id: number,
+  remindAt: string | null,
+): Promise<void> {
+  return invoke("set_remind_at", { id, remindAt });
+}
+
+/** Rappels échus (non archivés) pour le contrôle au lancement. */
+export async function dueReminders(): Promise<Resource[]> {
+  return invoke("due_reminders");
+}
+
 export async function checkDeadLinks(): Promise<DeadLink[]> {
   return invoke("check_dead_links");
 }
@@ -223,6 +287,41 @@ export async function setResourceFolder(
 
 export async function isUrlKnown(url: string): Promise<boolean> {
   return invoke("is_url_known", { url });
+}
+
+// --- Applications d'ouverture (navigateur + notes externes) ---
+
+/** Une application détectée proposable (navigateur ou éditeur de notes). */
+export interface OpenerApp {
+  id: string;
+  name: string;
+  path: string;
+}
+
+export interface Openers {
+  browsers: OpenerApp[];
+  noteApps: OpenerApp[];
+}
+
+/** Chemins vides = défauts (navigateur Windows, lecteur intégré). */
+export interface OpenPrefs {
+  browserPath: string;
+  noteAppPath: string;
+}
+
+export async function detectOpeners(): Promise<Openers> {
+  return invoke("detect_openers");
+}
+
+export async function getOpenPrefs(): Promise<OpenPrefs> {
+  return invoke("get_open_prefs");
+}
+
+export async function setOpenPrefs(
+  browserPath: string,
+  noteAppPath: string,
+): Promise<void> {
+  return invoke("set_open_prefs", { browserPath, noteAppPath });
 }
 
 export async function exportData(path: string): Promise<number> {
@@ -302,7 +401,9 @@ export async function webdavListBackups(): Promise<string[]> {
   return invoke("webdav_list_backups");
 }
 
-export async function webdavRestore(name?: string | null): Promise<ImportSummary> {
+export async function webdavRestore(
+  name?: string | null,
+): Promise<ImportSummary> {
   return invoke("webdav_restore", { name: name ?? null });
 }
 
@@ -321,7 +422,9 @@ export async function cloudUploadFile(path: string): Promise<string> {
   return invoke("cloud_upload_file", { path });
 }
 
-export async function cloudListFiles(query?: string | null): Promise<CloudFile[]> {
+export async function cloudListFiles(
+  query?: string | null,
+): Promise<CloudFile[]> {
   return invoke("cloud_list_files", { query: query ?? null });
 }
 
@@ -332,7 +435,9 @@ export async function cloudDownloadFile(name: string): Promise<string> {
 
 /** « Joindre depuis le cloud » : rapatrie le fichier dans
  *  Documents\Vaultly\Fichiers et crée la ressource locale correspondante. */
-export async function cloudImportFile(name: string): Promise<{ id: number; path: string; title: string }> {
+export async function cloudImportFile(
+  name: string,
+): Promise<{ id: number; path: string; title: string }> {
   return invoke("cloud_import_file", { name });
 }
 
