@@ -3,7 +3,7 @@
  * Généré depuis slugs.md (simple-icons/simple-icons) : ne pas éditer à la main.
  * Les visuels viennent du CDN gratuit sans clé : https://cdn.simpleicons.org/<slug>
  */
-export interface BrandIcon {
+interface BrandIcon {
   title: string;
   slug: string;
 }

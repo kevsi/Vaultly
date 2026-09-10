@@ -1093,7 +1093,12 @@ const en: Dict = {
   Ressource: "Resource",
   Ouvertures: "Opens",
   dossier: "folder",
+  Secondaire: "Secondary",
+  Contour: "Outline",
 };
+
+/** Accès lecture aux dictionnaires (tests de cohérence i18n). */
+export const dicts = { fr, en } as const;
 
 function translate(
   lang: Lang,

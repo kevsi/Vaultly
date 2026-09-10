@@ -59,7 +59,7 @@ export async function restoreTrash(trashId: number): Promise<Resource> {
 }
 
 /** Résultat d'une restauration en masse (restore_trash_bulk). */
-export interface BulkRestoreResult {
+interface BulkRestoreResult {
   restored: number;
   /** ids de corbeille introuvables (déjà restaurés entre-temps) */
   missing: number[];
@@ -77,7 +77,7 @@ export async function emptyTrash(): Promise<number> {
 
 // --- Archivage Wayback (liens morts) ---
 
-export interface WaybackSnapshot {
+interface WaybackSnapshot {
   url: string;
   /** date du snapshot au format compact AAAAMMJJhhmmss */
   timestamp: string;
@@ -113,7 +113,7 @@ export async function allTags(): Promise<string[]> {
 }
 
 /** Tag + compteur pour le gestionnaire de tags. */
-export interface TagCount {
+interface TagCount {
   name: string;
   count: number;
 }
@@ -141,7 +141,7 @@ export async function fetchMetadata(url: string): Promise<PageMetadata> {
 }
 
 /** Résultat du « Smart Clip » : type deviné + méta riches extraites. */
-export interface Sniffed {
+interface Sniffed {
   resourceType: string;
   title: string;
   description: string;
@@ -292,19 +292,19 @@ export async function isUrlKnown(url: string): Promise<boolean> {
 // --- Applications d'ouverture (navigateur + notes externes) ---
 
 /** Une application détectée proposable (navigateur ou éditeur de notes). */
-export interface OpenerApp {
+interface OpenerApp {
   id: string;
   name: string;
   path: string;
 }
 
-export interface Openers {
+interface Openers {
   browsers: OpenerApp[];
   noteApps: OpenerApp[];
 }
 
 /** Chemins vides = défauts (navigateur Windows, lecteur intégré). */
-export interface OpenPrefs {
+interface OpenPrefs {
   browserPath: string;
   noteAppPath: string;
 }
@@ -328,7 +328,7 @@ export async function exportData(path: string): Promise<number> {
   return invoke("export_data", { path });
 }
 
-export interface ImportSummary {
+interface ImportSummary {
   resourcesAdded: number;
   duplicates: number;
   foldersAdded: number;
@@ -340,7 +340,7 @@ export async function importData(path: string): Promise<ImportSummary> {
   return invoke("import_data", { path });
 }
 
-export interface DbStats {
+interface DbStats {
   total: number;
   favorites: number;
   neverOpened: number;
@@ -364,7 +364,7 @@ export async function setGlobalShortcut(shortcut: string): Promise<void> {
 
 // --- Sauvegarde cloud WebDAV (Koofr, Nextcloud, Synology…) ---
 
-export interface WebDavStatus {
+interface WebDavStatus {
   configured: boolean;
   url: string;
   autobackupEnabled: boolean;
@@ -397,10 +397,6 @@ export async function webdavBackup(): Promise<string> {
   return invoke("webdav_backup");
 }
 
-export async function webdavListBackups(): Promise<string[]> {
-  return invoke("webdav_list_backups");
-}
-
 export async function webdavRestore(
   name?: string | null,
 ): Promise<ImportSummary> {
@@ -426,11 +422,6 @@ export async function cloudListFiles(
   query?: string | null,
 ): Promise<CloudFile[]> {
   return invoke("cloud_list_files", { query: query ?? null });
-}
-
-/** Télécharge un fichier cloud vers le temporaire ; retourne le chemin local. */
-export async function cloudDownloadFile(name: string): Promise<string> {
-  return invoke("cloud_download_file", { name });
 }
 
 /** « Joindre depuis le cloud » : rapatrie le fichier dans

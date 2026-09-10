@@ -39,6 +39,7 @@ import {
   updateCheckDue,
 } from "@/lib/updater";
 import { useClipboardCapture } from "@/lib/useClipboardCapture";
+import { describeError } from "@/lib/utils";
 
 // Vues chargées à la demande (code splitting) : le bundle initial ne
 // contient que le shell ; chaque onglet pèse son propre chunk. La vue
@@ -323,10 +324,10 @@ export default function App() {
             toast.info(t("Rappel : « {title} »", { title: r.title }), {
               duration: 12_000,
               action: {
-                label: "Ouvrir",
+                label: t("Ouvrir"),
                 onClick: () => {
                   void openResourceById(r.id).catch((e) =>
-                    toast.error(String(e)),
+                    toast.error(describeError(e)),
                   );
                 },
               },

@@ -3,7 +3,7 @@
  * Le formulaire s'adapte vraiment : un dépôt exige un lien git, une app
  * un exécutable, une vidéo un lien de plateforme vidéo, etc.
  */
-export interface UrlSpec {
+interface UrlSpec {
   /** libellé du champ principal */
   primaryLabel: string;
   primaryPlaceholder: string;

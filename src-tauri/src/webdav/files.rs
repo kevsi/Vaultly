@@ -211,22 +211,6 @@ pub async fn list_files(
         .collect())
 }
 
-/// Télécharge un fichier vers le dossier temporaire ; retourne le chemin.
-pub async fn download_file(pool: &SqlitePool, name: &str) -> Result<String, String> {
-    if !valid_segment(name) {
-        return Err("nom de fichier invalide".into());
-    }
-    let bytes = webdav::fetch_object(pool, &format!("{FILES_DIR}{}", encode_segment(name))).await?;
-    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
-        return Err("fichier trop volumineux (max 500 Mo)".into());
-    }
-    let dest = std::env::temp_dir().join(format!("vaultly-dl-{name}"));
-    tokio::fs::write(&dest, &bytes)
-        .await
-        .map_err(|e| format!("écriture temporaire impossible : {e}"))?;
-    Ok(dest.display().to_string())
-}
-
 /// « Joindre depuis le cloud » : télécharge et range dans
 /// Documents\Vaultly\Fichiers sous nom unique — la ressource locale pointe
 /// alors sur un fichier durable (l'URL WebDAV est protégée par mot de passe,
@@ -296,14 +280,6 @@ pub async fn cloud_list_files(
     query: Option<String>,
 ) -> Result<Vec<CloudFile>, String> {
     list_files(&pool, query).await
-}
-
-#[tauri::command]
-pub async fn cloud_download_file(
-    pool: tauri::State<'_, SqlitePool>,
-    name: String,
-) -> Result<String, String> {
-    download_file(&pool, &name).await
 }
 
 /// « Joindre depuis le cloud » côté UI : rapatrie le fichier dans

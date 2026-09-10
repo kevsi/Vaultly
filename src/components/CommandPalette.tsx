@@ -141,7 +141,7 @@ export function CommandPalette({
       void qc.invalidateQueries({ queryKey: ["resources"] });
       onOpenChange(false);
     } catch (e) {
-      const msg = String(e);
+      const msg = describeError(e);
       toast.error(
         msg.includes("déjà enregistrée") ? t("Déjà dans ta bibliothèque") : msg,
       );

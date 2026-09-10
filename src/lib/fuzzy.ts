@@ -9,7 +9,7 @@
  * - score : lettres contiguës et débuts de mots avantagés
  */
 
-export interface FuzzyMatch {
+interface FuzzyMatch {
   /** score : plus grand = meilleur */
   score: number;
   /** indices des caractères matchés (pour un surlignage éventuel) */

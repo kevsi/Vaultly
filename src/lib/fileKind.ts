@@ -6,7 +6,6 @@ import {
   FileText,
   FileType,
   Film,
-  FolderOpen,
   Image,
   type LucideIcon,
   Music,
@@ -17,7 +16,7 @@ import {
 /** Icône + couleur par extension de fichier local : la tuile « fichier »
  *  reflète le vrai type du document (txt, pdf, zip…) au lieu d'un dossier
  *  générique. */
-export interface FileKind {
+interface FileKind {
   icon: LucideIcon;
   /** classes de couleur de l'icône (le fond reste bg-muted) */
   className: string;
@@ -163,6 +162,3 @@ export function fileKindFor(resource: {
   if (!ext) return FALLBACK;
   return KINDS.find((k) => k.exts.includes(ext))?.kind ?? FALLBACK;
 }
-
-/** Alias gardé pour les import existantes : icône « dossier » générique. */
-export const FolderFileIcon = FolderOpen;

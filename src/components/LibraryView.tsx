@@ -772,7 +772,9 @@ export function LibraryView() {
         await openResource(r);
         refresh();
       } catch (e) {
-        toast.error(tt("Ouverture impossible : {error}", { error: String(e) }));
+        toast.error(
+          tt("Ouverture impossible : {error}", { error: describeError(e) }),
+        );
       }
     },
     [refresh],

@@ -147,7 +147,9 @@ export const ResourceTile = memo(function ResourceTile({
       await openResource(resource);
       void qc.invalidateQueries({ queryKey: ["resources"] });
     } catch (e) {
-      toast.error(t("Ouverture impossible : {error}", { error: String(e) }));
+      toast.error(
+        t("Ouverture impossible : {error}", { error: describeError(e) }),
+      );
     }
   }
 

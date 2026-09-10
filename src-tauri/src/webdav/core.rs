@@ -469,11 +469,6 @@ pub async fn webdav_backup(pool: tauri::State<'_, SqlitePool>) -> Result<String,
 }
 
 #[tauri::command]
-pub async fn webdav_list_backups(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<String>, String> {
-    list_backups(&pool).await
-}
-
-#[tauri::command]
 pub async fn webdav_restore(
     pool: tauri::State<'_, SqlitePool>,
     name: Option<String>,

@@ -31,17 +31,17 @@ import { hostOf, typeLabel } from "@/lib/resources";
 import type { Folder, Resource, SortBy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export type DropZone = {
+type DropZone = {
   id: number;
   zone: "left" | "right" | "center";
 };
 
-export type FolderDialogState =
+type FolderDialogState =
   | { mode: "create" }
   | { mode: "rename"; folder: Folder }
   | null;
 
-export interface ResourceGridProps {
+interface ResourceGridProps {
   resources: Resource[];
   visibleFolders: Folder[];
   /** tous les dossiers (passés aux tuiles pour « Déplacer vers… ») */

@@ -1,7 +1,7 @@
 import type { Resource } from "./types";
 
 /** Un champ spécifique à un type de ressource (stocké dans meta). */
-export interface MetaField {
+interface MetaField {
   key: string;
   label: string;
   placeholder?: string;

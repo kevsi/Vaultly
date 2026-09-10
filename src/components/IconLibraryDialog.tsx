@@ -24,7 +24,7 @@ import {
   genericIconUrl,
   searchGenericIcons,
 } from "@/lib/iconSearch";
-import { cn } from "@/lib/utils";
+import { cn, describeError } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -243,7 +243,7 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
       onPick(`data:image/svg+xml,${encodeURIComponent(svg)}`);
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(describeError(e));
     } finally {
       setPicking(null);
     }

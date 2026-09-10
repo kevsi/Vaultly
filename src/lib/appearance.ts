@@ -12,11 +12,11 @@
 import { useSyncExternalStore } from "react";
 import { tt } from "@/lib/i18n";
 
-export type StyleId = "carnet" | "pro" | "anime" | "neon" | "foret";
+type StyleId = "carnet" | "pro" | "anime" | "neon" | "foret";
 export type FontId = "systeme" | "serif" | "mono" | "techno" | "fun";
-export type ButtonStyleId = "defaut" | "pill" | "net" | "manga" | "neon";
-export type FontScale = "compact" | "normal" | "confort";
-export type GradientId = "sakura" | "ocean" | "crepuscule" | "foret" | "neon";
+type ButtonStyleId = "defaut" | "pill" | "net" | "manga" | "neon";
+type FontScale = "compact" | "normal" | "confort";
+type GradientId = "sakura" | "ocean" | "crepuscule" | "foret" | "neon";
 
 export type BgState =
   | { kind: "default" }

@@ -242,7 +242,7 @@ export function SettingsView() {
       updateAppearance({ bg: { kind: "image", image } satisfies BgState });
       toast.success(t("settings.bg-applied"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(describeError(e));
     } finally {
       setBgBusy(false);
     }
@@ -371,7 +371,7 @@ export function SettingsView() {
             t(
               "Installation impossible : {error} (clé de signature manquante ?)",
               {
-                error: String(e),
+                error: describeError(e),
               },
             ),
           );

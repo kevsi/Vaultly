@@ -113,7 +113,7 @@ export function ImportView() {
         }),
       );
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(describeError(e));
     }
   }
 

@@ -1,6 +1,7 @@
 import { type QueryKey, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { describeError } from "@/lib/utils";
 
 /**
  * Remplace le pattern manuel répété ~25 fois dans l'app :
@@ -37,7 +38,7 @@ export function useTauriMutation() {
         }
         return result;
       } catch (e) {
-        toast.error(opts?.error ? opts.error(e) : String(e));
+        toast.error(opts?.error ? opts.error(e) : describeError(e));
         return undefined;
       } finally {
         setBusy(false);
