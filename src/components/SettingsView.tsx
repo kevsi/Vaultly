@@ -228,6 +228,7 @@ export function SettingsView() {
   const [tileSize, setTileSizeState] = useState<TileSize>(getTileSize);
   // apparence (style, typographie, boutons, arrière-plan) — réactive
   const appearance = useAppearance();
+  const { t } = useI18n();
   const { lang, setLang: setUiLang } = useI18n();
   const bgFileRef = useRef<HTMLInputElement | null>(null);
   const [bgBusy, setBgBusy] = useState(false);
@@ -238,7 +239,7 @@ export function SettingsView() {
     try {
       const image = await imageFileToDataUrl(file);
       updateAppearance({ bg: { kind: "image", image } satisfies BgState });
-      toast.success("Arrière-plan personnalisé appliqué");
+      toast.success(t("settings.bg-applied"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -263,9 +264,7 @@ export function SettingsView() {
     try {
       await setAutostart(enabled);
       toast.success(
-        enabled
-          ? "Vaultly démarrera avec Windows"
-          : "Lancement au démarrage désactivé",
+        enabled ? t("settings.autostart-on") : t("settings.autostart-off"),
       );
       void qc.invalidateQueries({ queryKey: ["autostart"] });
     } catch (e) {
@@ -294,7 +293,7 @@ export function SettingsView() {
     setOpenBusy(true);
     try {
       await setOpenPrefs(browserPath, noteAppPath);
-      toast.success("Préférences d'ouverture enregistrées");
+      toast.success(t("settings.open-prefs-saved"));
       void qc.invalidateQueries({ queryKey: ["openPrefs"] });
     } catch (e) {
       toast.error(describeError(e));
@@ -309,8 +308,8 @@ export function SettingsView() {
         multiple: false,
         title:
           kind === "browser"
-            ? "Choisir le navigateur"
-            : "Choisir l'application de notes",
+            ? t("settings.choose-browser")
+            : t("settings.choose-note-app"),
         filters: [{ name: "Exécutable", extensions: ["exe"] }],
       });
       if (typeof file !== "string") return;
@@ -338,18 +337,18 @@ export function SettingsView() {
 
   async function runUpdateCheck() {
     setUpdateBusy(true);
-    setUpdateStatus("Vérification…");
+    setUpdateStatus(t("settings.checking"));
     try {
       const update = await checkForUpdates();
       markUpdateChecked();
       setAvailable(update);
       setUpdateStatus(
-        update ? `Version ${update.version} disponible.` : "Tu es à jour 🎉",
+        update
+          ? t("settings.version-available", { version: update.version })
+          : t("settings.up-to-date"),
       );
     } catch {
-      setUpdateStatus(
-        "Vérification impossible pour le moment — réessaie plus tard.",
-      );
+      setUpdateStatus(t("settings.check-failed"));
     } finally {
       setUpdateBusy(false);
     }
@@ -359,10 +358,9 @@ export function SettingsView() {
     if (!available) return;
     const version = available.version;
     setConfirm({
-      title: `Installer la version ${version} ?`,
-      message:
-        "Le téléchargement vérifié sera installé puis l'app redémarrera.",
-      confirmLabel: "Installer",
+      title: t("settings.install-question", { version }),
+      message: t("settings.install-message"),
+      confirmLabel: t("settings.install"),
       action: async () => {
         setUpdateBusy(true);
         try {
@@ -388,7 +386,7 @@ export function SettingsView() {
         setRegenBusy(true);
         try {
           await mcpRegenerateToken();
-          toast.success("Nouveau token généré — mets à jour tes clients MCP");
+          toast.success(t("settings.regenerated-mcp"));
           void qc.invalidateQueries({ queryKey: ["mcpStatus"] });
         } catch (e) {
           toast.error(describeError(e));
@@ -409,7 +407,7 @@ export function SettingsView() {
         setRegenBusy(true);
         try {
           await apiRegenerateToken();
-          toast.success("Nouveau token généré — recolle-le dans l'extension");
+          toast.success(t("settings.regenerated-add"));
           void qc.invalidateQueries({ queryKey: ["mcpStatus"] });
         } catch (e) {
           toast.error(describeError(e));
@@ -434,8 +432,8 @@ export function SettingsView() {
       window.dispatchEvent(new CustomEvent("vaultly:deadlinks-changed"));
       toast.success(
         dead.length === 0
-          ? "Tous les liens semblent vivants 🎉"
-          : `${dead.length} lien(s) ne répondent plus`,
+          ? t("settings.all-links-alive")
+          : t("settings.dead-links-found", { count: dead.length }),
       );
     } catch (e) {
       toast.error(describeError(e));
@@ -458,9 +456,9 @@ export function SettingsView() {
           ts.length >= 8
             ? ` (${ts.slice(6, 8)}/${ts.slice(4, 6)}/${ts.slice(0, 4)})`
             : "";
-        toast.success(`Archive trouvée${when} — lien copié`);
+        toast.success(t("settings.archive-found", { when }));
       } else {
-        toast.info("Aucune archive trouvée — demande de sauvegarde envoyée");
+        toast.info(t("settings.no-archive"));
         // web.archive.org/save/<url> accepte l'URL telle quelle (le chemin
         // complet fait partie de l'endpoint — pas d'encodage ici)
         void openUrl(`https://web.archive.org/save/${d.url}`).catch(() => {});
@@ -475,14 +473,14 @@ export function SettingsView() {
   async function runExport() {
     try {
       const path = await saveFileDialog({
-        title: "Exporter la bibliothèque",
+        title: t("settings.export-library"),
         defaultPath: "vaultly-export.json",
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!path) return;
       setExporting(true);
       const n = await exportData(path);
-      toast.success(`${n} ressource(s) exportée(s)`);
+      toast.success(t("settings.exported", { count: n }));
     } catch (e) {
       toast.error(describeError(e));
     } finally {
@@ -493,7 +491,7 @@ export function SettingsView() {
   async function runImport() {
     try {
       const path = await openFileDialog({
-        title: "Importer une sauvegarde",
+        title: t("settings.import-backup"),
         multiple: false,
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
@@ -554,7 +552,9 @@ export function SettingsView() {
     <div className="flex h-full min-h-0">
       {/* sidebar des rubriques */}
       <aside className="flex w-44 shrink-0 flex-col gap-0.5 border-r bg-card/40 p-3">
-        <h2 className="px-2 pb-2 pt-1 text-sm font-semibold">Réglages</h2>
+        <h2 className="px-2 pb-2 pt-1 text-sm font-semibold">
+          {t("settings")}
+        </h2>
         {SECTIONS.map((s) => (
           <button
             key={s.id}
@@ -581,7 +581,7 @@ export function SettingsView() {
               {/* style d'ambiance */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Style d'ambiance</h3>
+                  <h3 className="font-medium">{t("settings.ambiance")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     La palette de couleurs de toute l'interface — appliquée
                     aussitôt, en mode clair comme en mode sombre.
@@ -640,7 +640,7 @@ export function SettingsView() {
               {/* langue de l'interface */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Langue</h3>
+                  <h3 className="font-medium">{t("settings.language")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Langue de l'interface. Appliqué immédiatement (les
                     sous-titres avancés restent en français pour l'instant).
@@ -666,7 +666,7 @@ export function SettingsView() {
               {/* typographie */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Typographie</h3>
+                  <h3 className="font-medium">{t("settings.typography")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     La police utilisée partout dans l'interface, titres comme
                     texte.
@@ -721,7 +721,7 @@ export function SettingsView() {
               {/* style des boutons */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Style des boutons</h3>
+                  <h3 className="font-medium">{t("settings.button-style")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     La forme et l'effet des boutons de toute l'app — l'aperçu
                     ci-dessous suit ton choix en direct.
@@ -773,7 +773,7 @@ export function SettingsView() {
               {/* arrière-plan */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Arrière-plan</h3>
+                  <h3 className="font-medium">{t("settings.background")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Un fond derrière l'interface : dégradé prêt à l'emploi ou ta
                     propre image.
@@ -786,7 +786,7 @@ export function SettingsView() {
                       updateAppearance({ bg: { kind: "default" } })
                     }
                     aria-pressed={appearance.bg.kind === "default"}
-                    title="Fond uni du style"
+                    title={t("settings.solid-bg")}
                     className={cn(
                       "h-14 w-24 cursor-pointer rounded-xl border bg-muted text-xs font-medium text-muted-foreground transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                       appearance.bg.kind === "default" &&
@@ -839,7 +839,7 @@ export function SettingsView() {
                     ) : (
                       <ImagePlus className="size-4" />
                     )}
-                    Mon image…
+                    {t("settings.my-image")}
                   </button>
                 </div>
                 {appearance.bg.kind === "image" && (
@@ -863,7 +863,9 @@ export function SettingsView() {
                 )}
                 {appearance.bg.kind !== "default" && (
                   <label className="flex items-center gap-3 text-sm">
-                    <span className="text-muted-foreground">Assombrir</span>
+                    <span className="text-muted-foreground">
+                      {t("settings.darken")}
+                    </span>
                     <input
                       type="range"
                       min={0}
@@ -902,13 +904,17 @@ export function SettingsView() {
               <div className="rounded-xl border p-4">
                 <div className="flex items-center gap-2">
                   <Plug className="size-4 text-muted-foreground" />
-                  <span className="font-medium">Serveur MCP intégré</span>
+                  <span className="font-medium">
+                    {t("settings.mcp-server")}
+                  </span>
                   {isLoading ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : status?.running ? (
-                    <Badge>En ligne · port {status.port}</Badge>
+                    <Badge>
+                      {t("settings.online-port", { port: status.port })}
+                    </Badge>
                   ) : (
-                    <Badge variant="destructive">Hors ligne</Badge>
+                    <Badge variant="destructive">{t("settings.offline")}</Badge>
                   )}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -924,7 +930,7 @@ export function SettingsView() {
               {/* snippets */}
               <div className="space-y-4">
                 <div>
-                  <h3 className="font-medium">Connecter un assistant IA</h3>
+                  <h3 className="font-medium">{t("settings.connect-ai")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Ajoute ce serveur à ton client MCP préféré. Le token est
                     propre à cette machine — ne le partage pas.
@@ -936,23 +942,23 @@ export function SettingsView() {
                 {!token ? (
                   <p className="text-sm text-muted-foreground">
                     {status
-                      ? "Serveur hors ligne — token indisponible."
-                      : "Chargement du token…"}
+                      ? t("settings.server-offline")
+                      : t("settings.loading-token")}
                   </p>
                 ) : (
                   <>
                     <CopyBlock
-                      label="ZCode — à coller dans ~/.zcode/cli/config.json"
+                      label={t("settings.zcode-config")}
                       code={zcodeSnippet}
                     />
 
                     <CopyBlock
-                      label="Claude Code — commande à exécuter"
+                      label={t("settings.claude-command")}
                       code={claudeSnippet}
                     />
 
                     <CopyBlock
-                      label="Cursor — à coller dans ~/.cursor/mcp.json"
+                      label={t("settings.cursor-config")}
                       code={cursorSnippet}
                     />
                   </>
@@ -1009,7 +1015,7 @@ export function SettingsView() {
                     Raccourci global de la palette
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Fonctionne partout dans Windows, même Vaultly réduite.
+                    t("settings.shortcut-desc")
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1037,7 +1043,7 @@ export function SettingsView() {
               {/* rendu de la grille : rangées par page (pagination) */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Rendu de la grille</h3>
+                  <h3 className="font-medium">{t("settings.grid-render")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     La bibliothèque est paginée (plus de défilement) : on
                     choisit ici combien de rangées de tuiles tiennent sur une
@@ -1077,7 +1083,7 @@ export function SettingsView() {
               {/* taille des tuiles (réglage visuel) */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Taille des tuiles</h3>
+                  <h3 className="font-medium">{t("settings.tile-size")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Change la densité de la bibliothèque : plus les tuiles sont
                     petites, plus tu en vois à l'écran. La grille reste fluide
@@ -1110,7 +1116,7 @@ export function SettingsView() {
               {/* lancement au démarrage + présence système */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Lancement au démarrage</h3>
+                  <h3 className="font-medium">{t("settings.autostart")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Vaultly reste actif dans la barre des tâches : la croix de
                     la fenêtre masque l'app (le raccourci global la fait
@@ -1130,7 +1136,7 @@ export function SettingsView() {
                     className="flex items-center gap-2"
                   >
                     <Power className="size-4 text-muted-foreground" />
-                    Ouvrir automatiquement à l'ouverture de session Windows
+                    {t("settings.auto-open-windows")}
                   </Label>
                 </div>
               </div>
@@ -1140,7 +1146,7 @@ export function SettingsView() {
               {/* journal de logs (support) */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Journal d'activité</h3>
+                  <h3 className="font-medium">{t("settings.log")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     En cas de bug, ouvre le dossier des logs et joins le fichier
                     du jour à ton rapport.
@@ -1165,7 +1171,7 @@ export function SettingsView() {
               {/* relancer la visite guidée du premier lancement */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Visite guidée</h3>
+                  <h3 className="font-medium">{t("settings.guided-tour")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Revoir la présentation animée et le tour des fonctions clés
                     de l'interface.
@@ -1188,7 +1194,7 @@ export function SettingsView() {
               {/* navigateur par défaut */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Navigateur d'ouverture</h3>
+                  <h3 className="font-medium">{t("settings.open-browser")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Quel navigateur ouvre tes liens web. « Système » = ton
                     navigateur par défaut Windows.
@@ -1200,7 +1206,7 @@ export function SettingsView() {
                     onClick={() =>
                       void applyOpenPrefs("", openPrefs?.noteAppPath ?? "")
                     }
-                    title="Système (défaut Windows)"
+                    title={t("settings.system-default")}
                   />
                   {(openers?.browsers ?? []).map((b) => (
                     <OpenerOption
@@ -1250,7 +1256,7 @@ export function SettingsView() {
               {/* application de notes externe */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Application de notes</h3>
+                  <h3 className="font-medium">{t("settings.note-app")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Sans réglage, les notes s'ouvrent dans le lecteur intégré.
                     Avec une application, la note est exportée vers
@@ -1264,7 +1270,7 @@ export function SettingsView() {
                     onClick={() =>
                       void applyOpenPrefs(openPrefs?.browserPath ?? "", "")
                     }
-                    title="Vaultly (lecteur intégré)"
+                    title={t("settings.vaultly-builtin")}
                   />
                   {(openers?.noteApps ?? []).map((b) => (
                     <OpenerOption
@@ -1316,7 +1322,7 @@ export function SettingsView() {
               {/* liens morts */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Liens morts</h3>
+                  <h3 className="font-medium">{t("settings.dead-links")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Vérifie que chaque lien web de ta bibliothèque répond encore
                     (404, 5xx, erreur réseau). Ça peut prendre quelques
@@ -1333,7 +1339,7 @@ export function SettingsView() {
                   ) : (
                     <Link2Off />
                   )}
-                  Vérifier les liens
+                  {t("settings.check-links")}
                 </Button>
                 {deadLinks && deadLinks.length > 0 && (
                   <div className="max-h-56 overflow-y-auto rounded-xl border p-2">
@@ -1368,7 +1374,7 @@ export function SettingsView() {
                           type="button"
                           onClick={() => void runWayback(d)}
                           disabled={waybackBusy === d.id}
-                          title="Chercher ce lien dans les archives Internet (archive.org)"
+                          title={t("settings.wayback-tooltip")}
                           className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                         >
                           {waybackBusy === d.id ? (
@@ -1376,7 +1382,7 @@ export function SettingsView() {
                           ) : (
                             <Archive className="size-3.5" />
                           )}
-                          Archiver
+                          {t("settings.archive")}
                         </button>
                       </div>
                     ))}
@@ -1391,7 +1397,9 @@ export function SettingsView() {
               {/* extension navigateur */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Extension navigateur</h3>
+                  <h3 className="font-medium">
+                    {t("settings.browser-extension")}
+                  </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Ajoute la page courante en un clic depuis Brave, Chrome ou
                     Edge.
@@ -1409,9 +1417,7 @@ export function SettingsView() {
                     </code>
                     )
                   </li>
-                  <li>
-                    Active le <b>Mode développeur</b> (coin haut droit)
-                  </li>
+                  <li>{t("settings.extension-steps-dev")}</li>
                   <li>
                     Clique <b>Charger l'extension non empaquetée</b> puis
                     sélectionne le dossier{" "}
@@ -1419,18 +1425,16 @@ export function SettingsView() {
                     la racine du projet Vaultly
                   </li>
                   <li>
-                    Clique l'icône Vaultly dans la barre et colle le{" "}
+                    {t("settings.extension-steps-token")}
                     <b>token de l'extension</b> (ci-dessous) une seule fois
                   </li>
                 </ol>
                 <div className="grid gap-1.5">
                   <span className="text-sm font-medium">
-                    Token de l'extension
+                    {t("settings.extension-token")}
                   </span>
                   <p className="text-xs text-muted-foreground">
-                    N'autorise que l'ajout de ressources (POST /api/add). Lire,
-                    modifier, supprimer ou lancer des apps reste réservé au
-                    token MCP.
+                    t("settings.extension-token-desc")
                   </p>
                   <code className="break-all rounded-lg bg-muted p-2 text-xs">
                     {addToken || "…"}
@@ -1477,14 +1481,9 @@ export function SettingsView() {
               {/* sauvegarde locale JSON */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Sauvegarde</h3>
+                  <h3 className="font-medium">{t("settings.backup")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Exporte toute ta bibliothèque (ressources + dossiers) en
-                    JSON, ou restaure depuis une sauvegarde — les doublons d'URL
-                    sont ignorés. Une sauvegarde JSON est aussi créée
-                    automatiquement à chaque fermeture de l'app, dans
-                    Documents\Vaultly\Sauvegardes (les 10 dernières sont
-                    conservées).
+                    t("settings.backup-desc")
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1498,7 +1497,7 @@ export function SettingsView() {
                     ) : (
                       <Download />
                     )}
-                    Exporter tout
+                    {t("settings.export-all")}
                   </Button>
                   <Button
                     variant="outline"
@@ -1510,7 +1509,7 @@ export function SettingsView() {
                     ) : (
                       <Upload />
                     )}
-                    Importer une sauvegarde
+                    {t("settings.import-backup-label")}
                   </Button>
                 </div>
               </div>
@@ -1526,10 +1525,9 @@ export function SettingsView() {
               {/* mise à jour */}
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium">Mise à jour</h3>
+                  <h3 className="font-medium">{t("settings.update")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vérifie les nouvelles versions et les installe en un clic.
-                    Version installée : {appVersion ?? "…"}
+                    {t("settings.update-desc", { version: appVersion ?? "…" })}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1543,7 +1541,7 @@ export function SettingsView() {
                     ) : (
                       <RefreshCw />
                     )}
-                    Vérifier
+                    {t("settings.check")}
                   </Button>
                   {available && (
                     <Button
@@ -1551,7 +1549,9 @@ export function SettingsView() {
                       disabled={updateBusy}
                     >
                       <Download />
-                      Installer la {available.version}
+                      {t("settings.install-version", {
+                        version: available.version,
+                      })}
                     </Button>
                   )}
                 </div>
@@ -1567,7 +1567,7 @@ export function SettingsView() {
           {section === "soutenir" && (
             <div className="space-y-3">
               <div>
-                <h3 className="font-medium">Soutenir Vaultly</h3>
+                <h3 className="font-medium">{t("settings.support-title")}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Vaultly est gratuit, sans publicité et sans compte. Si l'app
                   te sert au quotidien, un don — même petit — aide à garder le
