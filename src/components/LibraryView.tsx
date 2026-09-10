@@ -839,7 +839,7 @@ export function LibraryView() {
     <div className="flex h-full min-h-0 flex-col">
       {/* barre d'outils */}
       <div className="flex items-center gap-2 border-b px-4 py-2.5">
-        <div className="relative max-w-md grow">
+        <div className="relative max-w-md grow" data-tour="search">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
@@ -894,7 +894,10 @@ export function LibraryView() {
           <Camera />
         </Button>
         {/* bascule Tuiles / Liste / Tableau : l'apparence se mémorise */}
-        <div className="flex items-center rounded-lg border p-0.5">
+        <div
+          className="flex items-center rounded-lg border p-0.5"
+          data-tour="view"
+        >
           <Button
             variant={viewMode === "grid" ? "default" : "ghost"}
             size="icon-sm"
@@ -975,6 +978,7 @@ export function LibraryView() {
           Note
         </Button>
         <Button
+          data-tour="add"
           onClick={() => {
             setEditing(null);
             setPrefillUrl(null);
@@ -987,7 +991,10 @@ export function LibraryView() {
       </div>
 
       {/* onglets de types + catégories — wrap, jamais de scrollbar */}
-      <div className="flex flex-wrap items-center gap-x-1 border-b px-3">
+      <div
+        className="flex flex-wrap items-center gap-x-1 border-b px-3"
+        data-tour="filters"
+      >
         <FilterTab
           label="Tout"
           count={(resources ?? []).length}

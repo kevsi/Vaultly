@@ -1,0 +1,72 @@
+/* Thème du tour Driver.js pour coller à l'UI sombre de Vaultly.
+   Importé par FirstRunTour (avec driver.js/dist/driver.css). On cible les
+   classes DOM de driver.js v1 et on retombe sur les tokens CSS de l'app. */
+
+.driver-popover,
+.vaultly-tour.driver-popover {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.9rem);
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.45);
+  font-family: inherit;
+  max-width: 340px;
+}
+
+.driver-popover .driver-popover-title {
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.driver-popover .driver-popover-description {
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.driver-popover .driver-popover-progress-text {
+  color: var(--muted-foreground);
+}
+
+.driver-popover .driver-popover-arrow-side-top,
+.driver-popover .driver-popover-arrow-side-bottom,
+.driver-popover .driver-popover-arrow-side-left,
+.driver-popover .driver-popover-arrow-side-right {
+  border-color: var(--popover);
+}
+
+.driver-popover .driver-popover-btn,
+.driver-popover button {
+  color: var(--muted-foreground);
+  border-color: var(--border);
+  background: transparent;
+  text-shadow: none;
+}
+
+.driver-popover .driver-popover-next-btn {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.driver-popover button:hover,
+.driver-popover .driver-popover-prev-btn:hover {
+  color: var(--foreground);
+  background: var(--accent);
+  filter: none;
+}
+
+.driver-popover .driver-popover-next-btn:hover {
+  background: color-mix(in oklch, var(--primary) 88%, black);
+  color: var(--primary-foreground);
+}
+
+.driver-popover-close-btn {
+  color: var(--muted-foreground) !important;
+}
+
+.driver-popover-close-btn:hover {
+  color: var(--foreground) !important;
+}

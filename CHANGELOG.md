@@ -7,6 +7,10 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 ## [Unreleased]
 
 ### Ajouté
+- Premier lancement : diaporama animé (3 slides, icônes Lottie vectorielles
+  maison, `prefers-reduced-motion` respecté) enchaîné sur une visite guidée
+  Driver.js (7 étapes ciblant la vraie interface). Une seule fois ; relançable
+  via Réglages › « Revoir la visite guidée ».
 - Smart Clip : coller une URL devine le type (repo/vidéo/article/outil/site) et
   pré-remplit titre, description, image (miniature YouTube incluse) et tags —
   sans jamais écraser un choix manuel.

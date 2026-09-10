@@ -21,7 +21,7 @@ import {
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { CommandPalette } from "@/components/CommandPalette";
-import { Onboarding } from "@/components/Onboarding";
+import { FirstRun } from "@/components/FirstRun";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -395,7 +395,12 @@ export default function App() {
             />
             <span className="font-semibold">Vaultly</span>
           </div>
-          <Tabs value={tab} onValueChange={setTab} className="ml-4">
+          <Tabs
+            value={tab}
+            onValueChange={setTab}
+            data-tour="nav"
+            className="ml-4"
+          >
             <TabsList>
               <TabsTrigger value="library">
                 <Library />
@@ -429,6 +434,7 @@ export default function App() {
           <Button
             variant="ghost"
             size="icon"
+            data-tour="shortcuts"
             onClick={() => setShortcutsOpen(true)}
             title="Raccourcis clavier"
           >
@@ -450,7 +456,7 @@ export default function App() {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-      <Onboarding onTryPalette={() => setPaletteOpen(true)} />
+      <FirstRun />
       <Toaster position="bottom-right" richColors />
     </QueryClientProvider>
   );

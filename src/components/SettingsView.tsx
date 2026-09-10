@@ -13,6 +13,7 @@ import {
   ExternalLink,
   FileInput,
   FileText,
+  GraduationCap,
   ImagePlus,
   Link2Off,
   Loader2,
@@ -79,6 +80,7 @@ import {
   type PageDensity,
   setPageDensity as persistPageDensity,
 } from "@/lib/gridPagination";
+import { replayTour } from "@/lib/onboarding";
 import {
   getTileSize,
   setTileSize as persistTileSize,
@@ -1124,6 +1126,27 @@ export function SettingsView() {
                 >
                   <FileText />
                   Ouvrir le dossier des logs
+                </Button>
+              </div>
+
+              <Separator />
+
+              {/* relancer la visite guidée du premier lancement */}
+              <div className="space-y-3">
+                <div>
+                  <h3 className="font-medium">Visite guidée</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Revoir la présentation animée et le tour des fonctions clés
+                    de l'interface.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => replayTour()}
+                >
+                  <GraduationCap />
+                  Revoir la visite guidée
                 </Button>
               </div>
             </>
