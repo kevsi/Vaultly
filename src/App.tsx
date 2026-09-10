@@ -18,6 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -167,6 +168,41 @@ function WindowControls() {
     </div>
   );
 }
+
+/**
+ * Thème des notifications : les variables CSS de sonner sont branchées sur
+ * les tokens de l'interface (popover, primary, destructive, radius) — les
+ * toasts suivent donc automatiquement le style d'ambiance choisi
+ * (Carnet, Pro, Anime, Néon, Forêt…), les polices et l'arrondi des boutons.
+ * Les variantes sont teintées par mélange du fond du thème avec la couleur
+ * sémantique (color-mix oklch), et les icônes héritent de la teinte
+ * (fill: currentColor côté sonner).
+ */
+const TOASTER_THEME = {
+  "--normal-bg": "var(--popover)",
+  "--normal-bg-hover": "var(--accent)",
+  "--normal-text": "var(--popover-foreground)",
+  "--normal-border": "var(--border)",
+  "--normal-border-hover": "var(--primary)",
+  "--border-radius": "var(--radius-lg)",
+  "--success-bg":
+    "color-mix(in oklch, var(--popover) 88%, oklch(0.72 0.17 149))",
+  "--success-border":
+    "color-mix(in oklch, var(--popover) 70%, oklch(0.72 0.17 149))",
+  "--success-text": "oklch(0.85 0.17 149)",
+  "--info-bg": "color-mix(in oklch, var(--popover) 88%, var(--primary))",
+  "--info-border": "color-mix(in oklch, var(--popover) 70%, var(--primary))",
+  "--info-text": "var(--primary)",
+  "--error-bg": "color-mix(in oklch, var(--popover) 88%, var(--destructive))",
+  "--error-border":
+    "color-mix(in oklch, var(--popover) 70%, var(--destructive))",
+  "--error-text": "var(--destructive)",
+  "--warning-bg":
+    "color-mix(in oklch, var(--popover) 88%, oklch(0.83 0.16 84))",
+  "--warning-border":
+    "color-mix(in oklch, var(--popover) 70%, oklch(0.83 0.16 84))",
+  "--warning-text": "oklch(0.9 0.16 84)",
+} as CSSProperties;
 
 export default function App() {
   const { t } = useI18n();
@@ -487,7 +523,16 @@ export default function App() {
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <FirstRun />
-      <Toaster position="bottom-right" richColors />
+      <Toaster
+        position="bottom-right"
+        theme="dark"
+        richColors
+        closeButton
+        toastOptions={{
+          style: TOASTER_THEME,
+          classNames: { toast: "shadow-2xl" },
+        }}
+      />
     </QueryClientProvider>
   );
 }
