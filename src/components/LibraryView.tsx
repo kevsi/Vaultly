@@ -190,9 +190,14 @@ export function LibraryView() {
     setSelectMode,
     selectedIds,
     setSelectedIds,
+    selectedFolderIds,
+    setSelectedFolderIds,
+    selectedCount,
+    clearSelection,
+    toggleFolderSelect,
     handleBulkArchive,
     handleBulkDelete,
-  } = useBulkActions({ refresh, setConfirm });
+  } = useBulkActions({ refresh, setConfirm, openFolder, goUp });
 
   const {
     query,
@@ -758,7 +763,7 @@ export function LibraryView() {
           variant={selectMode ? "default" : "outline"}
           onClick={() => {
             setSelectMode((v) => !v);
-            setSelectedIds(new Set());
+            clearSelection();
           }}
           title={t("lib.select")}
         >
@@ -1063,6 +1068,8 @@ export function LibraryView() {
           captures={captures}
           selectMode={selectMode}
           selectedIds={selectedIds}
+          selectedFolderIds={selectedFolderIds}
+          toggleFolderSelect={toggleFolderSelect}
           toggleSelect={toggleSelect}
           viewMode={viewMode}
           tileMin={tileMin}
@@ -1098,31 +1105,31 @@ export function LibraryView() {
           onPagination={handlePagination}
         />
       )}
-      {/* barre d'actions de la sélection */}
-      {selectMode && selectedIds.size > 0 && (
+      {/* barre d'actions de la sélection (ressources ET dossiers) */}
+      {selectMode && selectedCount > 0 && (
         <div className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-pop-in items-center gap-2 rounded-2xl border bg-popover px-4 py-2 shadow-2xl">
           <span className="text-sm font-medium tabular-nums">
-            {selectedIds.size} {t("lib.bulk.selected")}
+            {selectedCount} {t("lib.bulk.selected")}
           </span>
           <span className="mx-1 h-5 w-px bg-border" />
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedIds(new Set(displayed.map((r) => r.id)))}
+            onClick={() => {
+              setSelectedIds(new Set(displayed.map((r) => r.id)));
+              setSelectedFolderIds(new Set(visibleFolders.map((f) => f.id)));
+            }}
           >
             {t("lib.bulk.selectAll")}
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedIds(new Set())}
-          >
+          <Button variant="ghost" size="sm" onClick={clearSelection}>
             {t("lib.bulk.deselect")}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => void handleBulkArchive()}
+            disabled={selectedIds.size === 0}
           >
             <Archive />
             {t("lib.bulk.archive")}

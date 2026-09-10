@@ -27,6 +27,9 @@ interface ResourceGridProps {
   captures: boolean;
   selectMode: boolean;
   selectedIds: Set<number>;
+  /** dossiers cochés en mode sélection (ids de table distincte des ressources) */
+  selectedFolderIds: Set<number>;
+  toggleFolderSelect: (f: Folder) => void;
   toggleSelect: (r: Resource) => void;
   viewMode: "grid" | "list";
   tileMin: number;
@@ -99,6 +102,8 @@ export function ResourceGrid(props: ResourceGridProps) {
     captures,
     selectMode,
     selectedIds,
+    selectedFolderIds,
+    toggleFolderSelect,
     toggleSelect,
     viewMode,
     tileMin,
@@ -247,6 +252,9 @@ export function ResourceGrid(props: ResourceGridProps) {
         }}
         onDissolve={(fo) => void handleDissolveFolder(fo)}
         onDelete={(fo) => void handleDeleteFolder(fo)}
+        selectMode={selectMode}
+        selected={selectedFolderIds.has(f.id)}
+        onToggleSelect={() => toggleFolderSelect(f)}
         dropHint={folderDropHint === f.id}
         onDragOver={(e) => {
           if (dragId === null && dragFolderId === null) return;
@@ -399,6 +407,9 @@ export function ResourceGrid(props: ResourceGridProps) {
               <FolderListRow
                 key={`folder-${f.id}`}
                 folder={f}
+                selectMode={selectMode}
+                selected={selectedFolderIds.has(f.id)}
+                onToggleSelect={() => toggleFolderSelect(f)}
                 setFolderStack={setFolderStack}
                 setDragFolderId={setDragFolderId}
               />

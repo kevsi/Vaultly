@@ -254,7 +254,6 @@ export interface FolderActions {
   handleFolderDrop: (target: Folder) => Promise<void>;
   handleDropOnFolder: (folder: Folder) => Promise<void>;
 }
-
 /** Pile de navigation des dossiers (fil d'Ariane, Retour), suppression,
  *  dissolution et dépôts sur un dossier. `dragId`/`setDragId` (drag d'une
  *  ressource) restent la propriété de LibraryView : ils sont partagés avec
@@ -372,47 +371,88 @@ export function useFolderActions({
   };
 }
 
-/** État + actions de la sélection multiple produits par useBulkActions. */
+/** État + actions de la sélection multiple produits par useBulkActions.
+ *  Ressources ET dossiers sont sélectionnables (ensembles séparés : les ids
+ *  viennent de tables différentes, un préfixe commun créerait des collisions). */
 export interface BulkActions {
   selectMode: boolean;
   setSelectMode: Dispatch<SetStateAction<boolean>>;
   selectedIds: Set<number>;
   setSelectedIds: Dispatch<SetStateAction<Set<number>>>;
+  selectedFolderIds: Set<number>;
+  setSelectedFolderIds: Dispatch<SetStateAction<Set<number>>>;
+  /** ressources + dossiers sélectionnés (compteur de la barre d'actions) */
+  selectedCount: number;
+  /** vide les deux sélections (bouton Sélectionner/Quitter, fin d'action) */
+  clearSelection: () => void;
+  toggleFolderSelect: (folder: Folder) => void;
   handleBulkArchive: () => Promise<void>;
   handleBulkDelete: () => void;
 }
 
-/** Mode sélection + actions en masse (archiver / supprimer) de la bibliothèque. */
+/** Mode sélection + actions en masse (archiver / supprimer) de la bibliothèque.
+ *  L'archivage ne concerne que les ressources (les dossiers n'ont pas de
+ *  statut) ; la suppression gère le mixte : ressources → corbeille, dossiers
+ *  → supprimés (leur contenu ressort dans la grille). */
 export function useBulkActions({
   refresh,
   setConfirm,
+  openFolder,
+  goUp,
 }: {
   refresh: () => void;
   setConfirm: Dispatch<SetStateAction<ConfirmState | null>>;
+  openFolder: Folder | null;
+  goUp: () => void;
 }): BulkActions {
   const { t } = useI18n();
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<number>>(
+    new Set(),
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectedFolderIds(new Set());
+  }, []);
+
+  function toggleFolderSelect(folder: Folder) {
+    setSelectedFolderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(folder.id)) next.delete(folder.id);
+      else next.add(folder.id);
+      return next;
+    });
+  }
 
   function handleBulkDelete() {
     const ids = [...selectedIds];
-    if (ids.length === 0) return;
+    const folderIds = [...selectedFolderIds];
+    if (ids.length === 0 && folderIds.length === 0) return;
+    const total = ids.length + folderIds.length;
     setConfirm({
-      title: t("Supprimer {count} ressource(s) ?", { count: ids.length }),
-      message: t(
-        "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
-      ),
+      title: t("Supprimer {count} élément(s) ?", { count: total }),
+      message:
+        folderIds.length === 0
+          ? t(
+              "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
+            )
+          : t(
+              "Les ressources iront dans la corbeille (restaurables 30 jours). Les dossiers sont supprimés : leur contenu ressort dans la grille.",
+            ),
       confirmLabel: t("Supprimer"),
       destructive: true,
       action: async () => {
         try {
-          const n = await deleteResources(ids);
-          toast.success(
-            t("{count} ressource(s) déplacée(s) dans la corbeille", {
-              count: n,
-            }),
-          );
-          setSelectedIds(new Set());
+          if (ids.length > 0) await deleteResources(ids);
+          for (const id of folderIds) {
+            await deleteFolder(id);
+            // le dossier ouvert fait partie de la sélection : remonter
+            if (openFolder?.id === id) goUp();
+          }
+          toast.success(t("{count} élément(s) supprimé(s)", { count: total }));
+          clearSelection();
           setSelectMode(false);
           refresh();
         } catch (e) {
@@ -432,7 +472,7 @@ export function useBulkActions({
       toast.success(
         t("{count} ressource(s) archivée(s)", { count: ids.length }),
       );
-      setSelectedIds(new Set());
+      clearSelection();
       setSelectMode(false);
       refresh();
     } catch (e) {
@@ -445,6 +485,11 @@ export function useBulkActions({
     setSelectMode,
     selectedIds,
     setSelectedIds,
+    selectedFolderIds,
+    setSelectedFolderIds,
+    selectedCount: selectedIds.size + selectedFolderIds.size,
+    clearSelection,
+    toggleFolderSelect,
     handleBulkArchive,
     handleBulkDelete,
   };

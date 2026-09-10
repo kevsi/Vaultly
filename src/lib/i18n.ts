@@ -1095,6 +1095,11 @@ const en: Dict = {
   dossier: "folder",
   Secondaire: "Secondary",
   Contour: "Outline",
+  "Supprimer {count} élément(s) ?": "Delete {count} item(s)?",
+  "{count} élément(s) supprimé(s)": "{count} item(s) deleted",
+  "Les ressources iront dans la corbeille (restaurables 30 jours). Les dossiers sont supprimés : leur contenu ressort dans la grille.":
+    "Resources go to the trash (restorable for 30 days). Folders are deleted: their contents reappear in the grid.",
+  "Sélectionner le dossier « {name} »": 'Select folder "{name}"',
 };
 
 /** Accès lecture aux dictionnaires (tests de cohérence i18n). */

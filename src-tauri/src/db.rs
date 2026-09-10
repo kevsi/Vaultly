@@ -1879,4 +1879,31 @@ mod tests {
         assert!(names.iter().any(|n| n == "À traiter"));
         assert!(!names.iter().any(|n| n == "Archivés"));
     }
+
+    /// Une note créée depuis un dossier ouvert (folder_id passé par le
+    /// NoteEditor) doit atterrir DANS ce dossier et y être listée.
+    #[tokio::test]
+    async fn note_created_in_current_folder_is_listed_there() {
+        let pool = test_pool().await;
+        let folder = create_folder(&pool, "Projets", "", None)
+            .await
+            .unwrap();
+        let mut note = new_res("", "Ma note", Some(folder.id));
+        note.resource_type = "note".into();
+        let created = add_resource(&pool, &note).await.unwrap();
+        assert_eq!(created.folder_id, Some(folder.id));
+        let list = list_resources(
+            &pool,
+            &ResourceFilter {
+                folder_id: Some(folder.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            list.iter().any(|r| r.id == created.id),
+            "la note doit apparaître dans le dossier courant"
+        );
+    }
 }

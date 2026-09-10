@@ -146,6 +146,9 @@ export function folderDragProps(
 
 interface FolderListRowProps {
   folder: Folder;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   setFolderStack: (f: (s: Folder[]) => Folder[]) => void;
   setDragFolderId: (id: number | null) => void;
 }
@@ -153,27 +156,48 @@ interface FolderListRowProps {
 /** Ligne DOSSIER de la vue LISTE. */
 export function FolderListRow({
   folder,
+  selectMode,
+  selected,
+  onToggleSelect,
   setFolderStack,
   setDragFolderId,
 }: FolderListRowProps) {
   const { t } = useI18n();
   return (
     <div
-      {...folderDragProps(folder, setDragFolderId)}
+      {...(selectMode ? {} : folderDragProps(folder, setDragFolderId))}
       role="button"
       tabIndex={0}
-      onClick={() => setFolderStack((s) => [...s, folder])}
+      onClick={() =>
+        selectMode ? onToggleSelect?.() : setFolderStack((s) => [...s, folder])
+      }
       onKeyDown={(e) => {
-        if (e.key === "Enter") setFolderStack((s) => [...s, folder]);
+        if (e.key === "Enter") {
+          if (selectMode) onToggleSelect?.();
+          else setFolderStack((s) => [...s, folder]);
+        }
       }}
       className={cn(
         LIST_COLS,
         "grid cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm outline-none transition-colors last:border-b-0 hover:bg-accent/40 focus-visible:bg-accent/40",
+        selected && selectMode && "ring-2 ring-inset ring-amber-500",
       )}
     >
-      <span className="flex size-8 items-center justify-center rounded-lg bg-muted">
-        <FolderOpen className="size-4 text-amber-500" />
-      </span>
+      {selectMode ? (
+        <span className="flex size-8 items-center justify-center">
+          <Checkbox
+            checked={selected}
+            tabIndex={-1}
+            aria-label={t("Sélectionner le dossier « {name} »", {
+              name: folder.name,
+            })}
+          />
+        </span>
+      ) : (
+        <span className="flex size-8 items-center justify-center rounded-lg bg-muted">
+          <FolderOpen className="size-4 text-amber-500" />
+        </span>
+      )}
       <span className="truncate font-medium">{folder.name}</span>
       <span className="truncate text-xs text-muted-foreground">
         {t("dossier")}
