@@ -29,6 +29,9 @@ export function markOnboarded(): void {
 
 /** Relance la visite guidée depuis un autre composant (Réglages). */
 export function replayTour(): void {
+  // le tour cible la bibliothèque : on y revient d'abord (sinon ses étapes
+  // sont skippées — la vue Réglages ne monte pas la toolbar ciblée)
+  window.dispatchEvent(new Event("vaultly:go-library"));
   window.dispatchEvent(new Event(REPLAY_EVENT));
 }
 

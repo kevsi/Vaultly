@@ -26,7 +26,9 @@ export function runGuidedTour(
     prevBtnText: t("common.prev"),
     doneBtnText: t("common.finish"),
     skipMissingElement: true,
-    waitForElement: 1500,
+    // 0 = skip immédiat des étapes sans élément : avec une valeur > 0,
+    // driver attend (et gèle les boutons) tant que l'élément n'apparaît pas.
+    waitForElement: 0,
     onDestroyed: () => onDestroyed(),
     steps: [
       {

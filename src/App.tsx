@@ -260,6 +260,13 @@ export default function App() {
     return () => window.removeEventListener("unhandledrejection", handler);
   }, []);
 
+  useEffect(() => {
+    // la visite guidée cible la bibliothèque : revenir dessus avant le tour
+    const goLibrary = () => setTab("library");
+    window.addEventListener("vaultly:go-library", goLibrary);
+    return () => window.removeEventListener("vaultly:go-library", goLibrary);
+  }, []);
+
   // préchargement du chunk Bibliothèque quand le navigateur est inactif
   useEffect(() => {
     const id = window.requestIdleCallback(
