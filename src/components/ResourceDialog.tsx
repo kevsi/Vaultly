@@ -34,6 +34,7 @@ import {
   sniffResource,
   updateResource,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { metaFieldsFor } from "@/lib/metaFields";
 import { hostOf, RESOURCE_TYPES } from "@/lib/resources";
 import type { Resource } from "@/lib/types";
@@ -105,6 +106,7 @@ export function ResourceDialog({
   onShowExisting,
   onSaved,
 }: Props) {
+  const { t } = useI18n();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [favicon, setFavicon] = useState("");
   const [fetching, setFetching] = useState(false);
@@ -197,10 +199,10 @@ export function ResourceDialog({
     try {
       const file = await openFileDialog({
         multiple: false,
-        title: "Choisir une icône",
+        title: t("Choisir une icône"),
         filters: [
           {
-            name: "Images",
+            name: t("Images"),
             extensions: ["png", "jpg", "jpeg", "webp", "gif", "ico", "svg"],
           },
         ],
@@ -208,7 +210,7 @@ export function ResourceDialog({
       if (typeof file === "string") {
         touchedIcon.current = true;
         setFavicon(await readImageDataUrl(file));
-        toast.success("Icône personnalisée appliquée");
+        toast.success(t("Icône personnalisée appliquée"));
       }
     } catch (e) {
       toast.error(describeError(e));
@@ -219,10 +221,10 @@ export function ResourceDialog({
     try {
       const file = await openFileDialog({
         multiple: false,
-        title: "Choisir l'exécutable",
+        title: t("Choisir l'exécutable"),
         filters: [
-          { name: "Exécutable", extensions: ["exe", "lnk", "bat"] },
-          { name: "Tous les fichiers", extensions: ["*"] },
+          { name: t("Exécutable"), extensions: ["exe", "lnk", "bat"] },
+          { name: t("Tous les fichiers"), extensions: ["*"] },
         ],
       });
       if (typeof file === "string") setMeta("exePath", file);
@@ -236,8 +238,8 @@ export function ResourceDialog({
     try {
       const file = await openFileDialog({
         multiple: false,
-        title: "Choisir un fichier",
-        filters: [{ name: "Tous les fichiers", extensions: ["*"] }],
+        title: t("Choisir un fichier"),
+        filters: [{ name: t("Tous les fichiers"), extensions: ["*"] }],
       });
       if (typeof file === "string") setMeta("filePath", file);
     } catch (e) {
@@ -248,7 +250,7 @@ export function ResourceDialog({
   async function autofill() {
     const url = form.url.trim();
     if (!url) {
-      toast.error("Saisis d'abord un lien web");
+      toast.error(t("Saisis d'abord un lien web"));
       return;
     }
     setFetching(true);
@@ -261,7 +263,7 @@ export function ResourceDialog({
       ) {
         const d = await fetchRepoDetails(url);
         applyRepoDetails(d);
-        toast.success("Fiche du dépôt récupérée depuis GitHub");
+        toast.success(t("Fiche du dépôt récupérée depuis GitHub"));
         return;
       }
       // Smart Clip manuel : re-renifle (forcer après une modif du champ) et
@@ -278,7 +280,7 @@ export function ResourceDialog({
         tags: f.tags.trim() ? f.tags : s.tags.join(", "),
       }));
       setFavicon((cur) => cur || s.image);
-      toast.success("Infos récupérées automatiquement");
+      toast.success(t("Infos récupérées automatiquement"));
     } catch (e) {
       toast.error(describeError(e));
     } finally {
@@ -473,10 +475,10 @@ export function ResourceDialog({
     try {
       if (editing) {
         await updateResource(editing.id, payload);
-        toast.success("Ressource mise à jour");
+        toast.success(t("Ressource mise à jour"));
       } else {
         await addResource(payload);
-        toast.success("Ressource ajoutée");
+        toast.success(t("Ressource ajoutée"));
       }
       onOpenChange(false);
       onSaved();
@@ -507,21 +509,21 @@ export function ResourceDialog({
                 <button
                   type="button"
                   onClick={() => setStep("type")}
-                  title="Changer de type de ressource"
+                  title={t("Changer de type de ressource")}
                   className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-primary/40 bg-primary/10 py-1 pr-2.5 pl-1 text-xs font-medium text-primary transition-colors outline-none hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <ChevronLeft className="size-4" />
                   <TypeIcon className="size-3.5" />
-                  {typeEntry.label}
+                  {t(typeEntry.label)}
                 </button>
               )}
               <DialogTitle>
-                {editing ? "Modifier la ressource" : "Nouvelle ressource"}
+                {editing ? t("Modifier la ressource") : t("Nouvelle ressource")}
               </DialogTitle>
             </div>
             {step === "type" && (
               <p className="text-sm text-muted-foreground">
-                Que veux-tu ajouter ? Choisis un type pour continuer.
+                {t("Que veux-tu ajouter ? Choisis un type pour continuer.")}
               </p>
             )}
           </DialogHeader>
@@ -529,19 +531,19 @@ export function ResourceDialog({
           {step === "type" ? (
             /* ---- Étape 1 : cartes des types de ressources ---- */
             <div className="grid animate-fade-in grid-cols-2 gap-2 sm:grid-cols-4">
-              {RESOURCE_TYPES.filter((t) => t.value !== "note").map((t) => (
+              {RESOURCE_TYPES.filter((t) => t.value !== "note").map((r) => (
                 <button
-                  key={t.value}
+                  key={r.value}
                   type="button"
-                  onClick={() => pickType(t.value)}
+                  onClick={() => pickType(r.value)}
                   className="group flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-border bg-card px-2 py-3.5 text-center transition-all outline-none hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                    <t.icon className="size-5" />
+                    <r.icon className="size-5" />
                   </span>
-                  <span className="text-sm font-medium">{t.label}</span>
+                  <span className="text-sm font-medium">{t(r.label)}</span>
                   <span className="text-[11px] leading-tight text-muted-foreground">
-                    {TYPE_DESCS[t.value] ?? ""}
+                    {t(TYPE_DESCS[r.value] ?? "")}
                   </span>
                 </button>
               ))}
@@ -553,11 +555,11 @@ export function ResourceDialog({
                 {/* champ principal adapté au type */}
                 {isFile ? (
                   <div className="grid gap-1.5">
-                    <Label htmlFor="filepath">{spec.primaryLabel}</Label>
+                    <Label htmlFor="filepath">{t(spec.primaryLabel)}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="filepath"
-                        placeholder={spec.primaryPlaceholder}
+                        placeholder={t(spec.primaryPlaceholder)}
                         value={form.meta.filePath ?? ""}
                         onChange={(e) => setMeta("filePath", e.target.value)}
                       />
@@ -565,22 +567,22 @@ export function ResourceDialog({
                         variant="outline"
                         onClick={() => void chooseLocalFile()}
                       >
-                        Parcourir…
+                        {t("Parcourir…")}
                       </Button>
                     </div>
                     {spec.hint && (
                       <p className="text-xs text-muted-foreground">
-                        {spec.hint}
+                        {t(spec.hint)}
                       </p>
                     )}
                   </div>
                 ) : isApp ? (
                   <div className="grid gap-1.5">
-                    <Label htmlFor="exe">{spec.primaryLabel}</Label>
+                    <Label htmlFor="exe">{t(spec.primaryLabel)}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="exe"
-                        placeholder={spec.primaryPlaceholder}
+                        placeholder={t(spec.primaryPlaceholder)}
                         value={form.meta.exePath ?? ""}
                         onChange={(e) => setMeta("exePath", e.target.value)}
                       />
@@ -589,22 +591,22 @@ export function ResourceDialog({
                         onClick={() => void chooseExecutable()}
                       >
                         <FileInput />
-                        Parcourir…
+                        {t("Parcourir…")}
                       </Button>
                     </div>
                     {spec.hint && (
                       <p className="text-xs text-muted-foreground">
-                        {spec.hint}
+                        {t(spec.hint)}
                       </p>
                     )}
                   </div>
                 ) : (
                   <div className="grid gap-1.5">
-                    <Label htmlFor="url">{spec.primaryLabel}</Label>
+                    <Label htmlFor="url">{t(spec.primaryLabel)}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="url"
-                        placeholder={spec.primaryPlaceholder}
+                        placeholder={t(spec.primaryPlaceholder)}
                         value={form.url}
                         onChange={(e) => set("url", e.target.value)}
                       />
@@ -613,23 +615,25 @@ export function ResourceDialog({
                           variant="outline"
                           onClick={() => void autofill()}
                           disabled={fetching}
-                          title="Récupérer le titre et le favicon automatiquement"
+                          title={t(
+                            "Récupérer le titre et le favicon automatiquement",
+                          )}
                         >
                           <Sparkles
                             className={fetching ? "animate-pulse" : ""}
                           />
-                          Récupérer
+                          {t("Récupérer")}
                         </Button>
                       )}
                     </div>
                     {urlHint ? (
                       <p className="text-xs text-amber-600 dark:text-amber-500">
-                        {urlHint}
+                        {t(urlHint)}
                       </p>
                     ) : (
                       spec.hint && (
                         <p className="text-xs text-muted-foreground">
-                          {spec.hint}
+                          {t(spec.hint)}
                         </p>
                       )
                     )}
@@ -639,7 +643,9 @@ export function ResourceDialog({
                         <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
                         <div className="min-w-0 text-xs">
                           <span className="font-medium">
-                            Déjà enregistré sur {hostOf(similar[0].url)} :
+                            {t("Déjà enregistré sur {host} :", {
+                              host: hostOf(similar[0].url),
+                            })}
                           </span>{" "}
                           {similar.map((r) => r.title).join(" · ")}
                         </div>
@@ -651,7 +657,7 @@ export function ResourceDialog({
                         <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
                         <div className="min-w-0 flex-1 text-xs">
                           <span className="font-medium">
-                            Cette URL est déjà dans ta bibliothèque
+                            {t("Cette URL est déjà dans ta bibliothèque")}
                             {typeof duplicate === "object" &&
                               ` : ${duplicate.title}`}
                           </span>
@@ -666,7 +672,7 @@ export function ResourceDialog({
                                 }}
                                 className="cursor-pointer font-medium text-primary underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                               >
-                                Voir la ressource
+                                {t("Voir la ressource")}
                               </button>
                             </>
                           )}
@@ -679,7 +685,9 @@ export function ResourceDialog({
                 {/* site web optionnel pour une app */}
                 {isApp && (
                   <div className="grid gap-1.5">
-                    <Label htmlFor="appweb">{spec.secondaryLabel}</Label>
+                    <Label htmlFor="appweb">
+                      {spec.secondaryLabel && t(spec.secondaryLabel)}
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         id="appweb"
@@ -691,10 +699,12 @@ export function ResourceDialog({
                         variant="outline"
                         onClick={() => void autofill()}
                         disabled={fetching}
-                        title="Récupérer le titre et le favicon depuis le site"
+                        title={t(
+                          "Récupérer le titre et le favicon depuis le site",
+                        )}
                       >
                         <Sparkles className={fetching ? "animate-pulse" : ""} />
-                        Récupérer
+                        {t("Récupérer")}
                       </Button>
                     </div>
                   </div>
@@ -719,16 +729,18 @@ export function ResourceDialog({
                     onClick={() => void chooseIcon()}
                   >
                     <ImagePlus />
-                    Icône…
+                    {t("Icône…")}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setLibraryOpen(true)}
-                    title="Choisir parmi des milliers d'icônes : logos d'apps et icônes génériques"
+                    title={t(
+                      "Choisir parmi des milliers d'icônes : logos d'apps et icônes génériques",
+                    )}
                   >
                     <LayoutGrid />
-                    Bibliothèque…
+                    {t("Bibliothèque…")}
                   </Button>
                   {favicon && (
                     <Button
@@ -738,10 +750,10 @@ export function ResourceDialog({
                         touchedIcon.current = true;
                         setFavicon("");
                       }}
-                      title="Retirer l'icône personnalisée"
+                      title={t("Retirer l'icône personnalisée")}
                     >
                       <RotateCcw />
-                      Réinitialiser
+                      {t("Réinitialiser")}
                     </Button>
                   )}
                   {faviconSuggest && (
@@ -751,7 +763,9 @@ export function ResourceDialog({
                         touchedIcon.current = true;
                         setFavicon(faviconSuggest);
                       }}
-                      title="Utiliser le favicon du site (clic = appliquer)"
+                      title={t(
+                        "Utiliser le favicon du site (clic = appliquer)",
+                      )}
                       className="flex size-10 cursor-pointer items-center justify-center rounded-lg border border-dashed bg-muted/30 p-1.5 transition-colors outline-none hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                       <img
@@ -765,7 +779,7 @@ export function ResourceDialog({
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
-                    <Label htmlFor="title">Titre *</Label>
+                    <Label htmlFor="title">{t("Titre *")}</Label>
                     <Input
                       id="title"
                       value={form.title}
@@ -773,10 +787,10 @@ export function ResourceDialog({
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="tags">Tags (virgules)</Label>
+                    <Label htmlFor="tags">{t("Tags (virgules)")}</Label>
                     <Input
                       id="tags"
-                      placeholder="design, gratuit, ia"
+                      placeholder={t("design, gratuit, ia")}
                       value={form.tags}
                       onChange={(e) => set("tags", e.target.value)}
                     />
@@ -799,7 +813,7 @@ export function ResourceDialog({
                         )}
                       />
                       <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        {typeEntry.label} — détails
+                        {t("{label} — détails", { label: t(typeEntry.label) })}
                       </span>
                       {filledMetaCount > 0 && (
                         <span className="ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary">
@@ -815,11 +829,11 @@ export function ResourceDialog({
                               htmlFor={`meta-${f.key}`}
                               className="text-sm"
                             >
-                              {f.label}
+                              {t(f.label)}
                             </Label>
                             <Input
                               id={`meta-${f.key}`}
-                              placeholder={f.placeholder}
+                              placeholder={f.placeholder && t(f.placeholder)}
                               value={form.meta[f.key] ?? ""}
                               onChange={(e) => setMeta(f.key, e.target.value)}
                             />
@@ -831,10 +845,10 @@ export function ResourceDialog({
                 )}
 
                 <div className="grid gap-1.5">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">{t("Description")}</Label>
                   <Input
                     id="description"
-                    placeholder="Une phrase pour t'en souvenir"
+                    placeholder={t("Une phrase pour t'en souvenir")}
                     value={form.description}
                     onChange={(e) => set("description", e.target.value)}
                   />
@@ -847,16 +861,16 @@ export function ResourceDialog({
                     checked={form.favorite}
                     onCheckedChange={(v) => set("favorite", v)}
                   />
-                  <Label htmlFor="favorite">Favori</Label>
+                  <Label htmlFor="favorite">{t("Favori")}</Label>
                 </div>
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
-                  Annuler
+                  {t("Annuler")}
                 </Button>
                 <Button
                   onClick={() => void save()}
                   disabled={saving || !canSave}
                 >
-                  {editing ? "Enregistrer" : "Ajouter"}
+                  {editing ? t("Enregistrer") : t("Ajouter")}
                 </Button>
               </DialogFooter>
             </>
@@ -872,7 +886,7 @@ export function ResourceDialog({
             onPick={(dataUrl) => {
               touchedIcon.current = true;
               setFavicon(dataUrl);
-              toast.success("Icône appliquée");
+              toast.success(t("Icône appliquée"));
             }}
           />
         </Suspense>

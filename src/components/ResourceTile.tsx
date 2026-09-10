@@ -53,6 +53,7 @@ import {
   toggleFavorite,
 } from "@/lib/api";
 import { fileKindFor } from "@/lib/fileKind";
+import { useI18n } from "@/lib/i18n";
 import { metaSummary } from "@/lib/metaFields";
 import { openResource } from "@/lib/openResource";
 import {
@@ -108,6 +109,7 @@ export const ResourceTile = memo(function ResourceTile({
   onDelete,
   onToggled,
 }: Props) {
+  const { t } = useI18n();
   const [imgError, setImgError] = useState(false);
   const [captureError, setCaptureError] = useState(false);
   const [captureLoaded, setCaptureLoaded] = useState(false);
@@ -145,15 +147,15 @@ export const ResourceTile = memo(function ResourceTile({
       await openResource(resource);
       void qc.invalidateQueries({ queryKey: ["resources"] });
     } catch (e) {
-      toast.error(`Ouverture impossible : ${e}`);
+      toast.error(t("Ouverture impossible : {error}", { error: String(e) }));
     }
   }
 
   function copy() {
     navigator.clipboard
       .writeText(resource.url)
-      .then(() => toast.success("URL copiée"))
-      .catch(() => toast.error("Copie impossible"));
+      .then(() => toast.success(t("URL copiée")))
+      .catch(() => toast.error(t("Copie impossible")));
   }
 
   // verrou local : un double-clic rapide sur « Ajouter aux favoris » envoyait
@@ -180,7 +182,9 @@ export const ResourceTile = memo(function ResourceTile({
         days === null ? null : sqliteDatePlusDays(days),
       );
       toast.success(
-        days === null ? "Rappel effacé" : "Rappel enregistré — bonne lecture",
+        days === null
+          ? t("Rappel effacé")
+          : t("Rappel enregistré — bonne lecture"),
       );
       onToggled?.();
     } catch (e) {
@@ -216,7 +220,7 @@ export const ResourceTile = memo(function ResourceTile({
     const isNew = shareTarget === "__new";
     const name = newFileName.trim();
     if (isNew && !name) {
-      toast.error("Donne un nom à la liste (ex. Design)");
+      toast.error(t("Donne un nom à la liste (ex. Design)"));
       return;
     }
     setSharing(true);
@@ -231,10 +235,13 @@ export const ResourceTile = memo(function ResourceTile({
       const label = res.name;
       if (res.added) {
         toast.success(
-          `Lien ajouté à « ${label} » (${res.total} lien${res.total > 1 ? "s" : ""})`,
+          t("Lien ajouté à « {name} » ({count} lien(s))", {
+            name: label,
+            count: res.total,
+          }),
         );
       } else {
-        toast.info(`Ce lien est déjà dans « ${label} »`);
+        toast.info(t("Ce lien est déjà dans « {name} »", { name: label }));
       }
       setShareOpen(false);
       setNewFileName("");
@@ -346,7 +353,7 @@ export const ResourceTile = memo(function ResourceTile({
           tabIndex={0}
           title={`${resource.title}${summary ? `\n${summary}` : ""}${
             resource.url.startsWith("local:")
-              ? "\nSans lien — clic pour en ajouter un"
+              ? t("\nSans lien — clic pour en ajouter un")
               : `\n${resource.url}`
           }`}
           onClick={() => void open()}
@@ -403,17 +410,17 @@ export const ResourceTile = memo(function ResourceTile({
       {resource.status === "todo" && !selectMode && (
         <span
           className="absolute left-2 top-2 z-10 rounded-full bg-amber-400/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950"
-          title="À traiter"
+          title={t("À traiter")}
         >
-          À traiter
+          {t("À traiter")}
         </span>
       )}
       {resource.status === "archived" && !selectMode && (
         <span
           className="absolute left-2 top-2 z-10 rounded-full bg-zinc-500/85 px-1.5 py-0.5 text-[10px] font-semibold text-white"
-          title="Archivé"
+          title={t("Archivé")}
         >
-          Archivé
+          {t("Archivé")}
         </span>
       )}
 
@@ -421,9 +428,9 @@ export const ResourceTile = memo(function ResourceTile({
       {stale && resource.status !== "archived" && !selectMode && (
         <div
           className="absolute bottom-1.5 left-1.5 z-10 flex items-center gap-1 rounded-full border bg-background/85 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300"
-          title="Ajoutée il y a plus de 2 mois, jamais ouverte"
+          title={t("Ajoutée il y a plus de 2 mois, jamais ouverte")}
         >
-          à revisiter
+          {t("à revisiter")}
         </div>
       )}
 
@@ -431,7 +438,7 @@ export const ResourceTile = memo(function ResourceTile({
       {resource.remindAt && !selectMode && (
         <div
           className="absolute right-1.5 bottom-1.5 z-10 flex items-center gap-1 rounded-full border bg-background/85 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-300"
-          title={`Rappel programmé — s'efface à l'ouverture`}
+          title={t("Rappel programmé — s'efface à l'ouverture")}
         >
           <Bell className="size-3" />
           {formatRemindAt(resource.remindAt)}
@@ -441,7 +448,7 @@ export const ResourceTile = memo(function ResourceTile({
       {/* menu ⋯ flottant, en dehors de la tuile — toujours visible */}
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="Options"
+          aria-label={t("Options")}
           className="absolute -right-1.5 -top-1.5 z-10 flex size-7 cursor-pointer items-center justify-center rounded-full border bg-background text-muted-foreground shadow-md outline-none transition-colors hover:text-foreground focus-visible:text-foreground data-[popup-open]:text-foreground"
         >
           <MoreHorizontal className="size-4" />
@@ -455,11 +462,11 @@ export const ResourceTile = memo(function ResourceTile({
                 }
               >
                 <ExternalLink />
-                Ouvrir la note
+                {t("Ouvrir la note")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(resource)}>
                 <Pencil />
-                Modifier
+                {t("Modifier")}
               </DropdownMenuItem>
             </>
           ) : (
@@ -467,27 +474,29 @@ export const ResourceTile = memo(function ResourceTile({
               <DropdownMenuItem onClick={() => void open()}>
                 <ExternalLink />
                 {resource.url.startsWith("local:") && !resource.meta?.filePath
-                  ? "Ajouter un lien…"
-                  : "Ouvrir"}
+                  ? t("Ajouter un lien…")
+                  : t("Ouvrir")}
               </DropdownMenuItem>
               {/* détails : fiche complète (README pour les dépôts) */}
               {onDetails && (
                 <DropdownMenuItem onClick={() => onDetails(resource)}>
                   <Info />
-                  Détails
+                  {t("Détails")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={copy}>
                 <Copy />
-                Copier l'URL
+                {t("Copier l'URL")}
               </DropdownMenuItem>
               {resource.url.startsWith("http") && (
                 <DropdownMenuItem
                   onClick={() => void openShareDialog()}
-                  title="Ajoute ce lien à un fichier JSON sur ton cloud (WebDAV)"
+                  title={t(
+                    "Ajoute ce lien à un fichier JSON sur ton cloud (WebDAV)",
+                  )}
                 >
                   <CloudUpload />
-                  Partager vers le cloud
+                  {t("Partager vers le cloud")}
                 </DropdownMenuItem>
               )}
               {/* fichier local : envoi réel vers le cloud WebDAV */}
@@ -495,7 +504,7 @@ export const ResourceTile = memo(function ResourceTile({
                 onUploadToCloud && (
                   <DropdownMenuItem onClick={() => onUploadToCloud(resource)}>
                     <CloudUpload />
-                    Envoyer vers le cloud
+                    {t("Envoyer vers le cloud")}
                   </DropdownMenuItem>
                 )}
             </>
@@ -506,20 +515,22 @@ export const ResourceTile = memo(function ResourceTile({
                 resource.favorite ? "fill-yellow-400 text-yellow-400" : ""
               }
             />
-            {resource.favorite ? "Retirer des favoris" : "Ajouter aux favoris"}
+            {resource.favorite
+              ? t("Retirer des favoris")
+              : t("Ajouter aux favoris")}
           </DropdownMenuItem>
           {/* statut de traitement */}
           {onSetStatus && resource.status !== "todo" && (
             <DropdownMenuItem onClick={() => onSetStatus(resource, "todo")}>
               <ListTodo />
-              Marquer à traiter
+              {t("Marquer à traiter")}
             </DropdownMenuItem>
           )}
           {/* rappel « me rappeler dans… » */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <Bell />
-              Me rappeler…
+              {t("Me rappeler…")}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               {[
@@ -531,14 +542,16 @@ export const ResourceTile = memo(function ResourceTile({
                   key={o.days}
                   onClick={() => void remind(o.days)}
                 >
-                  {o.label}
+                  {t(o.label)}
                 </DropdownMenuItem>
               ))}
               {resource.remindAt && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => void remind(null)}>
-                    Effacer le rappel ({formatRemindAt(resource.remindAt)})
+                    {t("Effacer le rappel ({date})", {
+                      date: formatRemindAt(resource.remindAt),
+                    })}
                   </DropdownMenuItem>
                 </>
               )}
@@ -547,19 +560,21 @@ export const ResourceTile = memo(function ResourceTile({
           {onSetStatus && resource.status !== "archived" && (
             <DropdownMenuItem onClick={() => onSetStatus(resource, "archived")}>
               <Archive />
-              Archiver
+              {t("Archiver")}
             </DropdownMenuItem>
           )}
           {onSetStatus && resource.status !== "" && (
             <DropdownMenuItem onClick={() => onSetStatus(resource, "")}>
               <CircleSlash />
-              Réactiver
+              {t("Réactiver")}
             </DropdownMenuItem>
           )}
           {/* déplacer vers un dossier */}
           {onMoveToFolder && (folders?.length ?? 0) > 0 && (
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Déplacer vers…</DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger>
+                {t("Déplacer vers…")}
+              </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {(folders ?? []).map((f) => (
                   <DropdownMenuItem
@@ -576,7 +591,7 @@ export const ResourceTile = memo(function ResourceTile({
                     <DropdownMenuItem
                       onClick={() => onMoveToFolder(resource, null)}
                     >
-                      Sortir du dossier
+                      {t("Sortir du dossier")}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -587,7 +602,7 @@ export const ResourceTile = memo(function ResourceTile({
           {!isNote && (
             <DropdownMenuItem onClick={() => onEdit(resource)}>
               <Pencil />
-              Modifier
+              {t("Modifier")}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -595,7 +610,7 @@ export const ResourceTile = memo(function ResourceTile({
             onClick={() => onDelete(resource)}
           >
             <Trash2 />
-            Supprimer
+            {t("Supprimer")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -604,37 +619,42 @@ export const ResourceTile = memo(function ResourceTile({
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Partager vers le cloud</DialogTitle>
+            <DialogTitle>{t("Partager vers le cloud")}</DialogTitle>
             <DialogDescription>
-              Le lien sera enregistré dans un fichier JSON de ton dossier
-              WebDAV. Choisis une liste existante ou crées-en une nouvelle (ex.
-              Design, AIAPI).
+              {t(
+                "Le lien sera enregistré dans un fichier JSON de ton dossier WebDAV. Choisis une liste existante ou crées-en une nouvelle (ex. Design, AIAPI).",
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid gap-1.5">
-              <Label>Liste de destination</Label>
+              <Label>{t("Liste de destination")}</Label>
               <Select
                 value={shareTarget}
                 onValueChange={(v) => setShareTarget(v ?? "__new")}
                 disabled={shareLoading || sharing}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choisir…" />
+                  <SelectValue placeholder={t("Choisir…")} />
                 </SelectTrigger>
                 <SelectContent>
                   {(shareLists ?? []).map((l) => (
                     <SelectItem key={l.name} value={l.name}>
-                      {l.title} ({l.count} lien{l.count > 1 ? "s" : ""})
+                      {t("{title} ({count} lien(s))", {
+                        title: l.title,
+                        count: l.count,
+                      })}
                     </SelectItem>
                   ))}
-                  <SelectItem value="__new">+ Nouvelle liste…</SelectItem>
+                  <SelectItem value="__new">
+                    {t("+ Nouvelle liste…")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {shareTarget === "__new" && (
               <div className="grid gap-1.5">
-                <Label>Nom de la nouvelle liste</Label>
+                <Label>{t("Nom de la nouvelle liste")}</Label>
                 <Input
                   value={newFileName}
                   onChange={(e) => setNewFileName(e.target.value)}
@@ -650,11 +670,11 @@ export const ResourceTile = memo(function ResourceTile({
               onClick={() => setShareOpen(false)}
               disabled={sharing}
             >
-              Annuler
+              {t("Annuler")}
             </Button>
             <Button onClick={() => void runShareToCloud()} disabled={sharing}>
               {sharing && <Loader2 className="animate-spin" />}
-              Partager
+              {t("Partager")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { detectBrowserProfiles, importBookmarks } from "@/lib/api";
 import { parseCsv, parseNetscapeHtml } from "@/lib/fileImport";
+import { useI18n } from "@/lib/i18n";
 import type {
   BrowserProfile,
   ImportedBookmark,
@@ -33,6 +34,7 @@ const BROWSER_LABELS: Record<string, string> = {
 };
 
 export function ImportView() {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const [selection, setSelection] = useState<Record<string, boolean>>({});
   const [tags, setTags] = useState("import");
@@ -91,7 +93,7 @@ export function ImportView() {
   async function onFileChosen(file: File | undefined) {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("Fichier trop lourd (10 Mo maximum)");
+      toast.error(t("Fichier trop lourd (10 Mo maximum)"));
       return;
     }
     try {
@@ -104,7 +106,12 @@ export function ImportView() {
       setFileName(file.name);
       setFileBookmarks(bookmarks);
       setReport(null);
-      toast.success(`${bookmarks.length} favori(s) lu(s) depuis ${file.name}`);
+      toast.success(
+        t("{count} favori(s) lu(s) depuis {file}", {
+          count: bookmarks.length,
+          file: file.name,
+        }),
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     }
@@ -135,7 +142,7 @@ export function ImportView() {
       p.bookmarks.filter((b) => selection[keyOf(p, b)] !== false),
     );
     if (bookmarks.length === 0) {
-      toast.error("Aucun favori sélectionné");
+      toast.error(t("Aucun favori sélectionné"));
       return;
     }
     setImporting(true);
@@ -149,7 +156,7 @@ export function ImportView() {
           .filter(Boolean),
       );
       setReport(r);
-      toast.success(`${r.added} favori(s) importé(s)`);
+      toast.success(t("{count} favori(s) importé(s)", { count: r.added }));
       void qc.invalidateQueries({ queryKey: ["resources"] });
       void qc.invalidateQueries({ queryKey: ["allTags"] });
       void qc.invalidateQueries({ queryKey: ["folders"] });
@@ -166,10 +173,13 @@ export function ImportView() {
       <div className="mx-auto max-w-3xl space-y-6 p-6">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Importer des favoris</h2>
+            <h2 className="text-lg font-semibold">
+              {t("Importer des favoris")}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Détecte les favoris de tes navigateurs, ou importe un fichier. Les
-              doublons d'URL sont ignorés automatiquement.
+              {t(
+                "Détecte les favoris de tes navigateurs, ou importe un fichier. Les doublons d'URL sont ignorés automatiquement.",
+              )}
             </p>
           </div>
           <Button
@@ -183,10 +193,9 @@ export function ImportView() {
             ) : (
               <RefreshCw />
             )}
-            Redétecter
+            {t("Redétecter")}
           </Button>
         </div>
-
         {/* import depuis un fichier : HTML Netscape ou CSV */}
         <div className="space-y-2 rounded-xl border p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -194,36 +203,41 @@ export function ImportView() {
               variant="outline"
               size="sm"
               onClick={() => openFilePicker("html")}
-              title="Export « favoris HTML » de n'importe quel navigateur"
+              title={t("Export « favoris HTML » de n'importe quel navigateur")}
             >
               <FileUp />
-              Fichier HTML…
+              {t("Fichier HTML…")}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => openFilePicker("csv")}
-              title="Export CSV type Pocket ou Raindrop (colonnes url, titre…)"
+              title={t(
+                "Export CSV type Pocket ou Raindrop (colonnes url, titre…)",
+              )}
             >
               <FileUp />
-              Fichier CSV…
+              {t("Fichier CSV…")}
             </Button>
             {fileProfile && (
               <>
                 <Badge variant="secondary">
-                  {fileProfile.name} · {fileProfile.count} favori
-                  {fileProfile.count > 1 ? "s" : ""}
+                  {t("{name} · {count} favori(s)", {
+                    name: fileProfile.name,
+                    count: fileProfile.count,
+                  })}
                 </Badge>
                 <Button variant="ghost" size="sm" onClick={clearFile}>
                   <X />
-                  Retirer
+                  {t("Retirer")}
                 </Button>
               </>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            HTML Netscape (« Exporter les favoris ») ou CSV Pocket/Raindrop :
-            les favoris lus s'ajoutent ci-dessous, à cocher comme les autres.
+            {t(
+              "HTML Netscape (« Exporter les favoris ») ou CSV Pocket/Raindrop : les favoris lus s'ajoutent ci-dessous, à cocher comme les autres.",
+            )}
           </p>
           <input
             ref={fileInputRef}
@@ -239,13 +253,13 @@ export function ImportView() {
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="animate-spin" />
-            Détection des navigateurs…
+            {t("Détection des navigateurs…")}
           </div>
         ) : allProfiles.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            Aucun favori détecté dans Brave, Chrome, Edge ou Firefox. Assure-toi
-            que le navigateur est installé et contient des favoris — ou importe
-            un fichier HTML/CSV ci-dessus.
+            {t(
+              "Aucun favori détecté dans Brave, Chrome, Edge ou Firefox. Assure-toi que le navigateur est installé et contient des favoris — ou importe un fichier HTML/CSV ci-dessus.",
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -258,11 +272,11 @@ export function ImportView() {
                 <header className="flex items-center gap-2.5 bg-muted/40 px-4 py-3">
                   <BookmarkPlus className="size-4 shrink-0 text-muted-foreground" />
                   <span className="font-medium">
-                    {BROWSER_LABELS[p.browser] ?? p.browser}
+                    {t(BROWSER_LABELS[p.browser] ?? p.browser)}
                   </span>
                   <Badge variant="secondary">{p.name}</Badge>
                   <span className="text-sm tabular-nums text-muted-foreground">
-                    {p.count} favori{p.count > 1 ? "s" : ""}
+                    {t("{count} favori(s)", { count: p.count })}
                   </span>
                   <span className="grow" />
                   <Button
@@ -270,7 +284,7 @@ export function ImportView() {
                     size="xs"
                     onClick={() => toggleAll(p)}
                   >
-                    {isAllSelected(p) ? "Tout décocher" : "Tout cocher"}
+                    {isAllSelected(p) ? t("Tout décocher") : t("Tout cocher")}
                   </Button>
                 </header>
                 <Separator />
@@ -318,37 +332,39 @@ export function ImportView() {
             <div className="space-y-4 rounded-xl border p-4">
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium" htmlFor="import-tags">
-                  Tags par défaut
+                  {t("Tags par défaut")}
                 </label>
                 <Input
                   id="import-tags"
-                  placeholder="ex : import, a-trier"
+                  placeholder={t("ex : import, a-trier")}
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Le dossier d'origine de chaque favori (ex : «
-                Développement/React ») est aussi ajouté comme tag pour rester
-                cherchable.
+                {t(
+                  "Le dossier d'origine de chaque favori (ex : « Développement/React ») est aussi ajouté comme tag pour rester cherchable.",
+                )}
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={() => void runImport()} disabled={importing}>
                   {importing ? <Loader2 className="animate-spin" /> : <Check />}
-                  Importer la sélection
+                  {t("Importer la sélection")}
                 </Button>
                 {report && (
                   <span className="text-sm text-muted-foreground">
                     <span className="font-medium text-foreground">
                       {report.added}
                     </span>{" "}
-                    ajouté(s) ·{" "}
+                    {t("ajouté(s) ·")}{" "}
                     <span className="font-medium text-foreground">
                       {report.duplicates}
                     </span>{" "}
-                    doublon(s) ignoré(s)
+                    {t("doublon(s) ignoré(s)")}
                     {report.errors.length > 0 &&
-                      ` · ${report.errors.length} erreur(s)`}
+                      t(" · {count} erreur(s)", {
+                        count: report.errors.length,
+                      })}
                   </span>
                 )}
               </div>

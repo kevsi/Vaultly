@@ -10,6 +10,7 @@
  * associées (`:root[data-style=…]`, `html[data-btn=…]`, …).
  */
 import { useSyncExternalStore } from "react";
+import { tt } from "@/lib/i18n";
 
 export type StyleId = "carnet" | "pro" | "anime" | "neon" | "foret";
 export type FontId = "systeme" | "serif" | "mono" | "techno" | "fun";
@@ -250,7 +251,9 @@ export function setAppearance(next: Appearance): void {
     localStorage.setItem(KEY, JSON.stringify(cached));
   } catch {
     throw new Error(
-      "Arrière-plan trop lourd à enregistrer : choisis une image plus petite",
+      tt(
+        "Arrière-plan trop lourd à enregistrer : choisis une image plus petite",
+      ),
     );
   }
   applyAppearance(cached);
@@ -321,7 +324,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
  */
 export async function imageFileToDataUrl(file: File): Promise<string> {
   if (!file.type.startsWith("image/")) {
-    throw new Error("Le fichier choisi n'est pas une image");
+    throw new Error(tt("Le fichier choisi n'est pas une image"));
   }
   if (file.size > 8 * 1024 * 1024) {
     throw new Error("Image trop lourde (8 Mo maximum)");
@@ -343,7 +346,7 @@ export async function imageFileToDataUrl(file: File): Promise<string> {
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas indisponible dans ce navigateur");
+    if (!ctx) throw new Error(tt("Canvas indisponible dans ce navigateur"));
     // fond blanc : le JPEG ne gère pas la transparence
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, w, h);

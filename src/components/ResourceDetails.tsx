@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { fetchRepoDetails } from "@/lib/api";
 import { fileKindFor } from "@/lib/fileKind";
+import { useI18n } from "@/lib/i18n";
 import { metaFieldsFor } from "@/lib/metaFields";
 import { openResource } from "@/lib/openResource";
 import { parseDbDate, typeLabel } from "@/lib/resources";
@@ -130,6 +131,7 @@ function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
  *  dépôt GitHub, la fiche du repo (description, langage, stars, licence)
  *  et son README rendu en Markdown léger. */
 export function ResourceDetails({ resource, onClose, onEdit }: Props) {
+  const { t } = useI18n();
   // hooks AVANT tout return : `resource` passe de null à défini et
   // inversement, un return précoce avant les hooks casserait leur ordre
   // (erreur React « fewer hooks » à la fermeture de la fiche)
@@ -155,8 +157,8 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
   function copy(url: string) {
     navigator.clipboard
       .writeText(url)
-      .then(() => toast.success("URL copiée"))
-      .catch(() => toast.error("Copie impossible"));
+      .then(() => toast.success(t("URL copiée")))
+      .catch(() => toast.error(t("Copie impossible")));
   }
 
   const created = parseDbDate(resource.createdAt).toLocaleDateString("fr-FR", {
@@ -196,15 +198,18 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
               {resource.title}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {typeLabel(resource.resourceType)} · ajoutée le {created} ·{" "}
-              {opened > 0 ? `ouverte ${opened} fois` : "jamais ouverte"}
+              {typeLabel(resource.resourceType)} ·{" "}
+              {t("ajoutée le {date}", { date: created })} ·{" "}
+              {opened > 0
+                ? t("ouverte {count} fois", { count: opened })
+                : t("jamais ouverte")}
             </p>
           </div>
           <div className="flex shrink-0 gap-1">
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Copier l'URL"
+              title={t("Copier l'URL")}
               onClick={() => copy(resource.url)}
             >
               <Copy />
@@ -212,7 +217,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Modifier"
+              title={t("Modifier")}
               onClick={() => {
                 onClose();
                 onEdit(resource);
@@ -223,7 +228,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
             {!resource.url.startsWith("local:") && (
               <Button
                 size="icon-sm"
-                title="Ouvrir"
+                title={t("Ouvrir")}
                 // même chemin que le clic sur la tuile : gère exe:, file:,
                 // filePath et compte l'ouverture (l'ancien openUrl direct
                 // échouait sur les apps et ne comptait jamais l'ouverture)
@@ -246,7 +251,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
             <button
               type="button"
               onClick={() => copy(resource.url)}
-              title="Cliquer pour copier"
+              title={t("Cliquer pour copier")}
               className="flex w-full cursor-pointer items-center gap-2 truncate rounded-lg border bg-muted/30 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               <ExternalLink className="size-3.5 shrink-0" />
@@ -269,7 +274,7 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
                   icon={
                     <Star className="size-3.5 fill-yellow-400 text-yellow-400" />
                   }
-                  label="Favori"
+                  label={t("Favori")}
                 />
               )}
               {resource.tags.map((t) => (
@@ -305,12 +310,12 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
             <div className="mt-3 rounded-xl border bg-card p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
                 <GitBranch className="size-4 text-muted-foreground" />
-                Dépôt GitHub
+                {t("Dépôt GitHub")}
               </div>
               {repoLoading ? (
                 <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
-                  Interrogation de GitHub…
+                  {t("Interrogation de GitHub…")}
                 </div>
               ) : repo ? (
                 <>
@@ -384,13 +389,13 @@ export function ResourceDetails({ resource, onClose, onEdit }: Props) {
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-muted-foreground">
-                      Pas de README sur ce dépôt.
+                      {t("Pas de README sur ce dépôt.")}
                     </p>
                   )}
                 </>
               ) : (
                 <p className="py-2 text-sm text-muted-foreground">
-                  Détails indisponibles (quota GitHub ou dépôt privé).
+                  {t("Détails indisponibles (quota GitHub ou dépôt privé).")}
                 </p>
               )}
             </div>

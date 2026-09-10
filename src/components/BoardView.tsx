@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 import { hostOf } from "@/lib/resources";
 import type { Resource } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,7 @@ const COLUMNS: { status: Status; label: string; accent: string }[] = [
  *  par glisser-déposer entre colonnes OU via les flèches ◀ ▶ (accessible au
  *  clavier, testable sans souris). */
 export function BoardView({ resources, onOpen, onMove }: Props) {
+  const { t } = useI18n();
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState<Status | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -91,7 +93,7 @@ export function BoardView({ resources, onOpen, onMove }: Props) {
           >
             <header className="flex items-center gap-2 px-3 py-2.5">
               <span className={cn("size-2 rounded-full", col.accent)} />
-              <span className="text-sm font-semibold">{col.label}</span>
+              <span className="text-sm font-semibold">{t(col.label)}</span>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {items.length}
               </span>
@@ -99,7 +101,7 @@ export function BoardView({ resources, onOpen, onMove }: Props) {
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
               {items.length === 0 && (
                 <div className="grid flex-1 place-items-center rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                  Dépose une carte ici
+                  {t("Dépose une carte ici")}
                 </div>
               )}
               {items.map((r) => {
@@ -163,8 +165,8 @@ export function BoardView({ resources, onOpen, onMove }: Props) {
                         size="icon-xs"
                         disabled={idx <= 0 || busyId === r.id}
                         onClick={() => shift(r, -1)}
-                        title="Colonne précédente"
-                        aria-label="Colonne précédente"
+                        title={t("Colonne précédente")}
+                        aria-label={t("Colonne précédente")}
                       >
                         <ArrowLeft />
                       </Button>
@@ -173,8 +175,8 @@ export function BoardView({ resources, onOpen, onMove }: Props) {
                         size="icon-xs"
                         disabled={idx >= COLUMNS.length - 1 || busyId === r.id}
                         onClick={() => shift(r, 1)}
-                        title="Colonne suivante"
-                        aria-label="Colonne suivante"
+                        title={t("Colonne suivante")}
+                        aria-label={t("Colonne suivante")}
                       >
                         <ArrowRight />
                       </Button>

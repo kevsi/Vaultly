@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { BRAND_ICONS } from "@/lib/brandIcons";
+import { useI18n } from "@/lib/i18n";
 import {
   brandMatches,
   englishQuery,
@@ -132,6 +133,7 @@ function PageBar({
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center justify-center gap-2">
       {pages > 1 && (
@@ -140,15 +142,15 @@ function PageBar({
           size="sm"
           disabled={page === 0}
           onClick={onPrev}
-          title="Page précédente"
+          title={t("Page précédente")}
         >
           <ChevronLeft />
-          Précédent
+          {t("Précédent")}
         </Button>
       )}
       <span className="text-xs text-muted-foreground tabular-nums">
         {pages > 1 ? `Page ${page + 1}/${pages} · ` : ""}
-        {total} résultat{total > 1 ? "s" : ""}
+        {t("{count} résultat(s)", { count: total })}
       </span>
       {pages > 1 && (
         <Button
@@ -156,9 +158,9 @@ function PageBar({
           size="sm"
           disabled={page >= pages - 1}
           onClick={onNext}
-          title="Page suivante"
+          title={t("Page suivante")}
         >
-          Suivant
+          {t("Suivant")}
           <ChevronRight />
         </Button>
       )}
@@ -167,6 +169,7 @@ function PageBar({
 }
 
 export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("brands");
   const [query, setQuery] = useState("");
   const [brandTone, setBrandTone] = useState<BrandTone>("brand");
@@ -186,8 +189,8 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
   // recherche distante anti-rebond (350 ms)
   const [debounced, setDebounced] = useState(query);
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(query), 350);
-    return () => clearTimeout(t);
+    const id = setTimeout(() => setDebounced(query), 350);
+    return () => clearTimeout(id);
   }, [query]);
 
   const brandResults = useMemo(() => {
@@ -234,9 +237,9 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
     setPicking(key);
     try {
       const res = await fetch(svgUrl);
-      if (!res.ok) throw new Error("Icône indisponible pour le moment");
+      if (!res.ok) throw new Error(t("Icône indisponible pour le moment"));
       const svg = await res.text();
-      if (!svg.includes("<svg")) throw new Error("Icône indisponible");
+      if (!svg.includes("<svg")) throw new Error(t("Icône indisponible"));
       onPick(`data:image/svg+xml,${encodeURIComponent(svg)}`);
       onOpenChange(false);
     } catch (e) {
@@ -254,11 +257,16 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Bibliothèque d'icônes</DialogTitle>
+          <DialogTitle>{t("Bibliothèque d'icônes")}</DialogTitle>
           <p className="text-sm text-muted-foreground">
             {tab === "brands"
-              ? `${BRAND_ICONS.length.toLocaleString("fr-FR")} logos d'apps et de marques — un clic et c'est appliqué.`
-              : "200 000+ icônes génériques (Lucide, Material, Tabler…) — un clic et c'est appliqué."}
+              ? t(
+                  "{count} logos d'apps et de marques — un clic et c'est appliqué.",
+                  { count: BRAND_ICONS.length.toLocaleString() },
+                )
+              : t(
+                  "200 000+ icônes génériques (Lucide, Material, Tabler…) — un clic et c'est appliqué.",
+                )}
           </p>
         </DialogHeader>
         <div className="grid gap-3">
@@ -269,23 +277,23 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
                 { id: "brands", label: "Apps & marques" },
                 { id: "generic", label: "Génériques" },
               ] as const
-            ).map((t) => (
+            ).map((tb) => (
               <button
-                key={t.id}
+                key={tb.id}
                 type="button"
                 onClick={() => {
-                  setTab(t.id);
+                  setTab(tb.id);
                   setPage(0);
                 }}
-                aria-pressed={tab === t.id}
+                aria-pressed={tab === tb.id}
                 className={cn(
                   "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                  tab === t.id
+                  tab === tb.id
                     ? "border-primary bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:border-primary/40 hover:text-foreground",
                 )}
               >
-                {t.label}
+                {t(tb.label)}
               </button>
             ))}
           </div>
@@ -296,8 +304,8 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
               autoFocus
               placeholder={
                 tab === "brands"
-                  ? "Rechercher un logo (ex : youtube, vscode, banque…)"
-                  : "Rechercher une icône (ex : musique, livre, game…)"
+                  ? t("Rechercher un logo (ex : youtube, vscode, banque…)")
+                  : t("Rechercher une icône (ex : musique, livre, game…)")
               }
               value={query}
               onChange={(e) => {
@@ -310,19 +318,21 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
 
           {/* tons */}
           <div className="flex items-center gap-1.5">
-            {(tab === "brands" ? BRAND_TONES : GENERIC_TONES).map((t) => {
+            {(tab === "brands" ? BRAND_TONES : GENERIC_TONES).map((tone) => {
               const active =
-                tab === "brands" ? brandTone === t.id : genericTone === t.id;
+                tab === "brands"
+                  ? brandTone === tone.id
+                  : genericTone === tone.id;
               return (
                 <button
-                  key={t.id}
+                  key={tone.id}
                   type="button"
                   onClick={() =>
                     tab === "brands"
-                      ? setBrandTone(t.id as BrandTone)
-                      : setGenericTone(t.id as GenericTone)
+                      ? setBrandTone(tone.id as BrandTone)
+                      : setGenericTone(tone.id as GenericTone)
                   }
-                  title={"hint" in t ? t.hint : t.label}
+                  title={"hint" in tone ? t(tone.hint) : t(tone.label)}
                   aria-pressed={active}
                   className={cn(
                     "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
@@ -331,7 +341,7 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
                       : "text-muted-foreground hover:border-primary/40 hover:text-foreground",
                   )}
                 >
-                  {t.label}
+                  {t(tone.label)}
                 </button>
               );
             })}
@@ -341,8 +351,9 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
           {dead.size >= 12 && (
             <p className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
               <WifiOff className="size-4 shrink-0" />
-              Les aperçus ne chargent pas — vérifie ta connexion Internet (les
-              visuels viennent d'un CDN).
+              {t(
+                "Les aperçus ne chargent pas — vérifie ta connexion Internet (les visuels viennent d'un CDN).",
+              )}
             </p>
           )}
 
@@ -386,9 +397,10 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
             ) : (
               <div className="grid justify-items-center gap-2 py-4 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Aucun logo pour « {query.trim()} » ici — les marques retirées
-                  de Simple Icons (Adobe, OpenAI…) restent trouvables dans
-                  Génériques.
+                  {t(
+                    "Aucun logo pour « {query} » ici — les marques retirées de Simple Icons (Adobe, OpenAI…) restent trouvables dans Génériques.",
+                    { query: query.trim() },
+                  )}
                 </p>
                 <Button
                   variant="outline"
@@ -398,7 +410,7 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
                     setPage(0);
                   }}
                 >
-                  Chercher dans Génériques
+                  {t("Chercher dans Génériques")}
                 </Button>
               </div>
             )
@@ -422,11 +434,13 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
           ) : genericBusy && !genericIds ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Recherche en cours…
+              {t("Recherche en cours…")}
             </div>
           ) : genericError ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
-              Recherche indisponible — vérifie ta connexion puis réessaie.
+              {t(
+                "Recherche indisponible — vérifie ta connexion puis réessaie.",
+              )}
             </p>
           ) : genericList.length > 0 ? (
             <>
@@ -466,15 +480,21 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
             </>
           ) : (
             <p className="py-4 text-center text-sm text-muted-foreground">
-              Aucune icône pour « {debounced.trim()} » — essaie un mot plus
-              simple, en anglais.
+              {t(
+                "Aucune icône pour « {query} » — essaie un mot plus simple, en anglais.",
+                { query: debounced.trim() },
+              )}
             </p>
           )}
 
           <p className="text-xs text-muted-foreground">
             {tab === "brands"
-              ? "Tape un nom pour explorer les 3459 logos, 48 par page (la recherche comprend le français). Nécessite Internet (CDN Simple Icons)."
-              : "Recherche en ligne (API Iconify, 48 par page). Nécessite Internet."}
+              ? t(
+                  "Tape un nom pour explorer les 3459 logos, 48 par page (la recherche comprend le français). Nécessite Internet (CDN Simple Icons).",
+                )
+              : t(
+                  "Recherche en ligne (API Iconify, 48 par page). Nécessite Internet.",
+                )}
           </p>
         </div>
       </DialogContent>

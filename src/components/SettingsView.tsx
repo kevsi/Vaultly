@@ -100,6 +100,7 @@ import { suppressClipboardCapture } from "@/lib/useClipboardCapture";
 import { cn, describeError } from "@/lib/utils";
 
 function CopyBlock({ label, code }: { label: string; code: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -119,7 +120,7 @@ function CopyBlock({ label, code }: { label: string; code: string }) {
           }}
         >
           {copied ? <Check /> : <Copy />}
-          {copied ? "Copié" : "Copier"}
+          {copied ? t("Copié") : t("Copier")}
         </Button>
       </div>
       <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-xs leading-relaxed">
@@ -310,7 +311,7 @@ export function SettingsView() {
           kind === "browser"
             ? t("settings.choose-browser")
             : t("settings.choose-note-app"),
-        filters: [{ name: "Exécutable", extensions: ["exe"] }],
+        filters: [{ name: t("Exécutable"), extensions: ["exe"] }],
       });
       if (typeof file !== "string") return;
       const prefs = openPrefs ?? { browserPath: "", noteAppPath: "" };
@@ -367,7 +368,12 @@ export function SettingsView() {
           await installUpdate(available);
         } catch (e) {
           toast.error(
-            `Installation impossible : ${String(e)} (clé de signature manquante ?)`,
+            t(
+              "Installation impossible : {error} (clé de signature manquante ?)",
+              {
+                error: String(e),
+              },
+            ),
           );
         } finally {
           setUpdateBusy(false);
@@ -378,10 +384,11 @@ export function SettingsView() {
 
   async function runRegenerateToken() {
     setConfirm({
-      title: "Régénérer le token MCP ?",
-      message:
+      title: t("Régénérer le token MCP ?"),
+      message: t(
         "Les clients IA déjà configurés devront être mis à jour. Le token de l'extension n'est pas affecté.",
-      confirmLabel: "Régénérer",
+      ),
+      confirmLabel: t("Régénérer"),
       action: async () => {
         setRegenBusy(true);
         try {
@@ -399,10 +406,11 @@ export function SettingsView() {
 
   async function runRegenerateAddToken() {
     setConfirm({
-      title: "Régénérer le token de l'extension ?",
-      message:
+      title: t("Régénérer le token de l'extension ?"),
+      message: t(
         "Il faudra recoller le nouveau token dans le popup de l'extension navigateur.",
-      confirmLabel: "Régénérer",
+      ),
+      confirmLabel: t("Régénérer"),
       action: async () => {
         setRegenBusy(true);
         try {
@@ -499,11 +507,20 @@ export function SettingsView() {
       setImporting(true);
       const r = await importData(path);
       toast.success(
-        `${r.resourcesAdded} ressource(s) ajoutée(s), ${r.duplicates} doublon(s), ${r.foldersAdded} dossier(s)${
-          r.invalid > 0
-            ? ` · ${r.invalid} entrée(s) invalide(s) ignorée(s)`
-            : ""
-        }`,
+        t(
+          "{resourcesAdded} ressource(s) ajoutée(s), {duplicates} doublon(s), {foldersAdded} dossier(s){invalid}",
+          {
+            resourcesAdded: r.resourcesAdded,
+            duplicates: r.duplicates,
+            foldersAdded: r.foldersAdded,
+            invalid:
+              r.invalid > 0
+                ? t(" · {invalid} entrée(s) invalide(s) ignorée(s)", {
+                    invalid: r.invalid,
+                  })
+                : "",
+          },
+        ),
       );
     } catch (e) {
       toast.error(describeError(e));
@@ -569,7 +586,7 @@ export function SettingsView() {
             )}
           >
             <s.icon className="size-4 shrink-0" />
-            {s.label}
+            {t(s.label)}
           </button>
         ))}
       </aside>
@@ -583,8 +600,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.ambiance")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    La palette de couleurs de toute l'interface — appliquée
-                    aussitôt, en mode clair comme en mode sombre.
+                    {t(
+                      "La palette de couleurs de toute l'interface — appliquée aussitôt, en mode clair comme en mode sombre.",
+                    )}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -624,10 +642,10 @@ export function SettingsView() {
                           )}
                         </span>
                         <span className="mt-2 block text-sm font-medium">
-                          {s.label}
+                          {t(s.label)}
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {s.desc}
+                          {t(s.desc)}
                         </span>
                       </button>
                     );
@@ -642,8 +660,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.language")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Langue de l'interface. Appliqué immédiatement (les
-                    sous-titres avancés restent en français pour l'instant).
+                    {t(
+                      "Langue de l'interface. Appliqué immédiatement (les sous-titres avancés restent en français pour l'instant).",
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -668,8 +687,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.typography")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    La police utilisée partout dans l'interface, titres comme
-                    texte.
+                    {t(
+                      "La police utilisée partout dans l'interface, titres comme texte.",
+                    )}
                   </p>
                 </div>
                 <Select
@@ -682,7 +702,9 @@ export function SettingsView() {
                   <SelectContent>
                     {FONTS.map((f) => (
                       <SelectItem key={f.id} value={f.id}>
-                        <span style={{ fontFamily: f.stack }}>{f.label}</span>
+                        <span style={{ fontFamily: f.stack }}>
+                          {t(f.label)}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -694,12 +716,12 @@ export function SettingsView() {
                       ?.stack,
                   }}
                 >
-                  Aperçu : classez et retrouvez tout ce que vous aimez.
+                  {t("Aperçu : classez et retrouvez tout ce que vous aimez.")}{" "}
                   1234567890
                 </p>
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <span className="text-sm text-muted-foreground">
-                    Taille :
+                    {t("Taille :")}
                   </span>
                   {FONT_SCALES.map((s) => (
                     <Button
@@ -710,7 +732,7 @@ export function SettingsView() {
                       size="sm"
                       onClick={() => updateAppearance({ fontScale: s.id })}
                     >
-                      {s.label}
+                      {t(s.label)}
                     </Button>
                   ))}
                 </div>
@@ -723,8 +745,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.button-style")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    La forme et l'effet des boutons de toute l'app — l'aperçu
-                    ci-dessous suit ton choix en direct.
+                    {t(
+                      "La forme et l'effet des boutons de toute l'app — l'aperçu ci-dessous suit ton choix en direct.",
+                    )}
                   </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -744,11 +767,11 @@ export function SettingsView() {
                         )}
                       >
                         <span className="flex items-center justify-between text-sm font-medium">
-                          {b.label}
+                          {t(b.label)}
                           {active && <Check className="size-4 text-primary" />}
                         </span>
                         <span className="mt-0.5 block text-xs text-muted-foreground">
-                          {b.desc}
+                          {t(b.desc)}
                         </span>
                       </button>
                     );
@@ -756,14 +779,14 @@ export function SettingsView() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/40 p-3">
                   <span className="text-xs text-muted-foreground">
-                    Aperçu :
+                    {t("Aperçu :")}
                   </span>
-                  <Button size="sm">Action</Button>
+                  <Button size="sm">{t("Action")}</Button>
                   <Button size="sm" variant="secondary">
-                    Secondaire
+                    {t("Secondaire")}
                   </Button>
                   <Button size="sm" variant="outline">
-                    Contour
+                    {t("Contour")}
                   </Button>
                 </div>
               </div>
@@ -775,8 +798,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.background")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Un fond derrière l'interface : dégradé prêt à l'emploi ou ta
-                    propre image.
+                    {t(
+                      "Un fond derrière l'interface : dégradé prêt à l'emploi ou ta propre image.",
+                    )}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -793,7 +817,7 @@ export function SettingsView() {
                         "border-primary text-foreground ring-2 ring-primary/30",
                     )}
                   >
-                    Défaut
+                    {t("Défaut")}
                   </button>
                   {BG_GRADIENTS.map((g) => {
                     const active =
@@ -809,7 +833,7 @@ export function SettingsView() {
                           })
                         }
                         aria-pressed={active}
-                        title={g.label}
+                        title={t(g.label)}
                         style={{ backgroundImage: g.css }}
                         className={cn(
                           "h-14 w-24 cursor-pointer rounded-xl border border-border bg-background text-xs font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
@@ -817,7 +841,7 @@ export function SettingsView() {
                         )}
                       >
                         <span className="rounded bg-background/70 px-1.5 py-0.5">
-                          {g.label}
+                          {t(g.label)}
                         </span>
                       </button>
                     );
@@ -827,7 +851,7 @@ export function SettingsView() {
                     onClick={() => bgFileRef.current?.click()}
                     disabled={bgBusy}
                     aria-pressed={appearance.bg.kind === "image"}
-                    title="Choisir une image sur ton PC"
+                    title={t("Choisir une image sur ton PC")}
                     className={cn(
                       "flex h-14 w-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed text-xs font-medium text-muted-foreground transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/50 hover:bg-accent/50 disabled:opacity-60",
                       appearance.bg.kind === "image" &&
@@ -846,7 +870,7 @@ export function SettingsView() {
                   <div className="flex items-center gap-3">
                     <img
                       src={appearance.bg.image}
-                      alt="Arrière-plan personnalisé"
+                      alt={t("Arrière-plan personnalisé")}
                       className="h-14 w-24 rounded-lg border object-cover"
                     />
                     <Button
@@ -857,7 +881,7 @@ export function SettingsView() {
                       }
                     >
                       <Trash2 />
-                      Retirer
+                      {t("Retirer")}
                     </Button>
                   </div>
                 )}
@@ -918,10 +942,9 @@ export function SettingsView() {
                   )}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Tant que Vaultly est ouvert, toute IA compatible MCP peut
-                  rechercher, consulter et enrichir tes ressources via ce
-                  serveur local. Les requêtes distantes exigent le token
-                  ci-dessous.
+                  {t(
+                    "Tant que Vaultly est ouvert, toute IA compatible MCP peut rechercher, consulter et enrichir tes ressources via ce serveur local. Les requêtes distantes exigent le token ci-dessous.",
+                  )}
                 </p>
               </div>
 
@@ -932,8 +955,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.connect-ai")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Ajoute ce serveur à ton client MCP préféré. Le token est
-                    propre à cette machine — ne le partage pas.
+                    {t(
+                      "Ajoute ce serveur à ton client MCP préféré. Le token est propre à cette machine — ne le partage pas.",
+                    )}
                   </p>
                 </div>
 
@@ -970,7 +994,7 @@ export function SettingsView() {
               {/* token MCP brut (clients IA) */}
               <div className="grid gap-1.5">
                 <span className="text-sm font-medium">
-                  Token MCP (clients IA)
+                  {t("Token MCP (clients IA)")}
                 </span>
                 <code className="break-all rounded-lg bg-muted p-2 text-xs">
                   {token || "…"}
@@ -985,7 +1009,7 @@ export function SettingsView() {
                     }}
                   >
                     <Copy />
-                    Copier le token
+                    {t("Copier le token")}
                   </Button>
                   <Button
                     variant="outline"
@@ -999,7 +1023,7 @@ export function SettingsView() {
                     ) : (
                       <RefreshCw />
                     )}
-                    Régénérer
+                    {t("Régénérer")}
                   </Button>
                 </div>
               </div>
@@ -1012,10 +1036,10 @@ export function SettingsView() {
               <div className="space-y-3">
                 <div>
                   <h3 className="font-medium">
-                    Raccourci global de la palette
+                    {t("Raccourci global de la palette")}
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    t("settings.shortcut-desc")
+                    {t("settings.shortcut-desc")}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1027,7 +1051,11 @@ export function SettingsView() {
                         size="sm"
                         onClick={() =>
                           setGlobalShortcut(sc)
-                            .then(() => toast.success(`Raccourci : ${sc}`))
+                            .then(() =>
+                              toast.success(
+                                t("Raccourci : {shortcut}", { shortcut: sc }),
+                              ),
+                            )
                             .catch((e) => toast.error(describeError(e)))
                         }
                       >
@@ -1045,10 +1073,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.grid-render")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    La bibliothèque est paginée (plus de défilement) : on
-                    choisit ici combien de rangées de tuiles tiennent sur une
-                    page. Les colonnes s'adaptent automatiquement à la largeur
-                    de la fenêtre.
+                    {t(
+                      "La bibliothèque est paginée (plus de défilement) : on choisit ici combien de rangées de tuiles tiennent sur une page. Les colonnes s'adaptent automatiquement à la largeur de la fenêtre.",
+                    )}
                   </p>
                 </div>
                 <Select
@@ -1065,16 +1092,16 @@ export function SettingsView() {
                   <SelectContent>
                     {PAGE_DENSITIES.map((m) => (
                       <SelectItem key={m.value} value={m.value}>
-                        {m.label}
+                        {t(m.label)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {
+                  {t(
                     PAGE_DENSITIES.find((m) => m.value === pageDensity)
-                      ?.description
-                  }
+                      ?.description ?? "",
+                  )}
                 </p>
               </div>
 
@@ -1085,9 +1112,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.tile-size")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Change la densité de la bibliothèque : plus les tuiles sont
-                    petites, plus tu en vois à l'écran. La grille reste fluide
-                    (les tuiles s'élargissent pour remplir la fenêtre).
+                    {t(
+                      "Change la densité de la bibliothèque : plus les tuiles sont petites, plus tu en vois à l'écran. La grille reste fluide (les tuiles s'élargissent pour remplir la fenêtre).",
+                    )}
                   </p>
                 </div>
                 <Select
@@ -1104,7 +1131,7 @@ export function SettingsView() {
                   <SelectContent>
                     {TILE_SIZES.map((s) => (
                       <SelectItem key={s.value} value={s.value}>
-                        {s.label} ({s.minPx} px)
+                        {t(s.label)} ({s.minPx} px)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1118,10 +1145,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.autostart")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vaultly reste actif dans la barre des tâches : la croix de
-                    la fenêtre masque l'app (le raccourci global la fait
-                    resurgir), et « Quitter » dans le menu de l'icône sauvegarde
-                    puis ferme.
+                    {t(
+                      "Vaultly reste actif dans la barre des tâches : la croix de la fenêtre masque l'app (le raccourci global la fait resurgir), et « Quitter » dans le menu de l'icône sauvegarde puis ferme.",
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1148,8 +1174,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.log")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    En cas de bug, ouvre le dossier des logs et joins le fichier
-                    du jour à ton rapport.
+                    {t(
+                      "En cas de bug, ouvre le dossier des logs et joins le fichier du jour à ton rapport.",
+                    )}
                   </p>
                 </div>
                 <Button
@@ -1162,7 +1189,7 @@ export function SettingsView() {
                   }
                 >
                   <FileText />
-                  Ouvrir le dossier des logs
+                  {t("Ouvrir le dossier des logs")}
                 </Button>
               </div>
 
@@ -1173,8 +1200,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.guided-tour")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Revoir la présentation animée et le tour des fonctions clés
-                    de l'interface.
+                    {t(
+                      "Revoir la présentation animée et le tour des fonctions clés de l'interface.",
+                    )}
                   </p>
                 </div>
                 <Button
@@ -1183,7 +1211,7 @@ export function SettingsView() {
                   onClick={() => replayTour()}
                 >
                   <GraduationCap />
-                  Revoir la visite guidée
+                  {t("Revoir la visite guidée")}
                 </Button>
               </div>
             </>
@@ -1196,8 +1224,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.open-browser")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Quel navigateur ouvre tes liens web. « Système » = ton
-                    navigateur par défaut Windows.
+                    {t(
+                      "Quel navigateur ouvre tes liens web. « Système » = ton navigateur par défaut Windows.",
+                    )}
                   </p>
                 </div>
                 <div className="grid gap-1.5">
@@ -1247,7 +1276,7 @@ export function SettingsView() {
                   onClick={() => void pickCustomOpener("browser")}
                 >
                   <FileInput />
-                  Choisir un exécutable…
+                  {t("Choisir un exécutable…")}
                 </Button>
               </div>
 
@@ -1258,10 +1287,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.note-app")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Sans réglage, les notes s'ouvrent dans le lecteur intégré.
-                    Avec une application, la note est exportée vers
-                    Documents\Vaultly\Notes à chaque ouverture — les
-                    modifications externes ne reviennent pas dans Vaultly.
+                    {t(
+                      "Sans réglage, les notes s'ouvrent dans le lecteur intégré. Avec une application, la note est exportée vers Documents\\Vaultly\\Notes à chaque ouverture — les modifications externes ne reviennent pas dans Vaultly.",
+                    )}
                   </p>
                 </div>
                 <div className="grid gap-1.5">
@@ -1311,7 +1339,7 @@ export function SettingsView() {
                   onClick={() => void pickCustomOpener("note")}
                 >
                   <FileInput />
-                  Choisir un exécutable…
+                  {t("Choisir un exécutable…")}
                 </Button>
               </div>
             </>
@@ -1324,9 +1352,9 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.dead-links")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Vérifie que chaque lien web de ta bibliothèque répond encore
-                    (404, 5xx, erreur réseau). Ça peut prendre quelques
-                    secondes.
+                    {t(
+                      "Vérifie que chaque lien web de ta bibliothèque répond encore (404, 5xx, erreur réseau). Ça peut prendre quelques secondes.",
+                    )}
                   </p>
                 </div>
                 <Button
@@ -1401,17 +1429,18 @@ export function SettingsView() {
                     {t("settings.browser-extension")}
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Ajoute la page courante en un clic depuis Brave, Chrome ou
-                    Edge.
+                    {t(
+                      "Ajoute la page courante en un clic depuis Brave, Chrome ou Edge.",
+                    )}
                   </p>
                 </div>
                 <ol className="ml-4 list-decimal space-y-1.5 text-sm text-muted-foreground">
                   <li>
-                    Ouvre{" "}
+                    {t("Ouvre")}{" "}
                     <code className="rounded bg-muted px-1">
                       brave://extensions
                     </code>{" "}
-                    (ou{" "}
+                    ({t("ou")}{" "}
                     <code className="rounded bg-muted px-1">
                       chrome://extensions
                     </code>
@@ -1419,14 +1448,16 @@ export function SettingsView() {
                   </li>
                   <li>{t("settings.extension-steps-dev")}</li>
                   <li>
-                    Clique <b>Charger l'extension non empaquetée</b> puis
-                    sélectionne le dossier{" "}
-                    <code className="rounded bg-muted px-1">extension</code> à
-                    la racine du projet Vaultly
+                    {t("Clique")}{" "}
+                    <b>{t("Charger l'extension non empaquetée")}</b>{" "}
+                    {t("puis sélectionne le dossier")}{" "}
+                    <code className="rounded bg-muted px-1">extension</code>{" "}
+                    {t("à la racine du projet Vaultly")}
                   </li>
                   <li>
-                    {t("settings.extension-steps-token")}
-                    <b>token de l'extension</b> (ci-dessous) une seule fois
+                    {t("Clique l'icône Vaultly dans la barre et colle le")}{" "}
+                    <b>{t("token de l'extension")}</b>{" "}
+                    {t("(ci-dessous) une seule fois")}
                   </li>
                 </ol>
                 <div className="grid gap-1.5">
@@ -1434,7 +1465,7 @@ export function SettingsView() {
                     {t("settings.extension-token")}
                   </span>
                   <p className="text-xs text-muted-foreground">
-                    t("settings.extension-token-desc")
+                    {t("settings.extension-token-desc")}
                   </p>
                   <code className="break-all rounded-lg bg-muted p-2 text-xs">
                     {addToken || "…"}
@@ -1449,7 +1480,7 @@ export function SettingsView() {
                       }}
                     >
                       <Copy />
-                      Copier
+                      {t("Copier")}
                     </Button>
                     <Button
                       variant="outline"
@@ -1463,14 +1494,14 @@ export function SettingsView() {
                       ) : (
                         <RefreshCw />
                       )}
-                      Régénérer
+                      {t("Régénérer")}
                     </Button>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Vaultly doit être ouvert pour recevoir les ajouts — et copier
-                  une URL suffit : l'app propose automatiquement de l'ajouter
-                  (Ctrl+N pour ouvrir le formulaire à la main).
+                  {t(
+                    "Vaultly doit être ouvert pour recevoir les ajouts — et copier une URL suffit : l'app propose automatiquement de l'ajouter (Ctrl+N pour ouvrir le formulaire à la main).",
+                  )}
                 </p>
               </div>
             </>
@@ -1483,7 +1514,7 @@ export function SettingsView() {
                 <div>
                   <h3 className="font-medium">{t("settings.backup")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    t("settings.backup-desc")
+                    {t("settings.backup-desc")}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1567,12 +1598,11 @@ export function SettingsView() {
           {section === "soutenir" && (
             <div className="space-y-3">
               <div>
-                <h3 className="font-medium">{t("settings.support-title")}</h3>
+                <h3 className="font-medium">{t("Soutenir Vaultly")}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Vaultly est gratuit, sans publicité et sans compte. Si l'app
-                  te sert au quotidien, un don — même petit — aide à garder le
-                  projet vivant : hébergement, temps de développement, nouvelles
-                  fonctionnalités.
+                  {t(
+                    "Vaultly est gratuit, sans publicité et sans compte. Si l'app te sert au quotidien, un don — même petit — aide à garder le projet vivant : hébergement, temps de développement, nouvelles fonctionnalités.",
+                  )}
                 </p>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -1593,12 +1623,13 @@ export function SettingsView() {
                   }
                 >
                   <Heart />
-                  Ko-fi (dons ponctuels)
+                  {t("Ko-fi (dons ponctuels)")}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Les liens s'ouvrent dans ton navigateur. Toutes les
-                fonctionnalités de Vaultly restent gratuites, pour toujours.
+                {t(
+                  "Les liens s'ouvrent dans ton navigateur. Toutes les fonctionnalités de Vaultly restent gratuites, pour toujours.",
+                )}
               </p>
             </div>
           )}

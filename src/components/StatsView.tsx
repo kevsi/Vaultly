@@ -3,6 +3,7 @@ import { Activity, Flame, Star, Tag } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { getStats } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { hostOf, parseDbDate, typeLabel } from "@/lib/resources";
 
 const MONTHS = [
@@ -37,6 +38,7 @@ function activitySeries(
 
 /** Mini-histogramme SVG : 12 barres, sans librairie externe. */
 function ActivityChart({ activity }: { activity: [string, number][] }) {
+  const { t } = useI18n();
   const series = activitySeries(activity);
   const max = Math.max(...series.map((s) => s.n), 1);
   return (
@@ -45,7 +47,10 @@ function ActivityChart({ activity }: { activity: [string, number][] }) {
         <div
           key={s.label}
           className="group flex min-w-0 flex-1 flex-col items-center gap-1"
-          title={`${s.label} : ${s.n} ajout${s.n > 1 ? "s" : ""}`}
+          title={t("{month} : {count} ajout(s)", {
+            month: t(s.label),
+            count: s.n,
+          })}
         >
           <div className="flex h-20 w-full items-end">
             <div
@@ -58,7 +63,9 @@ function ActivityChart({ activity }: { activity: [string, number][] }) {
               }}
             />
           </div>
-          <span className="text-[10px] text-muted-foreground">{s.label}</span>
+          <span className="text-[10px] text-muted-foreground">
+            {t(s.label)}
+          </span>
         </div>
       ))}
     </div>
@@ -66,6 +73,7 @@ function ActivityChart({ activity }: { activity: [string, number][] }) {
 }
 
 export function StatsView() {
+  const { t } = useI18n();
   const {
     data: s,
     isLoading,
@@ -79,7 +87,7 @@ export function StatsView() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Chargement des statistiques…
+        {t("Chargement des statistiques…")}
       </div>
     );
   }
@@ -87,9 +95,9 @@ export function StatsView() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
         <p className="font-medium text-foreground">
-          Impossible de charger les statistiques
+          {t("Impossible de charger les statistiques")}
         </p>
-        <p className="max-w-sm">{String(error ?? "erreur inconnue")}</p>
+        <p className="max-w-sm">{String(error ?? t("erreur inconnue"))}</p>
       </div>
     );
   }
@@ -105,9 +113,9 @@ export function StatsView() {
     <ScrollArea className="h-full">
       <div className="mx-auto max-w-3xl space-y-6 p-6">
         <div>
-          <h2 className="text-lg font-semibold">Statistiques</h2>
+          <h2 className="text-lg font-semibold">{t("Statistiques")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ta bibliothèque en un coup d'œil.
+            {t("Ta bibliothèque en un coup d'œil.")}
           </p>
         </div>
 
@@ -116,7 +124,7 @@ export function StatsView() {
             <div key={c.label} className="rounded-xl border p-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <c.icon className="size-4" />
-                {c.label}
+                {t(c.label)}
               </div>
               <p className="mt-1 text-3xl font-semibold tabular-nums">
                 {c.value}
@@ -127,13 +135,13 @@ export function StatsView() {
 
         {/* activité : créations par mois sur 12 mois */}
         <div className="rounded-xl border p-4">
-          <h3 className="font-medium">Activité — 12 derniers mois</h3>
+          <h3 className="font-medium">{t("Activité — 12 derniers mois")}</h3>
           <ActivityChart activity={s.activity} />
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-xl border p-4">
-            <h3 className="font-medium">Par type</h3>
+            <h3 className="font-medium">{t("Par type")}</h3>
             <div className="mt-3 space-y-2">
               {s.byType
                 .filter(([t]) => t !== "")
@@ -161,10 +169,12 @@ export function StatsView() {
 
           {/* par tag : mêmes barres, top 10 */}
           <div className="rounded-xl border p-4">
-            <h3 className="font-medium">Par tag</h3>
+            <h3 className="font-medium">{t("Par tag")}</h3>
             {s.byTag.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
-                Ajoute des tags à tes ressources pour voir la répartition.
+                {t(
+                  "Ajoute des tags à tes ressources pour voir la répartition.",
+                )}
               </p>
             ) : (
               <div className="mt-3 space-y-2">
@@ -191,7 +201,7 @@ export function StatsView() {
           <div className="rounded-xl border p-4">
             <h3 className="flex items-center gap-2 font-medium">
               <Flame className="size-4" />
-              Top utilisation
+              {t("Top utilisation")}
             </h3>
             <div className="mt-3 space-y-1.5">
               {s.topUsed
@@ -204,13 +214,15 @@ export function StatsView() {
                     </span>
                     <span className="min-w-0 flex-1 truncate">{r.title}</span>
                     <span className="tabular-nums text-xs text-muted-foreground">
-                      {r.openCount} ouverture{r.openCount > 1 ? "s" : ""}
+                      {t("{count} ouverture(s)", { count: r.openCount })}
                     </span>
                   </div>
                 ))}
               {s.topUsed.every((r) => r.openCount === 0) && (
                 <p className="text-sm text-muted-foreground">
-                  Ouvre des ressources pour voir le classement apparaître.
+                  {t(
+                    "Ouvre des ressources pour voir le classement apparaître.",
+                  )}
                 </p>
               )}
             </div>
@@ -218,13 +230,15 @@ export function StatsView() {
 
           {/* jamais ouvertes : les plus anciennes, cliquables dans la palette */}
           <div className="rounded-xl border p-4">
-            <h3 className="font-medium">Oubliées — jamais ouvertes</h3>
+            <h3 className="font-medium">{t("Oubliées — jamais ouvertes")}</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Les plus anciennes d'abord : passe les revoir ou nettoie.
+              {t("Les plus anciennes d'abord : passe les revoir ou nettoie.")}
             </p>
             {s.neverOpenedList.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
-                Toutes tes ressources ont été ouvertes au moins une fois. 🎉
+                {t(
+                  "Toutes tes ressources ont été ouvertes au moins une fois. 🎉",
+                )}
               </p>
             ) : (
               <div className="mt-3 space-y-1.5">
@@ -253,8 +267,9 @@ export function StatsView() {
 
         <Separator />
         <p className="text-xs text-muted-foreground">
-          Astuce : clique des tuiles pour faire monter les compteurs, et
-          renseigne le statut des articles/vidéos pour suivre ta progression.
+          {t(
+            "Astuce : clique des tuiles pour faire monter les compteurs, et renseigne le statut des articles/vidéos pour suivre ta progression.",
+          )}
         </p>
       </div>
     </ScrollArea>

@@ -12,6 +12,7 @@ import {
   restoreTrashBulk,
   type TrashEntry,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { hostOf, parseDbDate } from "@/lib/resources";
 import { useTauriMutation } from "@/lib/useTauriMutation";
 
@@ -33,6 +34,7 @@ const TRASH_KEYS: QueryKey[] = [["trash"], ["resources"], ["allTags"]];
 /** Corbeille : les suppressions (grille, masse, notes) restent restaurables
  *  30 jours ; la purge des entrées expirées se fait au démarrage de l'app. */
 export function TrashView() {
+  const { t } = useI18n();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -66,7 +68,7 @@ export function TrashView() {
   async function runRestore(entry: TrashEntry) {
     setBusyId(entry.trashId);
     await run(() => restoreTrash(entry.trashId), {
-      success: (r) => `« ${r.title} » restaurée`,
+      success: (r) => t("« {title} » restaurée", { title: r.title }),
       invalidate: TRASH_KEYS,
     });
     setBusyId(null);
@@ -79,11 +81,13 @@ export function TrashView() {
     const result = await run(() => restoreTrashBulk(ids), {
       success: (r) => {
         const n = r.restored;
-        const base = `${n} ressource${n > 1 ? "s" : ""} restaurée${n > 1 ? "s" : ""}`;
         if (r.missing.length > 0) {
-          return `${base} (${r.missing.length} déjà disparue${r.missing.length > 1 ? "s" : ""})`;
+          return t(
+            "{count} ressource(s) restaurée(s) ({count2} déjà disparue(s))",
+            { count: n, count2: r.missing.length },
+          );
         }
-        return base;
+        return t("{count} ressource(s) restaurée(s)", { count: n });
       },
       invalidate: TRASH_KEYS,
     });
@@ -95,13 +99,13 @@ export function TrashView() {
     const n = entries.length;
     if (n === 0) return;
     setConfirm({
-      title: `Vider la corbeille (${n} entrée${n > 1 ? "s" : ""}) ?`,
-      message: "Ces ressources seront définitivement perdues.",
-      confirmLabel: "Vider",
+      title: t("Vider la corbeille ({count} entrée(s)) ?", { count: n }),
+      message: t("Ces ressources seront définitivement perdues."),
+      confirmLabel: t("Vider"),
       destructive: true,
       action: async () => {
         await run(() => emptyTrash(), {
-          success: (count) => `Corbeille vidée (${count})`,
+          success: (count) => t("Corbeille vidée ({count})", { count }),
           invalidate: [["trash"]],
         });
         setSelected(new Set());
@@ -113,23 +117,23 @@ export function TrashView() {
     <div className="flex h-full min-h-0 flex-col">
       {/* en-tête de page */}
       <div className="flex items-center gap-2 border-b px-4 py-2.5">
-        <h2 className="text-sm font-semibold">Corbeille</h2>
+        <h2 className="text-sm font-semibold">{t("Corbeille")}</h2>
         {entries.length > 0 && (
           <span className="text-xs text-muted-foreground tabular-nums">
-            {entries.length} entrée{entries.length > 1 ? "s" : ""}
+            {t("{count} entrée(s)", { count: entries.length })}
           </span>
         )}
         <span className="grow" />
         {entries.length > 1 && (
           <Button variant="outline" size="sm" onClick={toggleAll}>
             <CheckSquare />
-            {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
+            {allSelected ? t("Tout désélectionner") : t("Tout sélectionner")}
           </Button>
         )}
         {entries.length > 0 && (
           <Button variant="outline" size="sm" onClick={runEmpty}>
             <Trash2 className="text-destructive" />
-            Vider la corbeille
+            {t("Vider la corbeille")}
           </Button>
         )}
       </div>
@@ -139,17 +143,18 @@ export function TrashView() {
           {isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Lecture de la corbeille…
+              {t("Lecture de la corbeille…")}
             </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
               <History className="size-8 opacity-40" />
               <p className="font-medium text-foreground">
-                La corbeille est vide
+                {t("La corbeille est vide")}
               </p>
               <p className="max-w-sm text-sm">
-                Les ressources supprimées de la bibliothèque apparaîtront ici
-                pendant 30 jours — restaurables d'un clic.
+                {t(
+                  "Les ressources supprimées de la bibliothèque apparaîtront ici pendant 30 jours — restaurables d'un clic.",
+                )}
               </p>
             </div>
           ) : (
@@ -168,7 +173,9 @@ export function TrashView() {
                     <Checkbox
                       checked={checked}
                       onCheckedChange={() => toggleSelect(e.trashId)}
-                      aria-label={`Sélectionner « ${e.resource.title} »`}
+                      aria-label={t("Sélectionner « {title} »", {
+                        title: e.resource.title,
+                      })}
                       className="size-4.5"
                     />
                     {e.resource.favicon ? (
@@ -192,17 +199,19 @@ export function TrashView() {
                       </div>
                     </div>
                     <span className="shrink-0 text-xs text-muted-foreground">
-                      supprimée le {formatTrashDate(e.deletedAt)}
+                      {t("supprimée le {date}", {
+                        date: formatTrashDate(e.deletedAt),
+                      })}
                     </span>
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={busy || bulkBusy}
-                      title="Remettre cette ressource dans la bibliothèque"
+                      title={t("Remettre cette ressource dans la bibliothèque")}
                       onClick={() => void runRestore(e)}
                     >
                       {busy ? <Loader2 className="animate-spin" /> : <Undo2 />}
-                      Restaurer
+                      {t("Restaurer")}
                     </Button>
                   </div>
                 );
@@ -216,7 +225,7 @@ export function TrashView() {
       {selected.size > 0 && (
         <div className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 animate-pop-in items-center gap-2 rounded-2xl border bg-popover px-4 py-2 shadow-2xl">
           <span className="text-sm font-medium tabular-nums">
-            {selected.size} sélectionnée{selected.size > 1 ? "s" : ""}
+            {t("{count} sélectionnée(s)", { count: selected.size })}
           </span>
           <Button
             size="sm"
@@ -224,12 +233,12 @@ export function TrashView() {
             onClick={() => void runRestoreSelection()}
           >
             {bulkBusy ? <Loader2 className="animate-spin" /> : <Undo2 />}
-            Restaurer la sélection
+            {t("Restaurer la sélection")}
           </Button>
           <Button
             variant="ghost"
             size="icon-sm"
-            title="Tout désélectionner"
+            title={t("Tout désélectionner")}
             onClick={() => setSelected(new Set())}
           >
             <X />

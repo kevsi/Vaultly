@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { removeTag, renameTag, tagStats } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { cn, describeError } from "@/lib/utils";
 
 interface Props {
@@ -26,6 +27,7 @@ interface Props {
  */
 export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
   const qc = useQueryClient();
+  const { t } = useI18n();
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -48,7 +50,7 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
     if (!editing) return;
     const next = editValue.trim();
     if (!next) {
-      toast.error("Le nouveau nom ne peut pas être vide");
+      toast.error(t("Le nouveau nom ne peut pas être vide"));
       return;
     }
     setBusy(true);
@@ -56,8 +58,12 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
       const n = await renameTag(editing, next);
       toast.success(
         n === 0
-          ? "Rien à renommer"
-          : `« ${editing} » → « ${next} » (${n} ressource${n > 1 ? "s" : ""})`,
+          ? t("Rien à renommer")
+          : t("« {from} » → « {to} » ({count} ressource(s))", {
+              from: editing,
+              to: next,
+              count: n,
+            }),
       );
       setEditing(null);
       setEditValue("");
@@ -75,7 +81,10 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
     try {
       const n = await removeTag(tag);
       toast.success(
-        `Tag « ${tag} » supprimé (${n} ressource${n > 1 ? "s" : ""})`,
+        t("Tag « {tag} » supprimé ({count} ressource(s))", {
+          tag,
+          count: n,
+        }),
       );
       setDeleteArmed(null);
       void qc.invalidateQueries({ queryKey: ["tagStats"] });
@@ -91,17 +100,18 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Gérer les tags</DialogTitle>
+          <DialogTitle>{t("Gérer les tags")}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Renommer vers un tag existant les fusionne. La suppression retire le
-            tag partout, sans toucher aux ressources.
+            {t(
+              "Renommer vers un tag existant les fusionne. La suppression retire le tag partout, sans toucher aux ressources.",
+            )}
           </p>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Filtrer les tags…"
+              placeholder={t("Filtrer les tags…")}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="pl-8"
@@ -111,21 +121,23 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
             {isLoading ? (
               <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
-                Chargement…
+                {t("Chargement…")}
               </div>
             ) : visible.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">
                 {(tags ?? []).length === 0
-                  ? "Aucun tag pour l'instant."
-                  : `Aucun tag pour « ${filter.trim()} ».`}
+                  ? t("Aucun tag pour l'instant.")
+                  : t("Aucun tag pour « {filter} ».", {
+                      filter: filter.trim(),
+                    })}
               </p>
             ) : (
-              visible.map((t) => (
+              visible.map((tag) => (
                 <div
-                  key={t.name}
+                  key={tag.name}
                   className="flex items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0"
                 >
-                  {editing === t.name ? (
+                  {editing === tag.name ? (
                     <>
                       <Input
                         autoFocus
@@ -141,7 +153,7 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                       />
                       <datalist id="tagmanager-existing">
                         {(tags ?? [])
-                          .filter((x) => x.name !== t.name)
+                          .filter((x) => x.name !== tag.name)
                           .map((x) => (
                             <option key={x.name} value={x.name} />
                           ))}
@@ -151,7 +163,7 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                         size="icon-sm"
                         onClick={() => void runRename()}
                         disabled={busy}
-                        title="Appliquer le nouveau nom"
+                        title={t("Appliquer le nouveau nom")}
                       >
                         <Check />
                       </Button>
@@ -160,7 +172,7 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                         size="icon-sm"
                         onClick={() => setEditing(null)}
                         disabled={busy}
-                        title="Annuler"
+                        title={t("Annuler")}
                       >
                         <X />
                       </Button>
@@ -168,12 +180,12 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                   ) : (
                     <>
                       <span className="min-w-0 flex-1 truncate font-medium">
-                        {t.name}
+                        {tag.name}
                       </span>
                       <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
-                        {t.count}
+                        {tag.count}
                       </span>
-                      {deleteArmed === t.name ? (
+                      {deleteArmed === tag.name ? (
                         <>
                           <Button
                             variant="destructive"
@@ -187,14 +199,14 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                             ) : (
                               <Trash2 />
                             )}
-                            Supprimer ?
+                            {t("Supprimer ?")}
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => setDeleteArmed(null)}
                             disabled={busy}
-                            title="Annuler"
+                            title={t("Annuler")}
                           >
                             <X />
                           </Button>
@@ -205,12 +217,12 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => {
-                              setEditing(t.name);
-                              setEditValue(t.name);
+                              setEditing(tag.name);
+                              setEditValue(tag.name);
                               setDeleteArmed(null);
                             }}
                             disabled={busy}
-                            title={`Renommer « ${t.name} »`}
+                            title={t("Renommer « {name} »", { name: tag.name })}
                           >
                             <Pencil />
                           </Button>
@@ -218,11 +230,13 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => {
-                              setDeleteArmed(t.name);
+                              setDeleteArmed(tag.name);
                               setEditing(null);
                             }}
                             disabled={busy}
-                            title={`Supprimer « ${t.name} » partout`}
+                            title={t("Supprimer « {name} » partout", {
+                              name: tag.name,
+                            })}
                             className={cn(
                               "text-muted-foreground hover:text-destructive",
                             )}
@@ -238,8 +252,7 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {(tags ?? []).length} tag{(tags ?? []).length > 1 ? "s" : ""} au
-            total.
+            {t("{count} tag(s) au total.", { count: (tags ?? []).length })}
           </p>
         </div>
       </DialogContent>

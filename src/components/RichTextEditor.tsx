@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PromptDialog } from "@/components/PromptDialog";
+import { useI18n } from "@/lib/i18n";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +47,7 @@ function statsOf(html: string): {
 export function RichTextEditor({
   value,
   onChange,
-  placeholder = "Écris ta note…",
+  placeholder,
   showStats = true,
 }: {
   value: string;
@@ -54,6 +55,8 @@ export function RichTextEditor({
   placeholder?: string;
   showStats?: boolean;
 }) {
+  const { t } = useI18n();
+  const ph = placeholder ?? t("Écris ta note…");
   const ref = useRef<HTMLDivElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [html, setHtml] = useState(value || "");
@@ -114,7 +117,7 @@ export function RichTextEditor({
       >
         <button
           type="button"
-          title="Annuler (Ctrl+Z)"
+          title={t("Annuler (Ctrl+Z)")}
           className={btn}
           onClick={() => exec("undo")}
         >
@@ -122,7 +125,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Rétablir (Ctrl+Y)"
+          title={t("Rétablir (Ctrl+Y)")}
           className={btn}
           onClick={() => exec("redo")}
         >
@@ -131,7 +134,7 @@ export function RichTextEditor({
         <span className="mx-1 h-5 w-px bg-border" />
         <button
           type="button"
-          title="Gras (Ctrl+B)"
+          title={t("Gras (Ctrl+B)")}
           className={btn}
           onClick={() => exec("bold")}
         >
@@ -139,7 +142,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Italique (Ctrl+I)"
+          title={t("Italique (Ctrl+I)")}
           className={btn}
           onClick={() => exec("italic")}
         >
@@ -147,7 +150,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Souligné (Ctrl+U)"
+          title={t("Souligné (Ctrl+U)")}
           className={btn}
           onClick={() => exec("underline")}
         >
@@ -155,7 +158,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Barré"
+          title={t("Barré")}
           className={btn}
           onClick={() => exec("strikeThrough")}
         >
@@ -164,7 +167,7 @@ export function RichTextEditor({
         <span className="mx-1 h-5 w-px bg-border" />
         <button
           type="button"
-          title="Titre"
+          title={t("Titre")}
           className={btn}
           onClick={() => exec("formatBlock", "<h3>")}
         >
@@ -172,7 +175,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Liste à puces"
+          title={t("Liste à puces")}
           className={btn}
           onClick={() => exec("insertUnorderedList")}
         >
@@ -180,7 +183,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Liste numérotée"
+          title={t("Liste numérotée")}
           className={btn}
           onClick={() => exec("insertOrderedList")}
         >
@@ -188,7 +191,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Citation"
+          title={t("Citation")}
           className={btn}
           onClick={() => exec("formatBlock", "<blockquote>")}
         >
@@ -196,7 +199,7 @@ export function RichTextEditor({
         </button>
         <button
           type="button"
-          title="Lien"
+          title={t("Lien")}
           className={btn}
           onClick={() => setLinkOpen(true)}
         >
@@ -205,7 +208,7 @@ export function RichTextEditor({
         <span className="mx-1 h-5 w-px bg-border" />
         <button
           type="button"
-          title="Effacer la mise en forme"
+          title={t("Effacer la mise en forme")}
           className={btn}
           onClick={() => exec("removeFormat")}
         >
@@ -219,8 +222,8 @@ export function RichTextEditor({
         suppressContentEditableWarning
         role="textbox"
         aria-multiline="true"
-        aria-label="Contenu de la note"
-        data-placeholder={placeholder}
+        aria-label={t("Contenu de la note")}
+        data-placeholder={ph}
         onInput={emit}
         onPaste={(e) => {
           // Collage : le HTML du presse-papiers est nettoyé AVANT insertion,
@@ -259,22 +262,27 @@ export function RichTextEditor({
       {showStats && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {stats.words} mot{stats.words > 1 ? "s" : ""} · {stats.chars}{" "}
-            caractère{stats.chars > 1 ? "s" : ""}
+            {t("{count} mot(s) · {chars} caractère(s)", {
+              count: stats.words,
+              chars: stats.chars,
+            })}
           </span>
-          {stats.words > 0 && <span>· lecture ~{stats.minutes} min</span>}
+          {stats.words > 0 && (
+            <span>{t("· lecture ~{count} min", { count: stats.minutes })}</span>
+          )}
           <span className="ml-auto hidden sm:inline">
-            Ctrl+B gras · Ctrl+I italique · Ctrl+U souligné · listes et citation
-            via la barre
+            {t(
+              "Ctrl+B gras · Ctrl+I italique · Ctrl+U souligné · listes et citation via la barre",
+            )}
           </span>
         </div>
       )}
       <PromptDialog
         open={linkOpen}
-        title="Adresse du lien"
-        description="Colle l'URL de destination (https://…)"
+        title={t("Adresse du lien")}
+        description={t("Colle l'URL de destination (https://…)")}
         placeholder="https://exemple.com"
-        confirmLabel="Insérer le lien"
+        confirmLabel={t("Insérer le lien")}
         onDone={onLinkSubmit}
       />
     </div>

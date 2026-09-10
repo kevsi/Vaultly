@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { addResource, fetchMetadata, listResources } from "@/lib/api";
 import { fuzzyMatch } from "@/lib/fuzzy";
+import { useI18n } from "@/lib/i18n";
 import { openResource } from "@/lib/openResource";
 import { hostOf, typeLabel } from "@/lib/resources";
 import type { Resource } from "@/lib/types";
@@ -29,6 +30,7 @@ export function CommandPalette({
   onOpenChange: (o: boolean) => void;
 }) {
   const qc = useQueryClient();
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -135,13 +137,13 @@ export function CommandPalette({
         favicon: m?.favicon ?? "",
         resourceType: "site",
       });
-      toast.success("Ajouté à la bibliothèque ✓");
+      toast.success(t("Ajouté à la bibliothèque ✓"));
       void qc.invalidateQueries({ queryKey: ["resources"] });
       onOpenChange(false);
     } catch (e) {
       const msg = String(e);
       toast.error(
-        msg.includes("déjà enregistrée") ? "Déjà dans ta bibliothèque" : msg,
+        msg.includes("déjà enregistrée") ? t("Déjà dans ta bibliothèque") : msg,
       );
     } finally {
       setAdding(false);
@@ -158,7 +160,7 @@ export function CommandPalette({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Palette de commandes"
+        aria-label={t("Palette de commandes")}
         className="w-full max-w-xl animate-pop-in overflow-hidden rounded-xl border bg-popover shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
         // focus trap : Tab ne doit pas fuir vers la page derrière (modale
@@ -172,7 +174,9 @@ export function CommandPalette({
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <Input
             ref={inputRef}
-            placeholder="Rechercher une ressource — ou coller une URL à ajouter…"
+            placeholder={t(
+              "Rechercher une ressource — ou coller une URL à ajouter…",
+            )}
             className="border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-0 dark:bg-transparent"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -200,7 +204,7 @@ export function CommandPalette({
         <div className="max-h-80 overflow-y-auto p-1.5">
           {items.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {query ? "Aucun résultat" : "Tape pour rechercher"}
+              {query ? t("Aucun résultat") : t("Tape pour rechercher")}
             </p>
           ) : (
             items.map((it, i) =>
@@ -221,7 +225,9 @@ export function CommandPalette({
                     <Plus className="size-3.5" />
                   </span>
                   <span className="min-w-0 flex-1 truncate font-medium">
-                    Ajouter « {hostOf(it.url)} » à la bibliothèque
+                    {t("Ajouter « {host} » à la bibliothèque", {
+                      host: hostOf(it.url),
+                    })}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     Entrée ↵

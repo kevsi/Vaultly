@@ -1,3 +1,4 @@
+import { tt } from "@/lib/i18n";
 import type { ImportedBookmark } from "./types";
 
 /**
@@ -48,7 +49,7 @@ export function parseNetscapeHtml(text: string): ImportedBookmark[] {
     out.push({ title, url: href, folder, selected: true });
   }
   if (out.length === 0) {
-    throw new Error("Aucun favori trouvé dans ce fichier HTML");
+    throw new Error(tt("Aucun favori trouvé dans ce fichier HTML"));
   }
   return out;
 }
@@ -107,7 +108,7 @@ function splitTagsCell(cell: string): string[] {
 export function parseCsv(text: string): ImportedBookmark[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
   if (lines.length < 2) {
-    throw new Error("CSV vide ou sans lignes de données");
+    throw new Error(tt("CSV vide ou sans lignes de données"));
   }
   const clean = (s: string) =>
     s
@@ -142,7 +143,7 @@ export function parseCsv(text: string): ImportedBookmark[] {
     });
   }
   if (out.length === 0) {
-    throw new Error("Aucun lien valide dans ce CSV");
+    throw new Error(tt("Aucun lien valide dans ce CSV"));
   }
   return out;
 }

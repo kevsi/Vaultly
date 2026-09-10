@@ -5,6 +5,8 @@
  * - recherche distante d'icônes génériques (Iconify : Lucide, Material…)
  */
 
+import { tt } from "@/lib/i18n";
+
 /** Synonymes français → anglais (clés sans accents, minuscules). */
 const FR_TO_EN: Record<string, string> = {
   musique: "music",
@@ -202,7 +204,7 @@ export async function searchGenericIcons(
   const res = await fetch(
     `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=${limit}`,
   );
-  if (!res.ok) throw new Error("Recherche d'icônes indisponible");
+  if (!res.ok) throw new Error(tt("Recherche d'icônes indisponible"));
   const data = await res.json();
   return Array.isArray(data?.icons) ? data.icons.slice(0, limit) : [];
 }

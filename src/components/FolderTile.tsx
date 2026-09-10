@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 import type { Folder } from "@/lib/types";
 
 interface Props {
@@ -39,6 +40,7 @@ export function FolderTile({
   onDragLeave,
   onDrop,
 }: Props) {
+  const { t } = useI18n();
   const slots = [0, 1, 2, 3];
   return (
     <div
@@ -50,7 +52,10 @@ export function FolderTile({
       <div
         role="button"
         tabIndex={0}
-        title={`${folder.name} — ${folder.count} ressource${folder.count > 1 ? "s" : ""}`}
+        title={t("{name} — {count} ressource(s)", {
+          name: folder.name,
+          count: folder.count,
+        })}
         onClick={() => onOpen(folder)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -87,7 +92,7 @@ export function FolderTile({
         </span>
         <span
           className="flex min-w-6 items-center justify-center rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground"
-          title={`${folder.count} ressource${folder.count > 1 ? "s" : ""}`}
+          title={t("{count} ressource(s)", { count: folder.count })}
         >
           {folder.count}
         </span>
@@ -95,33 +100,35 @@ export function FolderTile({
 
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="Options du dossier"
+          aria-label={t("Options du dossier")}
           className="absolute -right-1.5 -top-1.5 z-10 flex size-7 cursor-pointer items-center justify-center rounded-full border bg-background text-muted-foreground shadow-md outline-none transition-colors hover:text-foreground focus-visible:text-foreground data-[popup-open]:text-foreground"
         >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto min-w-40">
           <DropdownMenuItem onClick={() => onOpen(folder)}>
-            Ouvrir le dossier
+            {t("Ouvrir le dossier")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onRename(folder)}>
             <Pencil />
-            Renommer
+            {t("Renommer")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => onDissolve(folder)}
-            title="Retire le dossier mais garde ses ressources (elles reviennent dans la grille)"
+            title={t(
+              "Retire le dossier mais garde ses ressources (elles reviennent dans la grille)",
+            )}
           >
             <FolderMinus />
-            Dissoudre
+            {t("Dissoudre")}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             onClick={() => onDelete(folder)}
           >
             <Trash2 />
-            Supprimer
+            {t("Supprimer")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

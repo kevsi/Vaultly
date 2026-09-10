@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { addResource, allTags, updateResource } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { NOTE_COLORS } from "@/lib/resources";
 import type { Resource } from "@/lib/types";
 import { cn, describeError } from "@/lib/utils";
@@ -32,6 +33,7 @@ export function NoteEditor({
   initialFolderId,
   onSaved,
 }: Props) {
+  const { t } = useI18n();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [color, setColor] = useState("amber");
@@ -80,7 +82,7 @@ export function NoteEditor({
 
   async function save() {
     if (!title.trim() && isHtmlEmpty(body)) {
-      toast.error("Donne un titre ou un contenu à la note");
+      toast.error(t("Donne un titre ou un contenu à la note"));
       return;
     }
     setSaving(true);
@@ -102,10 +104,10 @@ export function NoteEditor({
     try {
       if (note) {
         await updateResource(note.id, payload);
-        toast.success("Note mise à jour");
+        toast.success(t("Note mise à jour"));
       } else {
         await addResource(payload);
-        toast.success("Note créée");
+        toast.success(t("Note créée"));
       }
       onOpenChange(false);
       onSaved();
@@ -121,16 +123,16 @@ export function NoteEditor({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {note ? "Modifier la note" : "Nouvelle note"}
+            {note ? t("Modifier la note") : t("Nouvelle note")}
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="note-title">Titre</Label>
+            <Label htmlFor="note-title">{t("Titre")}</Label>
             <Input
               id="note-title"
               autoFocus
-              placeholder="Titre de la note"
+              placeholder={t("Titre de la note")}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="text-base font-semibold"
@@ -138,7 +140,7 @@ export function NoteEditor({
           </div>
 
           <div className="grid gap-1.5">
-            <Label>Contenu</Label>
+            <Label>{t("Contenu")}</Label>
             {/* le corps riche est remonté à chaque ouverture via key */}
             <RichTextEditor
               key={note?.id ?? "new"}
@@ -150,7 +152,7 @@ export function NoteEditor({
           {/* sélecteur de tags élargi : pleine largeur + suggestions cliquables */}
           <div className="grid gap-1.5">
             <Label htmlFor="note-tags">
-              Tags{" "}
+              {t("Tags")}{" "}
               {parsedTags.length > 0 && (
                 <span className="font-normal text-muted-foreground">
                   ({parsedTags.length})
@@ -159,34 +161,37 @@ export function NoteEditor({
             </Label>
             <Input
               id="note-tags"
-              placeholder="ex : design, gratuit, ia — séparés par des virgules"
+              placeholder={t(
+                "ex : design, gratuit, ia — séparés par des virgules",
+              )}
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               className="w-full"
             />
             {suggestions.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {suggestions.map((t) => (
+                {suggestions.map((tag) => (
                   <button
-                    key={t}
+                    key={tag}
                     type="button"
-                    onClick={() => toggleTag(t)}
-                    title={`Ajouter #${t}`}
+                    onClick={() => toggleTag(tag)}
+                    title={t("Ajouter #{tag}", { tag })}
                     className="cursor-pointer rounded-full border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors outline-none hover:border-primary/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    #{t}
+                    #{tag}
                   </button>
                 ))}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Astuce : sépare par des virgules. Clique un tag suggéré pour
-              l'ajouter.
+              {t(
+                "Astuce : sépare par des virgules. Clique un tag suggéré pour l'ajouter.",
+              )}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">Couleur :</span>
+            <span className="text-sm font-medium">{t("Couleur :")}</span>
             {NOTE_COLORS.map((c) => (
               <button
                 key={c.value}
@@ -207,10 +212,10 @@ export function NoteEditor({
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Annuler
+            {t("Annuler")}
           </Button>
           <Button onClick={() => void save()} disabled={saving}>
-            {note ? "Enregistrer" : "Créer la note"}
+            {note ? t("Enregistrer") : t("Créer la note")}
           </Button>
         </div>
       </DialogContent>

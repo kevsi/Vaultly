@@ -14,10 +14,14 @@ import {
   webdavStatus,
   webdavTestConnection,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { describeError, isInsecureRemoteWebdav } from "@/lib/utils";
 
-function formatBackupDate(ts: number | null | undefined): string {
-  if (ts == null) return "Jamais";
+function formatBackupDate(
+  ts: number | null | undefined,
+  t: (key: string) => string,
+): string {
+  if (ts == null) return t("Jamais");
   const ms = ts > 1_000_000_000_000 ? ts : ts * 1000;
   return new Date(ms).toLocaleString("fr-FR", {
     day: "2-digit",
@@ -35,6 +39,7 @@ function formatBackupDate(ts: number | null | undefined): string {
  * fichiers vaultly-backup-*.json du dossier ciblé.
  */
 export function WebDavBackupSection() {
+  const { t } = useI18n();
   const [webdavUrl, setWebdavUrl] = useState("");
   const [webdavUser, setWebdavUser] = useState("");
   const [webdavPass, setWebdavPass] = useState("");
@@ -61,8 +66,10 @@ export function WebDavBackupSection() {
       const n = await webdavTestConnection();
       toast.success(
         n > 0
-          ? `Connecté ✓ — ${n} sauvegarde(s) déjà présente(s)`
-          : "Connecté ✓ — le dossier est vide",
+          ? t("Connecté ✓ — {count} sauvegarde(s) déjà présente(s)", {
+              count: n,
+            })
+          : t("Connecté ✓ — le dossier est vide"),
       );
       void refetch();
     } catch (e) {
@@ -79,7 +86,7 @@ export function WebDavBackupSection() {
       setWebdavUrl("");
       setWebdavUser("");
       setWebdavPass("");
-      toast.success("Configuration WebDAV effacée");
+      toast.success(t("Configuration WebDAV effacée"));
       void refetch();
     } catch (e) {
       toast.error(describeError(e));
@@ -92,7 +99,7 @@ export function WebDavBackupSection() {
     setWebdavBusy(true);
     try {
       const name = await webdavBackup();
-      toast.success(`Sauvegardé sur le cloud : ${name}`);
+      toast.success(t("Sauvegardé sur le cloud : {name}", { name }));
       void refetch();
     } catch (e) {
       toast.error(describeError(e));
@@ -106,7 +113,10 @@ export function WebDavBackupSection() {
     try {
       const r = await webdavRestore();
       toast.success(
-        `${r.resourcesAdded} ressource(s) restaurée(s), ${r.duplicates} doublon(s) ignoré(s)`,
+        t("{count} ressource(s) restaurée(s), {count2} doublon(s) ignoré(s)", {
+          count: r.resourcesAdded,
+          count2: r.duplicates,
+        }),
       );
     } catch (e) {
       toast.error(describeError(e));
@@ -130,28 +140,29 @@ export function WebDavBackupSection() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h3 className="font-medium">Sauvegarde cloud (WebDAV)</h3>
+          <h3 className="font-medium">{t("Sauvegarde cloud (WebDAV)")}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Envoie tes sauvegardes sur Koofr (2 Go gratuits), Nextcloud,
-            Synology… Trois champs, pas de compte développeur à créer : l'URL
-            d'un dossier WebDAV, un identifiant, un mot de passe. Les 5
-            sauvegardes les plus récentes sont conservées en ligne.
+            {t(
+              "Envoie tes sauvegardes sur Koofr (2 Go gratuits), Nextcloud, Synology… Trois champs, pas de compte développeur à créer : l'URL d'un dossier WebDAV, un identifiant, un mot de passe. Les 5 sauvegardes les plus récentes sont conservées en ligne.",
+            )}
           </p>
         </div>
         {webdav?.configured ? (
           <span className="shrink-0 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-            Configuré
+            {t("Configuré")}
           </span>
         ) : (
           <span className="shrink-0 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-            Non configuré
+            {t("Non configuré")}
           </span>
         )}
       </div>
 
       <div className="grid gap-2">
         <Input
-          placeholder="URL WebDAV — ex : https://app.koofr.net/dav/Koofr/Vaultly"
+          placeholder={t(
+            "URL WebDAV — ex : https://app.koofr.net/dav/Koofr/Vaultly",
+          )}
           value={webdavUrl}
           onChange={(e) => setWebdavUrl(e.target.value)}
           autoComplete="off"
@@ -161,17 +172,19 @@ export function WebDavBackupSection() {
           <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              URL en <code className="font-mono">http://</code> vers un serveur
-              distant : ton identifiant et ton mot de passe circulent{" "}
-              <b>non chiffrés</b>. Privilégie une URL{" "}
-              <code className="font-mono">https://</code> (excepté pour un NAS
-              en réseau local).
+              {t("URL en")} <code className="font-mono">http://</code>{" "}
+              {t(
+                "vers un serveur distant : ton identifiant et ton mot de passe circulent",
+              )}{" "}
+              <b>{t("non chiffrés")}</b>. {t("Privilégie une URL")}{" "}
+              <code className="font-mono">https://</code>{" "}
+              {t("(excepté pour un NAS en réseau local).")}
             </span>
           </p>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
           <Input
-            placeholder="Identifiant"
+            placeholder={t("Identifiant")}
             value={webdavUser}
             onChange={(e) => setWebdavUser(e.target.value)}
             autoComplete="off"
@@ -180,8 +193,8 @@ export function WebDavBackupSection() {
             type="password"
             placeholder={
               webdav?.configured
-                ? "Mot de passe — vide pour conserver l'actuel"
-                : "Mot de passe (ou token d'application)"
+                ? t("Mot de passe — vide pour conserver l'actuel")
+                : t("Mot de passe (ou token d'application)")
             }
             value={webdavPass}
             onChange={(e) => setWebdavPass(e.target.value)}
@@ -196,7 +209,7 @@ export function WebDavBackupSection() {
             onClick={() => void saveWebdav()}
           >
             {webdavBusy ? <Loader2 className="animate-spin" /> : null}
-            Enregistrer et tester
+            {t("Enregistrer et tester")}
           </Button>
           {webdav?.configured && (
             <Button
@@ -205,14 +218,14 @@ export function WebDavBackupSection() {
               disabled={webdavBusy}
               onClick={() => void clearWebdav()}
             >
-              Effacer la configuration
+              {t("Effacer la configuration")}
             </Button>
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Ton mot de passe est chiffré et reste sur cette machine. Sur
-          Nextcloud, utilise un token de « Paramètres → Applis → DAV » plutôt
-          que ton mot de passe si l'authentification à deux facteurs est active.
+          {t(
+            "Ton mot de passe est chiffré et reste sur cette machine. Sur Nextcloud, utilise un token de « Paramètres → Applis → DAV » plutôt que ton mot de passe si l'authentification à deux facteurs est active.",
+          )}
         </p>
       </div>
 
@@ -225,7 +238,7 @@ export function WebDavBackupSection() {
               disabled={webdavBusy}
             >
               {webdavBusy ? <Loader2 className="animate-spin" /> : <Cloud />}
-              Sauvegarder maintenant
+              {t("Sauvegarder maintenant")}
             </Button>
             <Button
               variant="outline"
@@ -234,7 +247,7 @@ export function WebDavBackupSection() {
               disabled={webdavBusy}
             >
               <Download />
-              Restaurer la dernière
+              {t("Restaurer la dernière")}
             </Button>
           </div>
           <div className="flex items-center gap-2 text-sm">
@@ -243,7 +256,7 @@ export function WebDavBackupSection() {
               disabled={webdavBusy}
               onCheckedChange={(c: boolean) => void saveWebdavAuto(c)}
             />
-            <span>Sauvegarde automatique toutes les</span>
+            <span>{t("Sauvegarde automatique toutes les")}</span>
             <Input
               className="w-20"
               inputMode="numeric"
@@ -251,12 +264,12 @@ export function WebDavBackupSection() {
               onChange={(e) => setWebdavInterval(e.target.value)}
               onBlur={() => void saveWebdavAuto(webdavAuto)}
             />
-            <span className="text-muted-foreground">heures</span>
+            <span className="text-muted-foreground">{t("heures")}</span>
           </div>
           {webdav?.lastBackupAt && (
             <p className="text-xs text-muted-foreground">
-              Dernière sauvegarde cloud :{" "}
-              {formatBackupDate(webdav.lastBackupAt)}
+              {t("Dernière sauvegarde cloud :")}{" "}
+              {formatBackupDate(webdav.lastBackupAt, t)}
             </p>
           )}
         </div>

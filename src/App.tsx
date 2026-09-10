@@ -186,6 +186,7 @@ export default function App() {
 
   // vérification auto des liens morts : au lancement si la dernière a plus
   // de 24 h, puis toutes les 6 h tant que l'app reste ouverte
+  // biome-ignore lint/correctness/useExhaustiveDependencies: effet au montage seul — t est recréé à chaque rendu
   useEffect(() => {
     async function autoCheck() {
       try {
@@ -200,7 +201,12 @@ export default function App() {
         setDeadCount(dead.length);
         if (dead.length > 0) {
           toast.warning(
-            `${dead.length} lien(s) ne répondent plus — voir Réglages › Liens morts`,
+            t(
+              "{count} lien(s) ne répondent plus — voir Réglages › Liens morts",
+              {
+                count: dead.length,
+              },
+            ),
           );
         }
       } catch {
@@ -264,6 +270,7 @@ export default function App() {
 
   // contrôle silencieux de mise à jour (1/jour max) : notifie, n'installe
   // jamais seul. Échec silencieux en dev / hors-ligne / clé manquante.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: effet au montage seul — t est recréé à chaque rendu
   useEffect(() => {
     if (!updateCheckDue()) return;
     void (async () => {
@@ -271,16 +278,21 @@ export default function App() {
         const update = await checkForUpdates();
         markUpdateChecked();
         if (update) {
-          toast.info(`Mise à jour disponible : v${update.version}`, {
-            duration: 10_000,
-            action: {
-              label: "Voir",
-              onClick: () => {
-                localStorage.setItem("vaultly-settings-section", "maj");
-                setTab("settings");
+          toast.info(
+            t("Mise à jour disponible : v{version}", {
+              version: update.version,
+            }),
+            {
+              duration: 10_000,
+              action: {
+                label: "Voir",
+                onClick: () => {
+                  localStorage.setItem("vaultly-settings-section", "maj");
+                  setTab("settings");
+                },
               },
             },
-          });
+          );
         }
       } catch {
         /* silencieux */
@@ -290,15 +302,18 @@ export default function App() {
 
   // rappels échus au lancement (max 3) : « Ouvrir » solde le rappel.
   // Sans application externe, une note n'a rien à ouvrir : simple rappel.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: effet au montage seul — t est recréé à chaque rendu
   useEffect(() => {
     void (async () => {
       try {
         const due = await dueReminders();
         for (const r of due.slice(0, 3)) {
           if (r.resourceType === "note") {
-            toast.info(`Rappel : « ${r.title} »`, { duration: 12_000 });
+            toast.info(t("Rappel : « {title} »", { title: r.title }), {
+              duration: 12_000,
+            });
           } else {
-            toast.info(`Rappel : « ${r.title} »`, {
+            toast.info(t("Rappel : « {title} »", { title: r.title }), {
               duration: 12_000,
               action: {
                 label: "Ouvrir",

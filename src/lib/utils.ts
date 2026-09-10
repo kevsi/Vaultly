@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { tt } from "@/lib/i18n";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -16,7 +17,7 @@ export function describeError(e: unknown): string {
     .replace(/^error:\s*/i, "")
     .replace(/^[A-Z]\w*Error:\s*/, "")
     .trim();
-  if (!msg) return "Une erreur est survenue.";
+  if (!msg) return tt("Une erreur est survenue.");
   return msg.length > 200 ? `${msg.slice(0, 197)}…` : msg;
 }
 

@@ -71,7 +71,7 @@ import {
   setResourceFolder,
   setResourceStatus,
 } from "@/lib/api";
-import { useI18n } from "@/lib/i18n";
+import { tt, useI18n } from "@/lib/i18n";
 import { openResource } from "@/lib/openResource";
 import { isStale, RESOURCE_TYPES } from "@/lib/resources";
 import {
@@ -478,8 +478,8 @@ export function LibraryView() {
           folder.name.length > 45
             ? `${folder.name.slice(0, 45)}…`
             : folder.name;
-        toast.success(`Folder « ${shown} » created`, {
-          description: "Renomme-le depuis son menu ⋯ si besoin.",
+        toast.success(t("Dossier « {name} » créé", { name: shown }), {
+          description: t("Renomme-le depuis son menu ⋯ si besoin."),
         });
         refresh();
         return;
@@ -515,7 +515,7 @@ export function LibraryView() {
     setDragFolderId(null);
     try {
       await moveFolder(srcId, target.id);
-      toast.success(`Moved to « ${target.name} »`);
+      toast.success(t("Déplacé dans « {name} »", { name: target.name }));
       refresh();
     } catch (e) {
       toast.error(describeError(e));
@@ -530,7 +530,7 @@ export function LibraryView() {
     setDragId(null);
     try {
       await setResourceFolder(id, folder.id);
-      toast.success(`Filed in « ${folder.name} »`);
+      toast.success(t("Rangée dans « {name} »", { name: folder.name }));
       refresh();
     } catch (e) {
       toast.error(describeError(e));
@@ -543,8 +543,10 @@ export function LibraryView() {
         await setResourceFolder(r.id, folderId);
         toast.success(
           folderId === null
-            ? "Sortie du dossier"
-            : `Rangée dans « ${foldersList.find((f) => f.id === folderId)?.name ?? "?"} »`,
+            ? tt("Sortie du dossier")
+            : tt("Rangée dans « {name} »", {
+                name: foldersList.find((f) => f.id === folderId)?.name ?? "?",
+              }),
         );
         refresh();
       } catch (e) {
@@ -558,13 +560,13 @@ export function LibraryView() {
     const path =
       r.meta?.filePath ?? (r.url.startsWith("file:") ? r.url.slice(5) : "");
     if (!path) {
-      toast.error("This file has no local path registered");
+      toast.error(tt("Ce fichier n'a pas de chemin local enregistré"));
       return;
     }
-    toast.info("Envoi vers le cloud en cours…");
+    toast.info(tt("Envoi vers le cloud en cours…"));
     try {
       const name = await cloudUploadFile(path);
-      toast.success(`Sent to cloud as « ${name} »`);
+      toast.success(tt("Envoyé vers le cloud sous « {name} »", { name }));
     } catch (e) {
       toast.error(describeError(e));
     }
@@ -588,7 +590,7 @@ export function LibraryView() {
       // ressource locale (l'URL WebDAV est protégée par mot de passe, elle
       // ne serait pas cliquable depuis un autre appareil)
       await cloudImportFile(f.name);
-      toast.success(`« ${f.name} » attached to library`);
+      toast.success(t("« {name} » joint à la bibliothèque", { name: f.name }));
       refresh();
       setCloudDialogOpen(false);
     } catch (e) {
@@ -637,15 +639,20 @@ export function LibraryView() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
     setConfirm({
-      title: `Supprimer ${ids.length} ressource${ids.length > 1 ? "s" : ""} ?`,
-      message:
+      title: t("Supprimer {count} ressource(s) ?", { count: ids.length }),
+      message: t(
         "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
-      confirmLabel: "Supprimer",
+      ),
+      confirmLabel: t("Supprimer"),
       destructive: true,
       action: async () => {
         try {
           const n = await deleteResources(ids);
-          toast.success(`${n} resource(s) moved to trash`);
+          toast.success(
+            t("{count} ressource(s) déplacée(s) dans la corbeille", {
+              count: n,
+            }),
+          );
           setSelectedIds(new Set());
           setSelectMode(false);
           refresh();
@@ -663,7 +670,9 @@ export function LibraryView() {
     if (ids.length === 0) return;
     try {
       await Promise.all(ids.map((id) => setResourceStatus(id, "archived")));
-      toast.success(`${ids.length} resource(s) archived`);
+      toast.success(
+        t("{count} ressource(s) archivée(s)", { count: ids.length }),
+      );
       setSelectedIds(new Set());
       setSelectMode(false);
       refresh();
@@ -685,10 +694,10 @@ export function LibraryView() {
         await setResourceStatus(r.id, status);
         toast.success(
           status === "archived"
-            ? "Archivée"
+            ? tt("Archivée")
             : status === "todo"
-              ? "Marquée à traiter"
-              : "Réactivée",
+              ? tt("Marquée à traiter")
+              : tt("Réactivée"),
         );
         refresh();
       } catch (e) {
@@ -715,14 +724,16 @@ export function LibraryView() {
   const handleDelete = useCallback(
     (r: Resource) => {
       setConfirm({
-        title: `Supprimer « ${r.title} » ?`,
-        message: "Elle sera restaurable 30 jours dans la corbeille (Réglages).",
-        confirmLabel: "Supprimer",
+        title: tt("Supprimer « {name} » ?", { name: r.title }),
+        message: tt(
+          "Elle sera restaurable 30 jours dans la corbeille (Réglages).",
+        ),
+        confirmLabel: tt("Supprimer"),
         destructive: true,
         action: async () => {
           try {
             await deleteResource(r.id);
-            toast.success("Moved to trash");
+            toast.success(tt("Déplacée dans la corbeille"));
             refresh();
           } catch (e) {
             toast.error(describeError(e));
@@ -761,7 +772,7 @@ export function LibraryView() {
         await openResource(r);
         refresh();
       } catch (e) {
-        toast.error(`Ouverture impossible : ${e}`);
+        toast.error(tt("Ouverture impossible : {error}", { error: String(e) }));
       }
     },
     [refresh],
@@ -771,17 +782,17 @@ export function LibraryView() {
     if (!folderDialog) return;
     const name = folderName.trim();
     if (!name) {
-      toast.error("Give the folder a name");
+      toast.error(t("Donne un nom au dossier"));
       return;
     }
     try {
       if (folderDialog.mode === "create") {
         // créé dans le dossier courant (imbrication)
         await createFolder(name, undefined, openFolder?.id ?? null);
-        toast.success(`Folder « ${name} » created`);
+        toast.success(t("Dossier « {name} » créé", { name }));
       } else {
         await renameFolder(folderDialog.folder.id, name);
-        toast.success("Folder renamed");
+        toast.success(t("Dossier renommé"));
         // met à jour le fil d'ariane si le dossier renommé y figure
         setFolderStack((s) =>
           s.map((f) => (f.id === folderDialog.folder.id ? { ...f, name } : f)),
@@ -796,15 +807,15 @@ export function LibraryView() {
 
   function handleDeleteFolder(f: Folder) {
     setConfirm({
-      title: `Supprimer le dossier « ${f.name} » ?`,
-      message: "Les ressources qu'il contient ressortiront dans la grille.",
-      confirmLabel: "Supprimer",
+      title: t("Supprimer le dossier « {name} » ?", { name: f.name }),
+      message: t("Les ressources qu'il contient ressortiront dans la grille."),
+      confirmLabel: t("Supprimer"),
       destructive: true,
       action: async () => {
         try {
           await deleteFolder(f.id);
           if (openFolder?.id === f.id) goUp();
-          toast.success("Folder deleted");
+          toast.success(t("Dossier supprimé"));
           refresh();
         } catch (e) {
           toast.error(describeError(e));
@@ -815,15 +826,16 @@ export function LibraryView() {
 
   function handleDissolveFolder(f: Folder) {
     setConfirm({
-      title: `Dissoudre le dossier « ${f.name} » ?`,
-      message:
+      title: t("Dissoudre le dossier « {name} » ?", { name: f.name }),
+      message: t(
         "Ses ressources reviennent dans la grille et ses sous-dossiers remontent d'un niveau. Rien n'est supprimé.",
-      confirmLabel: "Dissoudre",
+      ),
+      confirmLabel: t("Dissoudre"),
       action: async () => {
         try {
           await dissolveFolder(f.id);
           if (openFolder?.id === f.id) goUp();
-          toast.success(`Folder « ${f.name} » dissolved`);
+          toast.success(t("Dossier « {name} » dissous", { name: f.name }));
           refresh();
         } catch (e) {
           toast.error(describeError(e));
@@ -953,7 +965,7 @@ export function LibraryView() {
           title={t("lib.openFolder")}
           onClick={() =>
             openResourcesFolder()
-              .then(() => toast.success("Resources folder opened"))
+              .then(() => toast.success(t("Dossier de ressources ouvert")))
               .catch((e) => toast.error(describeError(e)))
           }
         >
@@ -1020,18 +1032,18 @@ export function LibraryView() {
         data-tour="filters"
       >
         <FilterTab
-          label="Tout"
+          label={t("Tout")}
           count={(resources ?? []).length}
           active={typeFilter === null}
           onClick={() => setTypeFilter(null)}
         />
-        {tabs.map((t) => (
+        {tabs.map((tab) => (
           <FilterTab
-            key={t}
-            label={RESOURCE_TYPES.find((r) => r.value === t)?.label ?? t}
-            count={typeCounts.get(t) ?? 0}
-            active={typeFilter === t}
-            onClick={() => setTypeFilter(typeFilter === t ? null : t)}
+            key={tab}
+            label={t(RESOURCE_TYPES.find((r) => r.value === tab)?.label ?? tab)}
+            count={typeCounts.get(tab) ?? 0}
+            active={typeFilter === tab}
+            onClick={() => setTypeFilter(typeFilter === tab ? null : tab)}
           />
         ))}
         {/* filtres combinés : tag · statut, côte à côte */}
@@ -1050,12 +1062,12 @@ export function LibraryView() {
                 tagFilter && "border-primary/60 text-foreground",
               )}
             >
-              <SelectValue placeholder="Tags">
-                {tagFilter ? `#${tagFilter}` : "Tags"}
+              <SelectValue placeholder={t("Tags")}>
+                {tagFilter ? `#${tagFilter}` : t("Tags")}
               </SelectValue>
             </SelectTrigger>
             <SelectContent className="w-auto min-w-[9rem] max-w-[24rem]">
-              <SelectItem value="__all">Tous les tags</SelectItem>
+              <SelectItem value="__all">{t("Tous les tags")}</SelectItem>
               {(allTagsList ?? []).map((t) => (
                 <SelectItem key={t} value={t}>
                   #{t}
@@ -1085,21 +1097,21 @@ export function LibraryView() {
                   statusFilter && "border-primary/60 text-foreground",
                 )}
               >
-                <SelectValue placeholder="Statut">
+                <SelectValue placeholder={t("Statut")}>
                   {statusFilter === "todo"
-                    ? "À traiter"
+                    ? t("À traiter")
                     : statusFilter === "archived"
-                      ? "Archivés"
+                      ? t("Archivés")
                       : statusFilter === ""
-                        ? "Actifs"
-                        : "Statut"}
+                        ? t("Actifs")
+                        : t("Statut")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all">Tous</SelectItem>
-                <SelectItem value="__active">Actifs</SelectItem>
-                <SelectItem value="todo">À traiter</SelectItem>
-                <SelectItem value="archived">Archivés</SelectItem>
+                <SelectItem value="__all">{t("Tous")}</SelectItem>
+                <SelectItem value="__active">{t("Actifs")}</SelectItem>
+                <SelectItem value="todo">{t("À traiter")}</SelectItem>
+                <SelectItem value="archived">{t("Archivés")}</SelectItem>
               </SelectContent>
             </Select>
             {/* pagination : à la racine, collée à droite du filtre « Statut » */}
@@ -1123,10 +1135,12 @@ export function LibraryView() {
             variant="ghost"
             size="sm"
             onClick={goUp}
-            title={folderStack.length > 1 ? "Dossier précédent" : "Racine"}
+            title={
+              folderStack.length > 1 ? t("Dossier précédent") : t("Racine")
+            }
           >
             <ArrowLeft />
-            Retour
+            {t("Retour")}
           </Button>
           <nav className="flex min-w-0 items-center gap-1 text-sm">
             {folderStack.map((f, i) => {
@@ -1141,7 +1155,7 @@ export function LibraryView() {
                       type="button"
                       onClick={() => setFolderStack((s) => s.slice(0, i + 1))}
                       className="cursor-pointer truncate text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                      title={`Aller à « ${f.name} »`}
+                      title={t("Aller à « {name} »", { name: f.name })}
                     >
                       {f.name}
                     </button>
@@ -1151,8 +1165,7 @@ export function LibraryView() {
             })}
           </nav>
           <span className="shrink-0 text-xs text-muted-foreground">
-            {(resources ?? []).length} ressource
-            {(resources ?? []).length > 1 ? "s" : ""}
+            {t("{count} ressource(s)", { count: (resources ?? []).length })}
           </span>
           {/* pagination : dans un dossier, alignée à droite de la ligne du
               fil d'Ariane (même ligne que « Retour »). Masquée en mode tableau. */}
@@ -1173,18 +1186,18 @@ export function LibraryView() {
       {/* hint tri manuel */}
       {sortBy === "manual" && !openFolder && (
         <div className="px-4 pt-2 text-xs text-muted-foreground">
-          Glisse une tuile : un trait entre deux cartes les réordonne — lâche au
-          centre d'une carte pour créer un dossier avec les deux — pose sur un
-          dossier pour la ranger dedans. Au clavier : Ctrl+Maj+←/→ déplace la
-          tuile sélectionnée.
+          {t(
+            "Glisse une tuile : un trait entre deux cartes les réordonne — lâche au centre d'une carte pour créer un dossier avec les deux — pose sur un dossier pour la ranger dedans. Au clavier : Ctrl+Maj+←/→ déplace la tuile sélectionnée.",
+          )}
         </div>
       )}
 
       {/* le backend plafonne la vue à 500 lignes : le dire, pas le cacher */}
       {(resources ?? []).length >= 500 && (
         <div className="px-4 pt-2 text-xs text-amber-600 dark:text-amber-500">
-          Un très grand nombre de résultats — précise ta recherche ou ajoute un
-          filtre pour tout voir.
+          {t(
+            "Un très grand nombre de résultats — précise ta recherche ou ajoute un filtre pour tout voir.",
+          )}
         </div>
       )}
 
@@ -1397,12 +1410,12 @@ export function LibraryView() {
       <Dialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Joindre depuis le cloud</DialogTitle>
+            <DialogTitle>{t("Joindre depuis le cloud")}</DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-2">
             <Input
               autoFocus
-              placeholder="Filtrer par nom de fichier…"
+              placeholder={t("Filtrer par nom de fichier…")}
               value={cloudQuery}
               onChange={(e) => setCloudQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -1418,20 +1431,24 @@ export function LibraryView() {
               ) : (
                 <Search />
               )}
-              Lister
+              {t("Lister")}
             </Button>
           </div>
           {cloudSearching ? (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Lecture du dossier cloud…
+              {t("Lecture du dossier cloud…")}
             </div>
           ) : cloudResults !== null ? (
             cloudResults.length === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">
                 {cloudQuery.trim()
-                  ? `Aucun fichier trouvé pour « ${cloudQuery.trim()} ».`
-                  : "Aucun fichier envoyé pour l'instant — envoie-en un depuis le menu ⋯ d'une tuile fichier."}
+                  ? t("Aucun fichier trouvé pour « {name} ».", {
+                      name: cloudQuery.trim(),
+                    })
+                  : t(
+                      "Aucun fichier envoyé pour l'instant — envoie-en un depuis le menu ⋯ d'une tuile fichier.",
+                    )}
               </p>
             ) : (
               <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border p-2">
@@ -1461,7 +1478,9 @@ export function LibraryView() {
                         variant="outline"
                         size="sm"
                         disabled={adding}
-                        title="Télécharger et joindre ce fichier comme ressource locale"
+                        title={t(
+                          "Télécharger et joindre ce fichier comme ressource locale",
+                        )}
                         onClick={() => void addCloudFileAsResource(f)}
                       >
                         {adding ? (
@@ -1469,7 +1488,7 @@ export function LibraryView() {
                         ) : (
                           <Plus />
                         )}
-                        Joindre
+                        {t("Joindre")}
                       </Button>
                     </div>
                   );
@@ -1478,13 +1497,14 @@ export function LibraryView() {
             )
           ) : (
             <p className="py-2 text-sm text-muted-foreground">
-              Choisis le fichier à rapatrier dans Documents\Vaultly\Fichiers —
-              il sera joint comme ressource locale, lisible hors connexion.
+              {t(
+                "Choisis le fichier à rapatrier dans Documents\\Vaultly\\Fichiers — il sera joint comme ressource locale, lisible hors connexion.",
+              )}
             </p>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCloudDialogOpen(false)}>
-              Fermer
+              {t("Fermer")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1499,13 +1519,13 @@ export function LibraryView() {
           <DialogHeader>
             <DialogTitle>
               {folderDialog?.mode === "rename"
-                ? "Renommer le dossier"
-                : "Nouveau dossier"}
+                ? t("Renommer le dossier")
+                : t("Nouveau dossier")}
             </DialogTitle>
           </DialogHeader>
           <Input
             autoFocus
-            placeholder="Nom du dossier"
+            placeholder={t("Nom du dossier")}
             value={folderName}
             onChange={(e) => setFolderName(e.target.value)}
             onKeyDown={(e) => {
@@ -1514,10 +1534,10 @@ export function LibraryView() {
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setFolderDialog(null)}>
-              Annuler
+              {t("Annuler")}
             </Button>
             <Button onClick={() => void submitFolderDialog()}>
-              Enregistrer
+              {t("Enregistrer")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1579,6 +1599,7 @@ function GridPager({
   onPage: (p: number) => void;
   className?: string;
 }) {
+  const { t } = useI18n();
   if (pages <= 1) return null;
   const current = Math.min(page, pages - 1);
   return (
@@ -1588,8 +1609,8 @@ function GridPager({
         size="icon-sm"
         disabled={current <= 0}
         onClick={() => onPage(current - 1)}
-        title="Page précédente"
-        aria-label="Page précédente"
+        title={t("Page précédente")}
+        aria-label={t("Page précédente")}
       >
         <ChevronLeft />
       </Button>
@@ -1602,8 +1623,8 @@ function GridPager({
         size="icon-sm"
         disabled={current >= pages - 1}
         onClick={() => onPage(current + 1)}
-        title="Page suivante"
-        aria-label="Page suivante"
+        title={t("Page suivante")}
+        aria-label={t("Page suivante")}
       >
         <ChevronRight />
       </Button>

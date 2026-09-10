@@ -12,6 +12,7 @@ import {
   openResourceById,
   toggleFavorite,
 } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { noteColorClass, parseDbDate } from "@/lib/resources";
 import { sanitizeHtml } from "@/lib/sanitize";
 import type { Resource } from "@/lib/types";
@@ -32,6 +33,7 @@ function exeShortName(path: string): string {
 
 /** Lecture d'une note : titre + corps mis en forme, actions en pied de carte. */
 export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
+  const { t } = useI18n();
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   // application de notes externe (Réglages › Ouverture) : bouton proposé
   // seulement si configurée — hooks avant tout return (règles de React)
@@ -51,7 +53,7 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
     if (!note) return;
     try {
       await deleteResource(note.id);
-      toast.success("Note déplacée dans la corbeille");
+      toast.success(t("Note déplacée dans la corbeille"));
       onClose();
       onChanged();
     } catch (e) {
@@ -76,7 +78,7 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
     if (!note || !noteApp) return;
     try {
       await openResourceById(note.id);
-      toast.success(`Ouvert dans ${exeShortName(noteApp)}`);
+      toast.success(t("Ouvert dans {app}", { app: exeShortName(noteApp) }));
     } catch (e) {
       toast.error(describeError(e));
     }
@@ -118,13 +120,17 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
         <div className="flex items-start justify-between gap-3 px-6 pt-6">
           <div className="min-w-0">
             <h2 className="text-2xl font-bold leading-tight">{note.title}</h2>
-            {date && <p className="mt-1 text-xs opacity-60">Le {date}</p>}
+            {date && (
+              <p className="mt-1 text-xs opacity-60">
+                {t("Le {date}", { date })}
+              </p>
+            )}
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={() => onEdit(note)}
-            title="Modifier"
+            title={t("Modifier")}
             className="shrink-0"
           >
             <Pencil />
@@ -137,7 +143,9 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
             className="note-content text-[15px] leading-relaxed"
             onClick={onBodyClick}
             dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(note.notes) || "<p><em>(note vide)</em></p>",
+              __html:
+                sanitizeHtml(note.notes) ||
+                `<p><em>${t("(note vide)")}</em></p>`,
             }}
           />
         </div>
@@ -153,7 +161,7 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
             <Star
               className={note.favorite ? "fill-yellow-400 text-yellow-400" : ""}
             />
-            {note.favorite ? "Retiré des favoris" : "Favori"}
+            {note.favorite ? t("Retiré des favoris") : t("Favori")}
           </Button>
           {noteApp && (
             <Button
@@ -161,10 +169,12 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
               size="sm"
               onClick={() => void openExternal()}
               className="border-current/20 bg-transparent"
-              title="La note est exportée vers Documents\Vaultly\Notes à chaque ouverture"
+              title={t(
+                "La note est exportée vers Documents\\Vaultly\\Notes à chaque ouverture",
+              )}
             >
               <ExternalLink />
-              Ouvrir avec {exeShortName(noteApp)}
+              {t("Ouvrir avec {app}", { app: exeShortName(noteApp) })}
             </Button>
           )}
           <span className="grow" />
@@ -173,9 +183,12 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
             size="sm"
             onClick={() =>
               setConfirm({
-                title: "Supprimer la note ?",
-                message: `« ${note.title} » sera restaurable 30 jours dans la corbeille (Réglages).`,
-                confirmLabel: "Supprimer",
+                title: t("Supprimer la note ?"),
+                message: t(
+                  "« {title} » sera restaurable 30 jours dans la corbeille (Réglages).",
+                  { title: note.title },
+                ),
+                confirmLabel: t("Supprimer"),
                 destructive: true,
                 action: () => void remove(),
               })
@@ -183,7 +196,7 @@ export function NoteViewer({ note, onClose, onEdit, onChanged }: Props) {
             className="text-destructive hover:bg-destructive/10"
           >
             <Trash2 />
-            Supprimer
+            {t("Supprimer")}
           </Button>
         </div>
 

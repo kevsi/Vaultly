@@ -10,6 +10,7 @@ import {
   StickyNote,
   Wrench,
 } from "lucide-react";
+import { tt } from "@/lib/i18n";
 import type { Resource } from "./types";
 
 export const RESOURCE_TYPES: {
@@ -107,9 +108,9 @@ export function formatRemindAt(iso: string): string {
   const t = parseDbDate(iso).getTime();
   if (Number.isNaN(t)) return "";
   const days = Math.round((t - Date.now()) / 86_400_000);
-  if (days <= 0) return "aujourd'hui";
-  if (days === 1) return "demain";
-  if (days < 7) return `dans ${days} j`;
+  if (days <= 0) return tt("aujourd'hui");
+  if (days === 1) return tt("demain");
+  if (days < 7) return tt("dans {days} j", { days });
   return parseDbDate(iso).toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "short",

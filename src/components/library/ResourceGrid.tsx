@@ -24,6 +24,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fileKindFor } from "@/lib/fileKind";
 import { getPageDensity, rowsPerPageFor } from "@/lib/gridPagination";
+import { useI18n } from "@/lib/i18n";
 import { metaSummary } from "@/lib/metaFields";
 import { openResource } from "@/lib/openResource";
 import { hostOf, typeLabel } from "@/lib/resources";
@@ -143,6 +144,7 @@ function RowMenu({
   onEdit: (r: Resource) => void;
   onDelete: (r: Resource) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className="flex justify-end"
@@ -151,7 +153,7 @@ function RowMenu({
     >
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label={`Options pour « ${resource.title} »`}
+          aria-label={t("Options pour « {title} »", { title: resource.title })}
           className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground data-[popup-open]:text-foreground"
         >
           <MoreHorizontal className="size-4" />
@@ -159,30 +161,30 @@ function RowMenu({
         <DropdownMenuContent align="end" className="min-w-44">
           <DropdownMenuItem onClick={() => onDetails(resource)}>
             <Info />
-            Détails
+            {t("Détails")}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
               void navigator.clipboard
                 .writeText(resource.url)
-                .then(() => toast.success("URL copiée"))
-                .catch(() => toast.error("Copie impossible"));
+                .then(() => toast.success(t("URL copiée")))
+                .catch(() => toast.error(t("Copie impossible")));
             }}
           >
             <Copy />
-            Copier l'URL
+            {t("Copier l'URL")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => onEdit(resource)}>
             <Pencil />
-            Modifier
+            {t("Modifier")}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             onClick={() => onDelete(resource)}
           >
             <Trash2 />
-            Supprimer
+            {t("Supprimer")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -204,6 +206,7 @@ const LIST_COLS =
  * (un seul JSX par tuile, utilisé par les branches virtuelle et native).
  */
 export function ResourceGrid(props: ResourceGridProps) {
+  const { t } = useI18n();
   const {
     resources,
     visibleFolders,
@@ -390,14 +393,16 @@ export function ResourceGrid(props: ResourceGridProps) {
           }}
           title={
             openFolder
-              ? `Nouveau sous-dossier dans « ${openFolder.name} »`
-              : "Nouveau dossier"
+              ? t("Nouveau sous-dossier dans « {name} »", {
+                  name: openFolder.name,
+                })
+              : t("Nouveau dossier")
           }
           className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed bg-card p-3 text-muted-foreground transition-all duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-primary/50 hover:text-foreground hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
         >
           <FolderPlus className="size-8 opacity-70" />
           <span className="line-clamp-2 min-h-8 text-center text-xs font-medium leading-tight">
-            Nouveau dossier
+            {t("Nouveau dossier")}
           </span>
         </button>
       </div>
@@ -498,10 +503,10 @@ export function ResourceGrid(props: ResourceGridProps) {
               )}
             >
               <span />
-              <span>Ressource</span>
-              <span>Lien</span>
-              <span>Détails</span>
-              <span className="text-right">Ouvertures</span>
+              <span>{t("Ressource")}</span>
+              <span>{t("Lien")}</span>
+              <span>{t("Détails")}</span>
+              <span className="text-right">{t("Ouvertures")}</span>
               <span />
             </div>
             {/* dossiers en tête de liste */}
@@ -525,10 +530,10 @@ export function ResourceGrid(props: ResourceGridProps) {
                 </span>
                 <span className="truncate font-medium">{f.name}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  dossier
+                  {t("dossier")}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {f.count} ressource{f.count > 1 ? "s" : ""}
+                  {t("{count} ressource(s)", { count: f.count })}
                 </span>
                 <span />
                 <span />
@@ -590,7 +595,9 @@ export function ResourceGrid(props: ResourceGridProps) {
                       <Checkbox
                         checked={selectedIds.has(r.id)}
                         tabIndex={-1}
-                        aria-label={`Sélectionner « ${r.title} »`}
+                        aria-label={t("Sélectionner « {title} »", {
+                          title: r.title,
+                        })}
                       />
                     </span>
                   ) : (
