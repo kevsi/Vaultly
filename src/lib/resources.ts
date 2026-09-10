@@ -79,9 +79,10 @@ export function typeLabel(t: string): string {
 }
 
 export function hostOf(url: string): string {
-  if (url.startsWith("file:")) return "fichier local";
-  if (url.startsWith("local:")) return "sans lien";
-  if (url.startsWith("exe:")) return "application";
+  // libellés affichables (injectés dans des phrases traduites) : passer par tt
+  if (url.startsWith("file:")) return tt("fichier local");
+  if (url.startsWith("local:")) return tt("sans lien");
+  if (url.startsWith("exe:")) return tt("application");
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {

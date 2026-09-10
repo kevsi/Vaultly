@@ -327,7 +327,7 @@ export async function imageFileToDataUrl(file: File): Promise<string> {
     throw new Error(tt("Le fichier choisi n'est pas une image"));
   }
   if (file.size > 8 * 1024 * 1024) {
-    throw new Error("Image trop lourde (8 Mo maximum)");
+    throw new Error(tt("Image trop lourde (8 Mo maximum)"));
   }
   if (
     file.size <= 1_500_000 &&

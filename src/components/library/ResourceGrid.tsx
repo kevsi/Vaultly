@@ -17,7 +17,7 @@ import { getPageDensity, rowsPerPageFor } from "@/lib/gridPagination";
 import { useI18n } from "@/lib/i18n";
 import { openResource } from "@/lib/openResource";
 import type { Folder, Resource, SortBy } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, describeError } from "@/lib/utils";
 
 interface ResourceGridProps {
   resources: Resource[];
@@ -235,7 +235,9 @@ export function ResourceGrid(props: ResourceGridProps) {
       await openResource(r);
       void qc.invalidateQueries({ queryKey: ["resources"] });
     } catch (e) {
-      toast.error(`Ouverture impossible : ${e}`);
+      toast.error(
+        t("Ouverture impossible : {error}", { error: describeError(e) }),
+      );
     }
   }
 
@@ -461,7 +463,9 @@ export function ResourceGrid(props: ResourceGridProps) {
           it.k === "folder" ? (
             <div
               key={`folder-${it.f.id}`}
-              {...folderDragProps(it.f, setDragFolderId)}
+              // pas de drag de dossier en mode sélection (cohérent avec la
+              // vue liste et les tuiles ressources)
+              {...(selectMode ? {} : folderDragProps(it.f, setDragFolderId))}
               className="animate-tile-in"
               style={{ animationDelay: tileDelay(i) }}
             >

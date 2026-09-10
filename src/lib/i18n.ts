@@ -87,7 +87,7 @@ const fr: Dict = {
   "lib.stale.empty.desc": "Toutes tes ressources ont été ouvertes récemment.",
   "lib.loadError": "Impossible de charger ta bibliothèque.",
   "lib.retry": "Tout réessayer",
-  "lib.bulk.selected": "sélectionnée",
+  "lib.bulk.selected": "sélectionnée(s)",
   "lib.bulk.selectAll": "Tout sélectionner",
   "lib.bulk.deselect": "Tout désélectionner",
   "lib.bulk.archive": "Archiver",
@@ -1100,6 +1100,17 @@ const en: Dict = {
   "Les ressources iront dans la corbeille (restaurables 30 jours). Les dossiers sont supprimés : leur contenu ressort dans la grille.":
     "Resources go to the trash (restorable for 30 days). Folders are deleted: their contents reappear in the grid.",
   "Sélectionner le dossier « {name} »": 'Select folder "{name}"',
+  "{count} autre(s) rappel(s) en attente": "{count} other pending reminder(s)",
+  Voir: "View",
+  "Image trop lourde (8 Mo maximum)": "Image too large (8 MB maximum)",
+  "fichier local": "local file",
+  "sans lien": "no link",
+  application: "app",
+  Miel: "Honey",
+  Saumon: "Salmon",
+  Ciel: "Sky",
+  Menthe: "Mint",
+  Lilas: "Lilac",
 };
 
 /** Accès lecture aux dictionnaires (tests de cohérence i18n). */

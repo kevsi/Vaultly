@@ -32,7 +32,7 @@ import {
   openResourceById,
   startupNotice,
 } from "@/lib/api";
-import { useI18n } from "@/lib/i18n";
+import { tt, useI18n } from "@/lib/i18n";
 import {
   checkForUpdates,
   markUpdateChecked,
@@ -255,7 +255,7 @@ export default function App() {
   useEffect(() => {
     // erreurs invoke non catchées remontées en toast
     const handler = (e: PromiseRejectionEvent) => {
-      toast.error(String(e.reason));
+      toast.error(describeError(e.reason));
     };
     window.addEventListener("unhandledrejection", handler);
     return () => window.removeEventListener("unhandledrejection", handler);
@@ -293,7 +293,7 @@ export default function App() {
             {
               duration: 10_000,
               action: {
-                label: "Voir",
+                label: tt("Voir"),
                 onClick: () => {
                   localStorage.setItem("vaultly-settings-section", "maj");
                   setTab("settings");
@@ -335,7 +335,11 @@ export default function App() {
           }
         }
         if (due.length > 3) {
-          toast.info(`${due.length - 3} autre(s) rappel(s) en attente`);
+          toast.info(
+            tt("{count} autre(s) rappel(s) en attente", {
+              count: due.length - 3,
+            }),
+          );
         }
       } catch {
         /* silencieux */

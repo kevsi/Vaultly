@@ -297,8 +297,9 @@ export function LibraryView() {
     detailsViewing,
     folderDialog,
     cloudDialogOpen,
-    confirm, // goUp() inliné : la fonction recréée à chaque render ferait
-    // ré-abonner le listener en boucle comme dep d'effet
+    // confirm + setFolderStack en deps : goUp() est inliné (setFolderStack
+    // direct) pour éviter le ré-abonnement en boucle d'une fonction recréée
+    confirm,
     setFolderStack,
   ]);
 

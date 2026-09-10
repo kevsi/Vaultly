@@ -54,16 +54,19 @@ function walk(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-/** Clés littérales utilisées dans le code : t("...") / tt("..."). */
+/** Clés littérales utilisées dans le code : t("...") / tt("...").
+ *  NB : chaque branche autorise la quote opposée et l'échappement — une
+ *  apostrophe dans une chaîne double-quotée ("l'icône") ne doit pas masquer
+ *  la clé au scan. */
 function usedKeys(): string[] {
   const keys: string[] = [];
   for (const file of walk("src")) {
     if (file.replace(/\\/g, "/").endsWith("lib/i18n.ts")) continue;
     const src = readFileSync(file, "utf8");
     for (const m of src.matchAll(
-      /\b(?:t|tt)\(\s*(["'])((?:[^'"\\]|\\.)*)\1/g,
+      /\b(?:t|tt)\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g,
     )) {
-      const raw = m[2];
+      const raw = m[1] ?? m[2];
       try {
         keys.push(JSON.parse(`"${raw}"`) as string);
       } catch {

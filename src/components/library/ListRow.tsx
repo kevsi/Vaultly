@@ -319,11 +319,11 @@ export function ResourceListRow({
         {resource.url.startsWith("http")
           ? hostOf(resource.url)
           : resource.url.startsWith("exe:")
-            ? "application"
+            ? t("application")
             : resource.url.startsWith("file:")
-              ? "fichier local"
+              ? t("fichier local")
               : resource.url.startsWith("local:")
-                ? "sans lien"
+                ? t("sans lien")
                 : resource.url}
       </span>
       <span className="truncate text-xs text-muted-foreground">
