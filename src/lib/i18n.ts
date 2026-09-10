@@ -1,11 +1,8 @@
 /**
- * i18n minimaliste maison (aucune dépendance) : dictionnaire FR/EN,
+ * i18n minimaliste maison (aucune dépendance) : dictionnaires FR/EN,
  * persistance `vaultly-lang`, hook réactif `useI18n()` via
- * useSyncExternalStore. Le français reste la langue de référence : toute clé
- * absente retombe sur le texte français d'origine côté consommateur.
- *
- * NB : la couverture progresse par vagues (shell + bibliothèque + onboarding
- * d'abord) ; les chaînes non converties restent en français.
+ * useSyncExternalStore. Le français est la langue de référence : toute
+ * clé absente du dictionnaire FR retombe sur la clé elle-même.
  */
 
 export type Lang = "fr" | "en";
@@ -43,6 +40,133 @@ function subscribe(listener: () => void): () => void {
 }
 
 type Dict = Record<string, string>;
+
+const fr: Dict = {
+  // --- App shell ---
+  "nav.library": "Bibliothèque",
+  "nav.import": "Importer",
+  "nav.stats": "Statistiques",
+  "nav.trash": "Corbeille",
+  "nav.settings": "Réglages",
+  "win.minimize": "Réduire",
+  "win.maximize": "Agrandir",
+  "win.restore": "Restaurer",
+  "win.close": "Fermer",
+  "win.closeHint":
+    "Fermer masque l'app dans la barre des tâches — la palette la fait resurgir.",
+  "shortcuts.title": "Raccourcis clavier",
+  // --- Library toolbar ---
+  "lib.search": "Rechercher…  (raccourci : /)",
+  "lib.sort": "Trier",
+  "lib.favorites": "Favoris seulement",
+  "lib.stale": "À revisiter : jamais ouvertes depuis 60 jours",
+  "lib.captures": "Voir les captures d'écran des sites (au lieu des favicons)",
+  "lib.view.grid": "Affichage en tuiles",
+  "lib.view.list": "Affichage en liste",
+  "lib.view.board": "Tableau (kanban par statut)",
+  "lib.refresh":
+    "Rafraîchir (recolle les ressources et retente le chargement des images)",
+  "lib.openFolder": "Ouvrir le dossier de ressources (Documents\\Vaultly)",
+  "lib.select": "Sélectionner des ressources pour agir en masse",
+  "lib.select.exit": "Quitter",
+  "lib.select.select": "Sélectionner",
+  "lib.cloud": "Joindre un fichier depuis le cloud (WebDAV)",
+  "lib.cloud.label": "Depuis le cloud",
+  "lib.tags": "Gérer les tags (renommer, fusionner, supprimer)",
+  "lib.tags.label": "Tags",
+  "lib.note": "Nouvelle note (Ctrl+Alt+N)",
+  "lib.note.label": "Note",
+  "lib.add": "Ajouter",
+  "lib.filter.type.all": "Tout",
+  "lib.filter.tags": "Tags",
+  "lib.filter.tags.all": "Tous les tags",
+  "lib.filter.status": "Statut",
+  "lib.filter.status.all": "Tout",
+  "lib.filter.status.active": "Actif",
+  "lib.filter.status.todo": "À faire",
+  "lib.filter.status.archived": "Archivé",
+  "lib.filter.category": "Catégories",
+  // --- Library states ---
+  "lib.empty.title": "Ta bibliothèque est vide",
+  "lib.empty.desc":
+    "Ajoute ta première ressource, ou importe tes favoris depuis l'onglet Importer.",
+  "lib.empty.add": "Ajouter une ressource",
+  "lib.empty.filtered.title": "Aucun résultat",
+  "lib.empty.filtered.desc":
+    "Essaie une autre recherche ou retire les filtres.",
+  "lib.stale.empty.title": "Rien à revisiter 🎉",
+  "lib.stale.empty.desc": "Toutes tes ressources ont été ouvertes récemment.",
+  "lib.loadError": "Impossible de charger ta bibliothèque.",
+  "lib.retry": "Tout réessayer",
+  "lib.cap500":
+    "Un très grand nombre de résultats — affine ta recherche ou ajoute un filtre pour tout voir.",
+  "lib.refresh.done": "Rafraîchi",
+  "lib.bulk.selected": "sélectionnée",
+  "lib.bulk.selectAll": "Tout sélectionner",
+  "lib.bulk.deselect": "Tout désélectionner",
+  "lib.bulk.archive": "Archiver",
+  "lib.bulk.delete": "Supprimer",
+  "lib.archived": "Archivé",
+  "lib.todo": "À faire",
+  "lib.revisit": "à revisiter",
+  "lib.resources": "ressource(s)",
+  "lib.deleted": "moved to trash",
+  // --- Sorts ---
+  "sort.recent": "Récents",
+  "sort.added": "Ajoutés",
+  "sort.oldest": "Anciens",
+  "sort.mostUsed": "Plus utilisés",
+  "sort.manual": "Placement",
+  "sort.title": "A→Z",
+  // --- Common ---
+  "common.cancel": "Annuler",
+  "common.close": "Fermer",
+  "common.next": "Suivant",
+  "common.prev": "Précédent",
+  "common.finish": "Terminer",
+  "common.skip": "Passer",
+  // --- Onboarding ---
+  "onb.welcome.title": "Bienvenue dans Vaultly",
+  "onb.welcome.text":
+    "Ton hub personnel : tous tes bons sites, apps, fichiers et notes, réunis en tuiles.",
+  "onb.organize.title": "Range sans effort",
+  "onb.organize.text":
+    "Dossiers imbriqués, tags, favoris, tableau par statut. Les doublons sont fusionnés tout seul.",
+  "onb.ai.title": "Retrouve et connecte ton IA",
+  "onb.ai.text":
+    "Recherche instantanée, palette n'importe où, et tes assistants IA qui lisent ta bibliothèque.",
+  "onb.cta": "Découvrir l'interface",
+  // --- Soutenir ---
+  "support.title": "Soutenir Vaultly",
+  "support.text":
+    "Vaultly est gratuit, sans publicité et sans compte. Si l'app te sert au quotidien, un don — même petit — aide à garder le projet vivant : hébergement, temps de développement, nouvelles fonctionnalités.",
+  "support.sponsors": "GitHub Sponsors",
+  "support.kofi": "Ko-fi (dons ponctuels)",
+  "support.note":
+    "Les liens s'ouvrent dans ton navigateur. Toutes les fonctionnalités de Vaultly restent gratuites, pour toujours.",
+  // --- Guided tour ---
+  "tour.nav.title": "Navigue partout",
+  "tour.nav.desc":
+    "Bibliothèque, Importer, Stats, Corbeille et Réglages sont juste ici, sous la barre de titre.",
+  "tour.add.title": "Ajoute en un clic",
+  "tour.add.desc":
+    "Colle une URL : Vaultly devine le type et remplit titre, description, icône et tags tout seul.",
+  "tour.search.title": "Retrouve instantanément",
+  "tour.search.desc":
+    "Recherche plein texte (raccourci « / »). Et Ctrl+K — ou Ctrl+Alt+Espace n'importe où dans Windows — ouvre la palette.",
+  "tour.view.title": "Tuiles, liste ou tableau",
+  "tour.view.desc":
+    "Bascule l'affichage : grille de tuiles, liste dense, ou tableau façon kanban trié par statut.",
+  "tour.filters.title": "Filtre comme tu veux",
+  "tour.filters.desc":
+    "Par type, tag ou statut. Le sablier « À revisiter » fait ressortir ce que tu n'as plus ouvert depuis longtemps.",
+  "tour.shortcuts.title": "Aide & fenêtre",
+  "tour.shortcuts.desc":
+    "Le bouton « ? » liste tous les raccourcis. Fermer la fenêtre la masque dans la barre des tâches : la palette la fait resurgir.",
+  "tour.settings.title": "À toi de jouer",
+  "tour.settings.desc":
+    "Réglages : thème (Anime, Pro, Néon…), fond, sauvegarde cloud WebDAV, navigateur d'ouverture… et « Revoir la visite guidée ».",
+};
 
 const en: Dict = {
   // --- App shell ---
@@ -169,23 +293,19 @@ const en: Dict = {
     'Settings: theme (Anime, Pro, Neon…), wallpaper, WebDAV cloud backup, opening browser… and "Replay the guided tour".',
 };
 
-function t(lang: Lang, key: string): string {
-  if (lang === "en") {
-    const v = en[key];
-    if (v !== undefined) return v;
-  }
-  // français = langue de référence : la clé porte le texte FR d'origine
-  // (les consommateurs passent le texte FR comme clé) ; clé absente → renvoyer
-  // la clé telle quelle pour rester lisible.
+function translate(lang: Lang, key: string): string {
+  const dict = lang === "en" ? en : fr;
+  const v = dict[key];
+  if (v !== undefined) return v;
+  // clé absente du dictionnaire → retourner la clé (lisible en FR ou EN)
   return key;
 }
 
 export function useI18n(): {
   lang: Lang;
   setLang: (l: Lang) => void;
-  /** Traduit une clé ; en FR, renvoie le texte français passé. */
   t: (key: string) => string;
 } {
   const lang = useSyncExternalStore(subscribe, getLang, getLang);
-  return { lang, setLang, t: (key: string) => t(lang, key) };
+  return { lang, setLang, t: (key: string) => translate(lang, key) };
 }
