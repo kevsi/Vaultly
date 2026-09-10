@@ -1,18 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import {
-  ChevronDown,
-  ChevronLeft,
-  FileInput,
-  ImagePlus,
-  LayoutGrid,
-  Lightbulb,
-  RotateCcw,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  type FormState,
+  ResourceFormFields,
+} from "@/components/resource/ResourceFormFields";
+import { ResourceTypePicker } from "@/components/resource/ResourceTypePicker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -62,17 +56,6 @@ interface Props {
   onSaved: () => void;
 }
 
-interface FormState {
-  /** URL web : champ principal (sauf app) ou site web optionnel (app) */
-  url: string;
-  title: string;
-  description: string;
-  resourceType: string;
-  tags: string;
-  favorite: boolean;
-  meta: Record<string, string>;
-}
-
 const EMPTY: FormState = {
   url: "",
   title: "",
@@ -81,18 +64,6 @@ const EMPTY: FormState = {
   tags: "",
   favorite: false,
   meta: {},
-};
-
-/** Étape 1 : choix du type — descriptifs courts sous chaque carte. */
-const TYPE_DESCS: Record<string, string> = {
-  site: "Page web à garder",
-  app: "Logiciel à lancer",
-  repo: "GitHub, GitLab…",
-  outil: "Service en ligne",
-  article: "À lire, doc…",
-  video: "YouTube, Twitch…",
-  fichier: "Fichier du PC",
-  autre: "Tout le reste",
 };
 
 type Step = "type" | "form";
@@ -530,330 +501,42 @@ export function ResourceDialog({
 
           {step === "type" ? (
             /* ---- Étape 1 : cartes des types de ressources ---- */
-            <div className="grid animate-fade-in grid-cols-2 gap-2 sm:grid-cols-4">
-              {RESOURCE_TYPES.filter((t) => t.value !== "note").map((r) => (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => pickType(r.value)}
-                  className="group flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-border bg-card px-2 py-3.5 text-center transition-all outline-none hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  <span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                    <r.icon className="size-5" />
-                  </span>
-                  <span className="text-sm font-medium">{t(r.label)}</span>
-                  <span className="text-[11px] leading-tight text-muted-foreground">
-                    {t(TYPE_DESCS[r.value] ?? "")}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <ResourceTypePicker onPick={pickType} />
           ) : (
             /* ---- Étape 2 : options du type choisi (compact, sans scroll) ---- */
             <>
-              <div className="grid animate-fade-in gap-3">
-                {/* champ principal adapté au type */}
-                {isFile ? (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="filepath">{t(spec.primaryLabel)}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="filepath"
-                        placeholder={t(spec.primaryPlaceholder)}
-                        value={form.meta.filePath ?? ""}
-                        onChange={(e) => setMeta("filePath", e.target.value)}
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={() => void chooseLocalFile()}
-                      >
-                        {t("Parcourir…")}
-                      </Button>
-                    </div>
-                    {spec.hint && (
-                      <p className="text-xs text-muted-foreground">
-                        {t(spec.hint)}
-                      </p>
-                    )}
-                  </div>
-                ) : isApp ? (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="exe">{t(spec.primaryLabel)}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="exe"
-                        placeholder={t(spec.primaryPlaceholder)}
-                        value={form.meta.exePath ?? ""}
-                        onChange={(e) => setMeta("exePath", e.target.value)}
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={() => void chooseExecutable()}
-                      >
-                        <FileInput />
-                        {t("Parcourir…")}
-                      </Button>
-                    </div>
-                    {spec.hint && (
-                      <p className="text-xs text-muted-foreground">
-                        {t(spec.hint)}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="url">{t(spec.primaryLabel)}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="url"
-                        placeholder={t(spec.primaryPlaceholder)}
-                        value={form.url}
-                        onChange={(e) => set("url", e.target.value)}
-                      />
-                      {spec.showFetch && (
-                        <Button
-                          variant="outline"
-                          onClick={() => void autofill()}
-                          disabled={fetching}
-                          title={t(
-                            "Récupérer le titre et le favicon automatiquement",
-                          )}
-                        >
-                          <Sparkles
-                            className={fetching ? "animate-pulse" : ""}
-                          />
-                          {t("Récupérer")}
-                        </Button>
-                      )}
-                    </div>
-                    {urlHint ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-500">
-                        {t(urlHint)}
-                      </p>
-                    ) : (
-                      spec.hint && (
-                        <p className="text-xs text-muted-foreground">
-                          {t(spec.hint)}
-                        </p>
-                      )
-                    )}
-                    {/* liens déjà enregistrés sur ce domaine */}
-                    {similar.length > 0 && (
-                      <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
-                        <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
-                        <div className="min-w-0 text-xs">
-                          <span className="font-medium">
-                            {t("Déjà enregistré sur {host} :", {
-                              host: hostOf(similar[0].url),
-                            })}
-                          </span>{" "}
-                          {similar.map((r) => r.title).join(" · ")}
-                        </div>
-                      </div>
-                    )}
-                    {/* URL exacte déjà enregistrée : renvoi vers l'existant */}
-                    {duplicate && (
-                      <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2">
-                        <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
-                        <div className="min-w-0 flex-1 text-xs">
-                          <span className="font-medium">
-                            {t("Cette URL est déjà dans ta bibliothèque")}
-                            {typeof duplicate === "object" &&
-                              ` : ${duplicate.title}`}
-                          </span>
-                          {typeof duplicate === "object" && (
-                            <>
-                              {" · "}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onOpenChange(false);
-                                  onShowExisting(duplicate);
-                                }}
-                                className="cursor-pointer font-medium text-primary underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                              >
-                                {t("Voir la ressource")}
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* site web optionnel pour une app */}
-                {isApp && (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="appweb">
-                      {spec.secondaryLabel && t(spec.secondaryLabel)}
-                    </Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="appweb"
-                        placeholder="https://…"
-                        value={form.url}
-                        onChange={(e) => set("url", e.target.value)}
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={() => void autofill()}
-                        disabled={fetching}
-                        title={t(
-                          "Récupérer le titre et le favicon depuis le site",
-                        )}
-                      >
-                        <Sparkles className={fetching ? "animate-pulse" : ""} />
-                        {t("Récupérer")}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* icône : aperçu + choix manuel + favicon du site en un clic */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
-                    {favicon ? (
-                      <img
-                        src={favicon}
-                        alt=""
-                        className="size-full object-contain"
-                      />
-                    ) : (
-                      <ImagePlus className="size-4 text-muted-foreground" />
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void chooseIcon()}
-                  >
-                    <ImagePlus />
-                    {t("Icône…")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setLibraryOpen(true)}
-                    title={t(
-                      "Choisir parmi des milliers d'icônes : logos d'apps et icônes génériques",
-                    )}
-                  >
-                    <LayoutGrid />
-                    {t("Bibliothèque…")}
-                  </Button>
-                  {favicon && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        touchedIcon.current = true;
-                        setFavicon("");
-                      }}
-                      title={t("Retirer l'icône personnalisée")}
-                    >
-                      <RotateCcw />
-                      {t("Réinitialiser")}
-                    </Button>
-                  )}
-                  {faviconSuggest && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        touchedIcon.current = true;
-                        setFavicon(faviconSuggest);
-                      }}
-                      title={t(
-                        "Utiliser le favicon du site (clic = appliquer)",
-                      )}
-                      className="flex size-10 cursor-pointer items-center justify-center rounded-lg border border-dashed bg-muted/30 p-1.5 transition-colors outline-none hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/50"
-                    >
-                      <img
-                        src={faviconSuggest}
-                        alt=""
-                        className="size-full object-contain"
-                      />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="title">{t("Titre *")}</Label>
-                    <Input
-                      id="title"
-                      value={form.title}
-                      onChange={(e) => set("title", e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="tags">{t("Tags (virgules)")}</Label>
-                    <Input
-                      id="tags"
-                      placeholder={t("design, gratuit, ia")}
-                      value={form.tags}
-                      onChange={(e) => set("tags", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* champs spécifiques au type, repliés par défaut */}
-                {metaFields.length > 0 && (
-                  <div className="rounded-lg border bg-muted/30">
-                    <button
-                      type="button"
-                      onClick={() => setMetaOpen((o) => !o)}
-                      aria-expanded={metaOpen}
-                      className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "size-4 text-muted-foreground transition-transform",
-                          metaOpen && "rotate-180",
-                        )}
-                      />
-                      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        {t("{label} — détails", { label: t(typeEntry.label) })}
-                      </span>
-                      {filledMetaCount > 0 && (
-                        <span className="ml-auto rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary">
-                          {filledMetaCount}
-                        </span>
-                      )}
-                    </button>
-                    {metaOpen && (
-                      <div className="grid animate-fade-in gap-3 px-3 pb-3 sm:grid-cols-2">
-                        {metaFields.map((f) => (
-                          <div key={f.key} className="grid gap-1.5">
-                            <Label
-                              htmlFor={`meta-${f.key}`}
-                              className="text-sm"
-                            >
-                              {t(f.label)}
-                            </Label>
-                            <Input
-                              id={`meta-${f.key}`}
-                              placeholder={f.placeholder && t(f.placeholder)}
-                              value={form.meta[f.key] ?? ""}
-                              onChange={(e) => setMeta(f.key, e.target.value)}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid gap-1.5">
-                  <Label htmlFor="description">{t("Description")}</Label>
-                  <Input
-                    id="description"
-                    placeholder={t("Une phrase pour t'en souvenir")}
-                    value={form.description}
-                    onChange={(e) => set("description", e.target.value)}
-                  />
-                </div>
-              </div>
+              <ResourceFormFields
+                form={form}
+                set={set}
+                setMeta={setMeta}
+                spec={spec}
+                metaFields={metaFields}
+                typeEntry={typeEntry}
+                metaOpen={metaOpen}
+                onToggleMetaOpen={() => setMetaOpen((o) => !o)}
+                filledMetaCount={filledMetaCount}
+                favicon={favicon}
+                faviconSuggest={faviconSuggest}
+                onChooseIcon={() => void chooseIcon()}
+                onOpenIconLibrary={() => setLibraryOpen(true)}
+                onRemoveIcon={() => {
+                  touchedIcon.current = true;
+                  setFavicon("");
+                }}
+                onSuggestIcon={(dataUrl) => {
+                  touchedIcon.current = true;
+                  setFavicon(dataUrl);
+                }}
+                urlHint={urlHint}
+                fetching={fetching}
+                onFetch={() => void autofill()}
+                onChooseLocalFile={() => void chooseLocalFile()}
+                onChooseExecutable={() => void chooseExecutable()}
+                similar={similar}
+                duplicate={duplicate ?? null}
+                onShowExisting={onShowExisting}
+                onDismissDuplicate={() => onOpenChange(false)}
+              />
               <DialogFooter>
                 <div className="mr-auto flex items-center gap-2 self-center">
                   <Switch

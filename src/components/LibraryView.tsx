@@ -29,6 +29,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BoardView } from "@/components/BoardView";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
+import {
+  FolderCreateDialog,
+  type FolderDialogState,
+} from "@/components/library/FolderCreateDialog";
+import {
+  useBulkActions,
+  useFolderActions,
+  useLibraryFilters,
+} from "@/components/library/hooks";
 import { ResourceGrid } from "@/components/library/ResourceGrid";
 import { NoteEditor } from "@/components/NoteEditor";
 import { NoteViewer } from "@/components/NoteViewer";
@@ -58,22 +67,17 @@ import {
   cloudListFiles,
   cloudUploadFile,
   createFolder,
-  deleteFolder,
   deleteResource,
-  deleteResources,
-  dissolveFolder,
   listFolders,
   listResources,
-  moveFolder,
   openResourcesFolder,
-  renameFolder,
   reorderResources,
   setResourceFolder,
   setResourceStatus,
 } from "@/lib/api";
 import { tt, useI18n } from "@/lib/i18n";
 import { openResource } from "@/lib/openResource";
-import { isStale, RESOURCE_TYPES } from "@/lib/resources";
+import { RESOURCE_TYPES } from "@/lib/resources";
 import {
   getTileSize,
   getViewMode,
@@ -81,7 +85,7 @@ import {
   tileMinPx,
   type ViewMode,
 } from "@/lib/tileSize";
-import type { Folder, Resource, SortBy } from "@/lib/types";
+import type { Resource, SortBy } from "@/lib/types";
 import { cn, describeError } from "@/lib/utils";
 
 function getSorts(t: (key: string) => string) {
@@ -101,41 +105,10 @@ const SKELETON_KEYS = Array.from({ length: 12 }, (_, i) => `skeleton-${i}`);
 export function LibraryView() {
   const qc = useQueryClient();
   const { t } = useI18n();
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [favOnly, setFavOnly] = useState(false);
-  /** Revue « À revisiter » : jamais ouvertes depuis 60 jours (isStale),
-   *  triées ici (ouvrir / archiver / supprimer en sélection multiple) */
-  const [staleOnly, setStaleOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<SortBy>("recent");
-  // pile de navigation des dossiers : « Retour » remonte au dossier PARENT
-  // (pas à la racine) quand on est dans un dossier imbriqué
-  const [folderStack, setFolderStack] = useState<Folder[]>([]);
-  const openFolder =
-    folderStack.length > 0 ? folderStack[folderStack.length - 1] : null;
-  /** Remonte d'un niveau dans la hiérarchie (Retour, Échap, suppression ou
-   *  dissolution du dossier ouvert). */
-  function goUp() {
-    setFolderStack((s) => s.slice(0, -1));
-  }
-  const [dragId, setDragId] = useState<number | null>(null);
-  const [dragFolderId, setDragFolderId] = useState<number | null>(null);
-  /** zone de dépôt pendant le drag d'une ressource : bord gauche/droit de la
-   *  tuile = trait d'insertion, centre = fusion en dossier */
-  const [dropZone, setDropZone] = useState<{
-    id: number;
-    zone: "left" | "right" | "center";
-  } | null>(null);
-  const [folderDropHint, setFolderDropHint] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [editing, setEditing] = useState<Resource | null>(null);
   const [prefillUrl, setPrefillUrl] = useState<string | null>(null);
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [noteEditorOpen, setNoteEditorOpen] = useState(false);
   const [noteEditing, setNoteEditing] = useState<Resource | null>(null);
   const [noteViewing, setNoteViewing] = useState<Resource | null>(null);
@@ -148,34 +121,111 @@ export function LibraryView() {
   const [cloudSearching, setCloudSearching] = useState(false);
   const [cloudAddingId, setCloudAddingId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
-  const [captures, setCaptures] = useState(
-    () => localStorage.getItem("vaultly-captures") === "1",
-  );
-  const [folderDialog, setFolderDialog] = useState<
-    { mode: "create" } | { mode: "rename"; folder: Folder } | null
-  >(null);
+  const [folderDialog, setFolderDialog] = useState<FolderDialogState>(null);
   const [folderName, setFolderName] = useState("");
-  // --- pagination de la grille : l'état vit ici (la barre est rendue dans la
-  // toolbar) ; ResourceGrid tranche `pageItems` et remonte pages/total ---
-  const [page, setPage] = useState(0);
-  const [pagination, setPagination] = useState({ pages: 1, total: 0 });
+  const [dragId, setDragId] = useState<number | null>(null);
+  /** zone de dépôt pendant le drag d'une ressource : bord gauche/droit de la
+   *  tuile = trait d'insertion, centre = fusion en dossier */
+  const [dropZone, setDropZone] = useState<{
+    id: number;
+    zone: "left" | "right" | "center";
+  } | null>(null);
   // compteur de rechargement : incrémenter remonte la grille → réessaie les
   // images distantes (favicons/captures) passées en erreur faute de réseau
   const [imgNonce, setImgNonce] = useState(0);
-  const handlePagination = useCallback(
-    (info: { pages: number; total: number }) => {
-      setPagination((prev) =>
-        prev.pages === info.pages && prev.total === info.total ? prev : info,
-      );
-    },
-    [],
-  );
+  // --- taille des tuiles + mode d'affichage (réglages visuels) ---
+  const [tileSize, setTileSizeState] = useState(getTileSize);
+  const [viewMode, setViewModeState] = useState<ViewMode>(getViewMode);
+  useEffect(() => {
+    const onSize = () => setTileSizeState(getTileSize());
+    const onView = () => setViewModeState(getViewMode());
+    window.addEventListener("vaultly:tile-size-changed", onSize);
+    window.addEventListener("vaultly:view-mode-changed", onView);
+    return () => {
+      window.removeEventListener("vaultly:tile-size-changed", onSize);
+      window.removeEventListener("vaultly:view-mode-changed", onView);
+    };
+  }, []);
+  const tileMin = tileMinPx(tileSize);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(query), 250);
-    return () => clearTimeout(t);
-  }, [query]);
+  const refresh = useCallback(() => {
+    // n'invalide que ce que les actions de la bibliothèque modifient :
+    // un invalidateQueries() global re-déclencherait le scan disque des
+    // profils navigateur (queryKey « browserProfiles ») à chaque action.
+    void qc.invalidateQueries({ queryKey: ["resources"] });
+    void qc.invalidateQueries({ queryKey: ["folders"] });
+    void qc.invalidateQueries({ queryKey: ["allTags"] });
+    void qc.invalidateQueries({ queryKey: ["stats"] });
+    // les suppressions alimentent la corbeille : le badge du header suit
+    void qc.invalidateQueries({ queryKey: ["trash"] });
+  }, [qc]);
+
+  const { data: folders } = useQuery({
+    queryKey: ["folders"],
+    queryFn: listFolders,
+  });
+
+  // stable entre les renders : passé aux tuiles mémoïsées (sinon `?? []`
+  // crée un nouveau tableau à chaque render et invalide le memo).
+  const foldersList = useMemo(() => folders ?? [], [folders]);
+
+  const {
+    folderStack,
+    setFolderStack,
+    openFolder,
+    goUp,
+    dragFolderId,
+    setDragFolderId,
+    folderDropHint,
+    setFolderDropHint,
+    handleDeleteFolder,
+    handleDissolveFolder,
+    handleFolderDrop,
+    handleDropOnFolder,
+  } = useFolderActions({ refresh, setConfirm, dragId, setDragId });
+
+  const {
+    selectMode,
+    setSelectMode,
+    selectedIds,
+    setSelectedIds,
+    handleBulkArchive,
+    handleBulkDelete,
+  } = useBulkActions({ refresh, setConfirm });
+
+  const {
+    query,
+    setQuery,
+    debounced,
+    typeFilter,
+    setTypeFilter,
+    tagFilter,
+    setTagFilter,
+    statusFilter,
+    setStatusFilter,
+    favOnly,
+    setFavOnly,
+    staleOnly,
+    setStaleOnly,
+    sortBy,
+    setSortBy,
+    captures,
+    toggleCaptures,
+    resources,
+    isLoading,
+    isError,
+    refetch,
+    queryKey,
+    displayed,
+    hasFilter,
+    staleAlone,
+    visibleFolders,
+    page,
+    setPage,
+    pagination,
+    handlePagination,
+  } = useLibraryFilters({ foldersList, openFolder, viewMode });
 
   // raccourci "/" pour focus la recherche — jamais pendant une saisie
   // (INPUT, TEXTAREA ou éditeur contentEditable), sinon le "/" serait
@@ -242,7 +292,9 @@ export function LibraryView() {
     detailsViewing,
     folderDialog,
     cloudDialogOpen,
-    confirm,
+    confirm, // goUp() inliné : la fonction recréée à chaque render ferait
+    // ré-abonner le listener en boucle comme dep d'effet
+    setFolderStack,
   ]);
 
   // URL capturée depuis le presse-papiers : modale pré-remplie.
@@ -278,101 +330,10 @@ export function LibraryView() {
     return () => window.removeEventListener("vaultly:add-url", onAddUrl);
   }, []);
 
-  const queryKey = [
-    "resources",
-    debounced,
-    typeFilter,
-    tagFilter,
-    statusFilter,
-    favOnly,
-    sortBy,
-    openFolder?.id ?? null,
-  ] as const;
-
-  const {
-    data: resources,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey,
-    queryFn: () =>
-      listResources({
-        query: debounced,
-        resourceType: typeFilter,
-        tag: tagFilter,
-        status: statusFilter,
-        // accueil (racine, aucun statut choisi) : masquer les archivés —
-        // ce sont les « faits », à ne pas encombrer la vue courante.
-        hideArchived: !openFolder && !statusFilter,
-        favorite: favOnly,
-        sortBy,
-        // accueil = ressources sans dossier ; dossier ouvert = son contenu
-        folderId: openFolder?.id ?? null,
-        unfiledOnly: !openFolder,
-      }),
-  });
-
   const { data: allTagsList } = useQuery({
     queryKey: ["allTags"],
     queryFn: allTags,
   });
-
-  const { data: folders } = useQuery({
-    queryKey: ["folders"],
-    queryFn: listFolders,
-  });
-
-  // stable entre les renders : passé aux tuiles mémoïsées (sinon `?? []`
-  // crée un nouveau tableau à chaque render et invalide le memo).
-  const foldersList = useMemo(() => folders ?? [], [folders]);
-  // revue « À revisiter » : filtre client sur les résultats chargés
-  // (jamais ouvertes depuis 60 jours, non archivées)
-  const displayed = useMemo(
-    () =>
-      staleOnly
-        ? (resources ?? []).filter((r) => r.status !== "archived" && isStale(r))
-        : (resources ?? []),
-    [resources, staleOnly],
-  );
-  const hasFilter = Boolean(
-    debounced ||
-      favOnly ||
-      staleOnly ||
-      typeFilter ||
-      tagFilter ||
-      statusFilter,
-  );
-  // revue seule (sans autre filtre) et vide = tout est à jour 🎉
-  const staleAlone =
-    staleOnly &&
-    !debounced &&
-    !favOnly &&
-    !typeFilter &&
-    !tagFilter &&
-    !statusFilter;
-  const visibleFolders = useMemo(
-    () =>
-      foldersList.filter((f) =>
-        openFolder ? f.parentId === openFolder.id : f.parentId === null,
-      ),
-    [foldersList, openFolder],
-  );
-
-  // --- taille des tuiles + mode d'affichage (réglages visuels) ---
-  const [tileSize, setTileSizeState] = useState(getTileSize);
-  const [viewMode, setViewModeState] = useState<ViewMode>(getViewMode);
-  useEffect(() => {
-    const onSize = () => setTileSizeState(getTileSize());
-    const onView = () => setViewModeState(getViewMode());
-    window.addEventListener("vaultly:tile-size-changed", onSize);
-    window.addEventListener("vaultly:view-mode-changed", onView);
-    return () => {
-      window.removeEventListener("vaultly:tile-size-changed", onSize);
-      window.removeEventListener("vaultly:view-mode-changed", onView);
-    };
-  }, []);
-  const tileMin = tileMinPx(tileSize);
 
   // Kanban : sa propre lecture TOUS statuts (les 3 colonnes doivent exister
   // même quand l'accueil masque les archivés). Suit dossier + recherche +
@@ -400,44 +361,6 @@ export function LibraryView() {
       }),
     enabled: viewMode === "board",
   });
-
-  // pagination : changer de dossier/filtres (ou la vue) ramène à la page 1
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset voulu quand ces critères changent ; leurs valeurs ne sont pas lues dans l'effet
-  useEffect(() => {
-    setPage(0);
-  }, [
-    openFolder?.id,
-    viewMode,
-    debounced,
-    typeFilter,
-    tagFilter,
-    statusFilter,
-    favOnly,
-    staleOnly,
-    sortBy,
-  ]);
-  // recale la page si le nb de pages se réduit (filtre, resize, suppression)
-  useEffect(() => {
-    if (page > pagination.pages - 1) setPage(Math.max(0, pagination.pages - 1));
-  }, [pagination.pages, page]);
-
-  function toggleCaptures() {
-    const next = !captures;
-    setCaptures(next);
-    localStorage.setItem("vaultly-captures", next ? "1" : "0");
-  }
-
-  const refresh = useCallback(() => {
-    // n'invalide que ce que les actions de la bibliothèque modifient :
-    // un invalidateQueries() global re-déclencherait le scan disque des
-    // profils navigateur (queryKey « browserProfiles ») à chaque action.
-    void qc.invalidateQueries({ queryKey: ["resources"] });
-    void qc.invalidateQueries({ queryKey: ["folders"] });
-    void qc.invalidateQueries({ queryKey: ["allTags"] });
-    void qc.invalidateQueries({ queryKey: ["stats"] });
-    // les suppressions alimentent la corbeille : le badge du header suit
-    void qc.invalidateQueries({ queryKey: ["trash"] });
-  }, [qc]);
 
   /** Rafraîchir : recolle les données à la source + retente les images. */
   function handleRefresh() {
@@ -504,39 +427,6 @@ export function LibraryView() {
     }
   }
 
-  /** Dépose d'un dossier sur un autre : imbrique (le backend refuse les cycles). */
-  async function handleFolderDrop(target: Folder) {
-    setFolderDropHint(null);
-    if (!dragFolderId || dragFolderId === target.id) {
-      setDragFolderId(null);
-      return;
-    }
-    const srcId = dragFolderId;
-    setDragFolderId(null);
-    try {
-      await moveFolder(srcId, target.id);
-      toast.success(t("Déplacé dans « {name} »", { name: target.name }));
-      refresh();
-    } catch (e) {
-      toast.error(describeError(e));
-    }
-  }
-
-  /** Dépose d'une tuile sur un dossier : range la ressource dedans. */
-  async function handleDropOnFolder(folder: Folder) {
-    setFolderDropHint(null);
-    if (dragId === null) return;
-    const id = dragId;
-    setDragId(null);
-    try {
-      await setResourceFolder(id, folder.id);
-      toast.success(t("Rangée dans « {name} »", { name: folder.name }));
-      refresh();
-    } catch (e) {
-      toast.error(describeError(e));
-    }
-  }
-
   const handleMoveToFolder = useCallback(
     async (r: Resource, folderId: number | null) => {
       try {
@@ -600,14 +490,17 @@ export function LibraryView() {
     }
   }
 
-  const toggleSelect = useCallback((r: Resource) => {
-    setSelectedIds((s) => {
-      const next = new Set(s);
-      if (next.has(r.id)) next.delete(r.id);
-      else next.add(r.id);
-      return next;
-    });
-  }, []);
+  const toggleSelect = useCallback(
+    (r: Resource) => {
+      setSelectedIds((s) => {
+        const next = new Set(s);
+        if (next.has(r.id)) next.delete(r.id);
+        else next.add(r.id);
+        return next;
+      });
+    },
+    [setSelectedIds],
+  );
 
   // stable : passé tel quel aux tuiles mémoïsées (une closure inline par
   // render annulerait le memo sur toute la grille à chaque dragOver)
@@ -634,52 +527,6 @@ export function LibraryView() {
     },
     [resources, qc, queryKey, refresh],
   );
-
-  function handleBulkDelete() {
-    const ids = [...selectedIds];
-    if (ids.length === 0) return;
-    setConfirm({
-      title: t("Supprimer {count} ressource(s) ?", { count: ids.length }),
-      message: t(
-        "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
-      ),
-      confirmLabel: t("Supprimer"),
-      destructive: true,
-      action: async () => {
-        try {
-          const n = await deleteResources(ids);
-          toast.success(
-            t("{count} ressource(s) déplacée(s) dans la corbeille", {
-              count: n,
-            }),
-          );
-          setSelectedIds(new Set());
-          setSelectMode(false);
-          refresh();
-        } catch (e) {
-          toast.error(describeError(e));
-        }
-      },
-    });
-  }
-
-  /** Archivage en masse (revue « À revisiter ») : statut seul, un toast.
-   *  Les ressources gardent leur dossier (le statut est la source de vérité). */
-  async function handleBulkArchive() {
-    const ids = [...selectedIds];
-    if (ids.length === 0) return;
-    try {
-      await Promise.all(ids.map((id) => setResourceStatus(id, "archived")));
-      toast.success(
-        t("{count} ressource(s) archivée(s)", { count: ids.length }),
-      );
-      setSelectedIds(new Set());
-      setSelectMode(false);
-      refresh();
-    } catch (e) {
-      toast.error(describeError(e));
-    }
-  }
 
   /**
    * Statut de traitement = SEULE source de vérité (le champ `status`).
@@ -779,72 +626,6 @@ export function LibraryView() {
     },
     [refresh],
   );
-
-  async function submitFolderDialog() {
-    if (!folderDialog) return;
-    const name = folderName.trim();
-    if (!name) {
-      toast.error(t("Donne un nom au dossier"));
-      return;
-    }
-    try {
-      if (folderDialog.mode === "create") {
-        // créé dans le dossier courant (imbrication)
-        await createFolder(name, undefined, openFolder?.id ?? null);
-        toast.success(t("Dossier « {name} » créé", { name }));
-      } else {
-        await renameFolder(folderDialog.folder.id, name);
-        toast.success(t("Dossier renommé"));
-        // met à jour le fil d'ariane si le dossier renommé y figure
-        setFolderStack((s) =>
-          s.map((f) => (f.id === folderDialog.folder.id ? { ...f, name } : f)),
-        );
-      }
-      setFolderDialog(null);
-      refresh();
-    } catch (e) {
-      toast.error(describeError(e));
-    }
-  }
-
-  function handleDeleteFolder(f: Folder) {
-    setConfirm({
-      title: t("Supprimer le dossier « {name} » ?", { name: f.name }),
-      message: t("Les ressources qu'il contient ressortiront dans la grille."),
-      confirmLabel: t("Supprimer"),
-      destructive: true,
-      action: async () => {
-        try {
-          await deleteFolder(f.id);
-          if (openFolder?.id === f.id) goUp();
-          toast.success(t("Dossier supprimé"));
-          refresh();
-        } catch (e) {
-          toast.error(describeError(e));
-        }
-      },
-    });
-  }
-
-  function handleDissolveFolder(f: Folder) {
-    setConfirm({
-      title: t("Dissoudre le dossier « {name} » ?", { name: f.name }),
-      message: t(
-        "Ses ressources reviennent dans la grille et ses sous-dossiers remontent d'un niveau. Rien n'est supprimé.",
-      ),
-      confirmLabel: t("Dissoudre"),
-      action: async () => {
-        try {
-          await dissolveFolder(f.id);
-          if (openFolder?.id === f.id) goUp();
-          toast.success(t("Dossier « {name} » dissous", { name: f.name }));
-          refresh();
-        } catch (e) {
-          toast.error(describeError(e));
-        }
-      },
-    });
-  }
 
   // compteurs de types sur le jeu de résultats courant
   const typeCounts = useMemo(() => {
@@ -1513,37 +1294,19 @@ export function LibraryView() {
       </Dialog>
 
       {/* création / renommage de dossier */}
-      <Dialog
-        open={folderDialog !== null}
-        onOpenChange={(o) => !o && setFolderDialog(null)}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {folderDialog?.mode === "rename"
-                ? t("Renommer le dossier")
-                : t("Nouveau dossier")}
-            </DialogTitle>
-          </DialogHeader>
-          <Input
-            autoFocus
-            placeholder={t("Nom du dossier")}
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void submitFolderDialog();
-            }}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFolderDialog(null)}>
-              {t("Annuler")}
-            </Button>
-            <Button onClick={() => void submitFolderDialog()}>
-              {t("Enregistrer")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FolderCreateDialog
+        state={folderDialog}
+        name={folderName}
+        onNameChange={setFolderName}
+        onClose={() => setFolderDialog(null)}
+        parentFolderId={openFolder?.id ?? null}
+        onBreadcrumbRename={(folderId, name) =>
+          setFolderStack((s) =>
+            s.map((f) => (f.id === folderId ? { ...f, name } : f)),
+          )
+        }
+        onRefresh={refresh}
+      />
     </div>
   );
 }

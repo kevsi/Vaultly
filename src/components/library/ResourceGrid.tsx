@@ -1,45 +1,23 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  Copy,
-  FolderOpen,
-  FolderPlus,
-  Info,
-  MoreHorizontal,
-  Pencil,
-  Star,
-  Trash2,
-} from "lucide-react";
+import { FolderPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FolderTile } from "@/components/FolderTile";
-import { ResourceTile } from "@/components/ResourceTile";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { FolderDialogState } from "@/components/library/FolderCreateDialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  type DropZone,
+  FolderListRow,
+  folderDragProps,
+  LIST_COLS,
+  ResourceListRow,
+} from "@/components/library/ListRow";
+import { ResourceTile } from "@/components/ResourceTile";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { fileKindFor } from "@/lib/fileKind";
 import { getPageDensity, rowsPerPageFor } from "@/lib/gridPagination";
 import { useI18n } from "@/lib/i18n";
-import { metaSummary } from "@/lib/metaFields";
 import { openResource } from "@/lib/openResource";
-import { hostOf, typeLabel } from "@/lib/resources";
 import type { Folder, Resource, SortBy } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type DropZone = {
-  id: number;
-  zone: "left" | "right" | "center";
-};
-
-type FolderDialogState =
-  | { mode: "create" }
-  | { mode: "rename"; folder: Folder }
-  | null;
 
 interface ResourceGridProps {
   resources: Resource[];
@@ -102,99 +80,6 @@ function zoneFor(e: React.DragEvent): "left" | "right" | "center" {
   if (x > w * 0.7) return "right";
   return "center";
 }
-
-/** Icône de ligne (vue LISTE) : favicon, icône d'extension pour les
- *  fichiers, initiales en repli — avec gestion locale de l'erreur image. */
-function RowIcon({ resource }: { resource: Resource }) {
-  const [imgError, setImgError] = useState(false);
-  const kind =
-    resource.resourceType === "fichier" ? fileKindFor(resource) : null;
-  const KindIcon = kind?.icon;
-  return (
-    <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
-      {resource.favicon && !imgError ? (
-        <img
-          src={resource.favicon}
-          alt=""
-          loading="lazy"
-          className="size-full object-contain p-1"
-          onError={() => setImgError(true)}
-        />
-      ) : KindIcon ? (
-        <KindIcon className={`size-4 ${kind?.className ?? ""}`} />
-      ) : (
-        <span className="text-[10px] font-bold uppercase text-muted-foreground">
-          {resource.title.slice(0, 2)}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** Menu ⋯ compact des lignes de la vue LISTE : couvre les actions les plus
- *  courantes sans dupliquer tout le menu de ResourceTile. */
-function RowMenu({
-  resource,
-  onDetails,
-  onEdit,
-  onDelete,
-}: {
-  resource: Resource;
-  onDetails: (r: Resource) => void;
-  onEdit: (r: Resource) => void;
-  onDelete: (r: Resource) => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div
-      className="flex justify-end"
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-    >
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={t("Options pour « {title} »", { title: resource.title })}
-          className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground data-[popup-open]:text-foreground"
-        >
-          <MoreHorizontal className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-44">
-          <DropdownMenuItem onClick={() => onDetails(resource)}>
-            <Info />
-            {t("Détails")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(resource.url)
-                .then(() => toast.success(t("URL copiée")))
-                .catch(() => toast.error(t("Copie impossible")));
-            }}
-          >
-            <Copy />
-            {t("Copier l'URL")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => onEdit(resource)}>
-            <Pencil />
-            {t("Modifier")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => onDelete(resource)}
-          >
-            <Trash2 />
-            {t("Supprimer")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
-/** Colonnes de la vue liste (en-tête + lignes partagent la grille). */
-const LIST_COLS =
-  "grid-cols-[minmax(2.5rem,auto)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(4.5rem,auto)_minmax(3rem,auto)]";
 
 /**
  * Rendu du contenu de la bibliothèque : trois modes, un seul endroit.
@@ -511,130 +396,34 @@ export function ResourceGrid(props: ResourceGridProps) {
             </div>
             {/* dossiers en tête de liste */}
             {visibleFolders.map((f) => (
-              <div
+              <FolderListRow
                 key={`folder-${f.id}`}
-                {...folderDragProps(f, setDragFolderId)}
-                role="button"
-                tabIndex={0}
-                onClick={() => setFolderStack((s) => [...s, f])}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") setFolderStack((s) => [...s, f]);
-                }}
-                className={cn(
-                  LIST_COLS,
-                  "grid cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm outline-none transition-colors last:border-b-0 hover:bg-accent/40 focus-visible:bg-accent/40",
-                )}
-              >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-muted">
-                  <FolderOpen className="size-4 text-amber-500" />
-                </span>
-                <span className="truncate font-medium">{f.name}</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {t("dossier")}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {t("{count} ressource(s)", { count: f.count })}
-                </span>
-                <span />
-                <span />
-              </div>
+                folder={f}
+                setFolderStack={setFolderStack}
+                setDragFolderId={setDragFolderId}
+              />
             ))}
             {/* ressources */}
-            {resources.map((r) => {
-              const summary = metaSummary(r, 3);
-              return (
-                <div
-                  key={r.id}
-                  draggable={sortBy === "manual" && !selectMode}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", String(r.id));
-                    e.dataTransfer.effectAllowed = "move";
-                    handleDragStarted(r);
-                  }}
-                  onDragOver={(e) => {
-                    if (dragId === null) return;
-                    e.preventDefault();
-                    setDropZone((h) =>
-                      h && h.id === r.id ? h : { id: r.id, zone: "center" },
-                    );
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (dropZone?.id === r.id)
-                      void handleDropOnTile(r, dropZone.zone);
-                  }}
-                  onDragEnd={() => {
-                    setDragId(null);
-                    setDropZone(null);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() =>
-                    selectMode ? toggleSelect(r) : void openRow(r)
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      if (selectMode) toggleSelect(r);
-                      else void openRow(r);
-                    }
-                  }}
-                  className={cn(
-                    LIST_COLS,
-                    "grid cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm outline-none transition-colors last:border-b-0 hover:bg-accent/40 focus-visible:bg-accent/40",
-                    dragId === r.id && "opacity-40",
-                    dropZone?.id === r.id &&
-                      "outline-2 outline-dashed outline-primary/60",
-                    selectedIds.has(r.id) &&
-                      selectMode &&
-                      "ring-2 ring-inset ring-amber-500",
-                  )}
-                >
-                  {selectMode ? (
-                    <span className="flex size-8 items-center justify-center">
-                      <Checkbox
-                        checked={selectedIds.has(r.id)}
-                        tabIndex={-1}
-                        aria-label={t("Sélectionner « {title} »", {
-                          title: r.title,
-                        })}
-                      />
-                    </span>
-                  ) : (
-                    <RowIcon resource={r} />
-                  )}
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5">
-                      {r.favorite && <StarFav />}
-                      <span className="truncate font-medium">{r.title}</span>
-                    </span>
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {r.url.startsWith("http")
-                      ? hostOf(r.url)
-                      : r.url.startsWith("exe:")
-                        ? "application"
-                        : r.url.startsWith("file:")
-                          ? "fichier local"
-                          : r.url.startsWith("local:")
-                            ? "sans lien"
-                            : r.url}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {summary || typeLabel(r.resourceType)}
-                  </span>
-                  <span className="text-right text-xs tabular-nums text-muted-foreground">
-                    {r.openCount > 0 ? r.openCount : "—"}
-                  </span>
-                  <RowMenu
-                    onDetails={setDetailsViewing}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    resource={r}
-                  />
-                </div>
-              );
-            })}
+            {resources.map((r) => (
+              <ResourceListRow
+                key={r.id}
+                resource={r}
+                selectMode={selectMode}
+                selected={selectedIds.has(r.id)}
+                draggable={sortBy === "manual" && !selectMode}
+                dragId={dragId}
+                dropZone={dropZone}
+                setDropZone={setDropZone}
+                setDragId={setDragId}
+                onDragStarted={handleDragStarted}
+                onDropOnTile={handleDropOnTile}
+                onToggleSelect={toggleSelect}
+                onOpenRow={(row) => void openRow(row)}
+                onDetails={setDetailsViewing}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            ))}
           </div>
         </div>
       </ScrollArea>
@@ -682,26 +471,4 @@ export function ResourceGrid(props: ResourceGridProps) {
       </div>
     </div>
   );
-}
-
-/** Étoile de favori pour les lignes de liste. */
-function StarFav() {
-  return <Star className="size-3 shrink-0 fill-yellow-400 text-yellow-400" />;
-}
-
-/** Drag de dossier dans la vue liste : setData obligatoire pour un drag
- *  HTML5 fiable (sans lui, Chromium/WebView2 peut l'ignorer). */
-function folderDragProps(
-  f: Folder,
-  setDragFolderId: (id: number | null) => void,
-) {
-  return {
-    draggable: true,
-    onDragStart: (e: React.DragEvent) => {
-      e.dataTransfer.setData("text/plain", `folder:${f.id}`);
-      e.dataTransfer.effectAllowed = "move";
-      setDragFolderId(f.id);
-    },
-    onDragEnd: () => setDragFolderId(null),
-  };
 }

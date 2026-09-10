@@ -1,68 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  Archive,
-  Bell,
-  CircleSlash,
-  CloudUpload,
-  Copy,
-  ExternalLink,
-  FolderOpen,
-  Info,
-  ListTodo,
-  Loader2,
-  MoreHorizontal,
-  Pencil,
-  Star,
-  Trash2,
-} from "lucide-react";
+import { FolderOpen, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { ShareToCloudDialog } from "@/components/resource/ShareToCloudDialog";
+import { TileBadges } from "@/components/resource/TileBadges";
+import { TileContextMenu } from "@/components/resource/TileContextMenu";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  cloudAppendLink,
-  cloudListShareLists,
-  setRemindAt,
-  toggleFavorite,
-} from "@/lib/api";
+import { setRemindAt, toggleFavorite } from "@/lib/api";
 import { fileKindFor } from "@/lib/fileKind";
 import { useI18n } from "@/lib/i18n";
 import { metaSummary } from "@/lib/metaFields";
 import { openResource } from "@/lib/openResource";
-import {
-  formatRemindAt,
-  isStale,
-  noteColorClass,
-  sqliteDatePlusDays,
-} from "@/lib/resources";
-import type { Folder, Resource, ShareListInfo } from "@/lib/types";
+import { isStale, noteColorClass, sqliteDatePlusDays } from "@/lib/resources";
+import type { Folder, Resource } from "@/lib/types";
 import { cn, describeError } from "@/lib/utils";
 
 interface Props {
@@ -196,63 +146,6 @@ export const ResourceTile = memo(function ResourceTile({
 
   // --- Partage vers une liste JSON sur le cloud (WebDAV) ---
   const [shareOpen, setShareOpen] = useState(false);
-  const [shareLists, setShareLists] = useState<ShareListInfo[] | null>(null);
-  const [shareLoading, setShareLoading] = useState(false);
-  /** name d'une liste existante, ou "__new" pour créer un fichier */
-  const [shareTarget, setShareTarget] = useState<string>("__new");
-  const [newFileName, setNewFileName] = useState("");
-  const [sharing, setSharing] = useState(false);
-
-  async function openShareDialog() {
-    setShareOpen(true);
-    setShareLoading(true);
-    try {
-      const lists = await cloudListShareLists();
-      setShareLists(lists);
-      setShareTarget(lists.length > 0 ? lists[0].name : "__new");
-    } catch (e) {
-      toast.error(describeError(e));
-      setShareLists([]);
-    } finally {
-      setShareLoading(false);
-    }
-  }
-
-  async function runShareToCloud() {
-    const isNew = shareTarget === "__new";
-    const name = newFileName.trim();
-    if (isNew && !name) {
-      toast.error(t("Donne un nom à la liste (ex. Design)"));
-      return;
-    }
-    setSharing(true);
-    try {
-      const res = await cloudAppendLink({
-        name: isNew ? null : shareTarget,
-        newListTitle: isNew ? name : null,
-        title: resource.title || resource.url,
-        url: resource.url,
-        addedAt: new Date().toISOString(),
-      });
-      const label = res.name;
-      if (res.added) {
-        toast.success(
-          t("Lien ajouté à « {name} » ({count} lien(s))", {
-            name: label,
-            count: res.total,
-          }),
-        );
-      } else {
-        toast.info(t("Ce lien est déjà dans « {name} »", { name: label }));
-      }
-      setShareOpen(false);
-      setNewFileName("");
-    } catch (e) {
-      toast.error(describeError(e));
-    } finally {
-      setSharing(false);
-    }
-  }
 
   return (
     <div
@@ -408,279 +301,32 @@ export const ResourceTile = memo(function ResourceTile({
         )
       )}
 
-      {/* chip de statut, coin supérieur gauche intérieur */}
-      {resource.status === "todo" && !selectMode && (
-        <span
-          className="absolute left-2 top-2 z-10 rounded-full bg-amber-400/90 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950"
-          title={t("À traiter")}
-        >
-          {t("À traiter")}
-        </span>
-      )}
-      {resource.status === "archived" && !selectMode && (
-        <span
-          className="absolute left-2 top-2 z-10 rounded-full bg-zinc-500/85 px-1.5 py-0.5 text-[10px] font-semibold text-white"
-          title={t("Archivé")}
-        >
-          {t("Archivé")}
-        </span>
-      )}
+      <TileBadges resource={resource} stale={stale} selectMode={selectMode} />
 
-      {/* à revisiter : ajoutée il y a longtemps, jamais ouverte */}
-      {stale && resource.status !== "archived" && !selectMode && (
-        <div
-          className="absolute bottom-1.5 left-1.5 z-10 flex items-center gap-1 rounded-full border bg-background/85 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300"
-          title={t("Ajoutée il y a plus de 2 mois, jamais ouverte")}
-        >
-          {t("à revisiter")}
-        </div>
-      )}
-
-      {/* rappel programmé : s'efface à l'ouverture */}
-      {resource.remindAt && !selectMode && (
-        <div
-          className="absolute right-1.5 bottom-1.5 z-10 flex items-center gap-1 rounded-full border bg-background/85 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-300"
-          title={t("Rappel programmé — s'efface à l'ouverture")}
-        >
-          <Bell className="size-3" />
-          {formatRemindAt(resource.remindAt)}
-        </div>
-      )}
-
-      {/* menu ⋯ flottant, en dehors de la tuile — toujours visible */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={t("Options")}
-          className="absolute -right-1.5 -top-1.5 z-10 flex size-7 cursor-pointer items-center justify-center rounded-full border bg-background text-muted-foreground shadow-md outline-none transition-colors hover:text-foreground focus-visible:text-foreground data-[popup-open]:text-foreground"
-        >
-          <MoreHorizontal className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-auto min-w-44">
-          {isNote ? (
-            <>
-              <DropdownMenuItem
-                onClick={() =>
-                  onOpenNote ? onOpenNote(resource) : void open()
-                }
-              >
-                <ExternalLink />
-                {t("Ouvrir la note")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(resource)}>
-                <Pencil />
-                {t("Modifier")}
-              </DropdownMenuItem>
-            </>
-          ) : (
-            <>
-              <DropdownMenuItem onClick={() => void open()}>
-                <ExternalLink />
-                {resource.url.startsWith("local:") && !resource.meta?.filePath
-                  ? t("Ajouter un lien…")
-                  : t("Ouvrir")}
-              </DropdownMenuItem>
-              {/* détails : fiche complète (README pour les dépôts) */}
-              {onDetails && (
-                <DropdownMenuItem onClick={() => onDetails(resource)}>
-                  <Info />
-                  {t("Détails")}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={copy}>
-                <Copy />
-                {t("Copier l'URL")}
-              </DropdownMenuItem>
-              {resource.url.startsWith("http") && (
-                <DropdownMenuItem
-                  onClick={() => void openShareDialog()}
-                  title={t(
-                    "Ajoute ce lien à un fichier JSON sur ton cloud (WebDAV)",
-                  )}
-                >
-                  <CloudUpload />
-                  {t("Partager vers le cloud")}
-                </DropdownMenuItem>
-              )}
-              {/* fichier local : envoi réel vers le cloud WebDAV */}
-              {(resource.url.startsWith("file:") || resource.meta?.filePath) &&
-                onUploadToCloud && (
-                  <DropdownMenuItem onClick={() => onUploadToCloud(resource)}>
-                    <CloudUpload />
-                    {t("Envoyer vers le cloud")}
-                  </DropdownMenuItem>
-                )}
-            </>
-          )}
-          <DropdownMenuItem onClick={toggle}>
-            <Star
-              className={
-                resource.favorite ? "fill-yellow-400 text-yellow-400" : ""
-              }
-            />
-            {resource.favorite
-              ? t("Retirer des favoris")
-              : t("Ajouter aux favoris")}
-          </DropdownMenuItem>
-          {/* statut de traitement */}
-          {onSetStatus && resource.status !== "todo" && (
-            <DropdownMenuItem onClick={() => onSetStatus(resource, "todo")}>
-              <ListTodo />
-              {t("Marquer à traiter")}
-            </DropdownMenuItem>
-          )}
-          {/* rappel « me rappeler dans… » */}
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Bell />
-              {t("Me rappeler…")}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              {[
-                { label: "Demain", days: 1 },
-                { label: "Dans 3 jours", days: 3 },
-                { label: "Dans 1 semaine", days: 7 },
-              ].map((o) => (
-                <DropdownMenuItem
-                  key={o.days}
-                  onClick={() => void remind(o.days)}
-                >
-                  {t(o.label)}
-                </DropdownMenuItem>
-              ))}
-              {resource.remindAt && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => void remind(null)}>
-                    {t("Effacer le rappel ({date})", {
-                      date: formatRemindAt(resource.remindAt),
-                    })}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          {onSetStatus && resource.status !== "archived" && (
-            <DropdownMenuItem onClick={() => onSetStatus(resource, "archived")}>
-              <Archive />
-              {t("Archiver")}
-            </DropdownMenuItem>
-          )}
-          {onSetStatus && resource.status !== "" && (
-            <DropdownMenuItem onClick={() => onSetStatus(resource, "")}>
-              <CircleSlash />
-              {t("Réactiver")}
-            </DropdownMenuItem>
-          )}
-          {/* déplacer vers un dossier */}
-          {onMoveToFolder && (folders?.length ?? 0) > 0 && (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                {t("Déplacer vers…")}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {(folders ?? []).map((f) => (
-                  <DropdownMenuItem
-                    key={f.id}
-                    disabled={resource.folderId === f.id}
-                    onClick={() => onMoveToFolder(resource, f.id)}
-                  >
-                    {f.name}
-                  </DropdownMenuItem>
-                ))}
-                {resource.folderId !== null && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => onMoveToFolder(resource, null)}
-                    >
-                      {t("Sortir du dossier")}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          )}
-          <DropdownMenuSeparator />
-          {!isNote && (
-            <DropdownMenuItem onClick={() => onEdit(resource)}>
-              <Pencil />
-              {t("Modifier")}
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => onDelete(resource)}
-          >
-            <Trash2 />
-            {t("Supprimer")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <TileContextMenu
+        resource={resource}
+        isNote={isNote}
+        onOpen={() => void open()}
+        onCopy={copy}
+        onToggleFavorite={toggle}
+        onRemind={(days) => void remind(days)}
+        onOpenShare={() => setShareOpen(true)}
+        folders={folders}
+        onMoveToFolder={onMoveToFolder}
+        onOpenNote={onOpenNote}
+        onUploadToCloud={onUploadToCloud}
+        onSetStatus={onSetStatus}
+        onDetails={onDetails}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />
 
       {/* Dialogue : choisir ou créer le fichier JSON de partage */}
-      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("Partager vers le cloud")}</DialogTitle>
-            <DialogDescription>
-              {t(
-                "Le lien sera enregistré dans un fichier JSON de ton dossier WebDAV. Choisis une liste existante ou crées-en une nouvelle (ex. Design, AIAPI).",
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label>{t("Liste de destination")}</Label>
-              <Select
-                value={shareTarget}
-                onValueChange={(v) => setShareTarget(v ?? "__new")}
-                disabled={shareLoading || sharing}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t("Choisir…")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(shareLists ?? []).map((l) => (
-                    <SelectItem key={l.name} value={l.name}>
-                      {t("{title} ({count} lien(s))", {
-                        title: l.title,
-                        count: l.count,
-                      })}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="__new">
-                    {t("+ Nouvelle liste…")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {shareTarget === "__new" && (
-              <div className="grid gap-1.5">
-                <Label>{t("Nom de la nouvelle liste")}</Label>
-                <Input
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder="Design"
-                  disabled={sharing}
-                />
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShareOpen(false)}
-              disabled={sharing}
-            >
-              {t("Annuler")}
-            </Button>
-            <Button onClick={() => void runShareToCloud()} disabled={sharing}>
-              {sharing && <Loader2 className="animate-spin" />}
-              {t("Partager")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ShareToCloudDialog
+        resource={resource}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
     </div>
   );
 });
