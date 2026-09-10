@@ -17,21 +17,29 @@ export function FirstRun() {
     isOnboarded() ? "done" : "welcome",
   );
   const tourRef = useRef<ReturnType<typeof runGuidedTour> | null>(null);
+  // t est une nouvelle closure à chaque render : on passe par un ref pour que
+  // l'effet ne dépende que de `phase` — sinon chaque re-render de l'app
+  // détruirait et relancerait le tour en pleine visite.
+  const tRef = useRef(t);
+  tRef.current = t;
 
   useEffect(() => {
     if (phase !== "tour") return;
     const id = window.setTimeout(() => {
-      tourRef.current = runGuidedTour(() => {
-        tourRef.current = null;
-        setPhase("done");
-      }, t);
+      tourRef.current = runGuidedTour(
+        () => {
+          tourRef.current = null;
+          setPhase("done");
+        },
+        (key, params) => tRef.current(key, params),
+      );
     }, 150);
     return () => {
       window.clearTimeout(id);
       tourRef.current?.destroy();
       tourRef.current = null;
     };
-  }, [phase, t]);
+  }, [phase]);
 
   useEffect(() => {
     const onReplay = () => {

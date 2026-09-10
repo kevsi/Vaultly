@@ -10,7 +10,7 @@ import { prefersReducedMotion } from "./onboarding";
  */
 export function runGuidedTour(
   onDestroyed: () => void,
-  t: (key: string) => string,
+  t: (key: string, params?: Record<string, string | number>) => string,
 ) {
   const d = driver({
     animate: !prefersReducedMotion(),

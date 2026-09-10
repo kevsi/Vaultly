@@ -437,7 +437,7 @@ export default function App() {
                 {t("nav.trash")}
                 <TrashCount />
               </TabsTrigger>
-              <TabsTrigger value="settings">
+              <TabsTrigger value="settings" data-tour="settings">
                 <Settings />
                 {t("nav.settings")}
                 {deadCount > 0 && (
@@ -454,7 +454,7 @@ export default function App() {
             size="icon"
             data-tour="shortcuts"
             onClick={() => setShortcutsOpen(true)}
-            title="Raccourcis clavier"
+            title={t("Raccourcis clavier")}
           >
             <Keyboard />
           </Button>
