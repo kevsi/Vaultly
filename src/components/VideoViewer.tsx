@@ -89,8 +89,10 @@ export function VideoViewer({ resource, onClose }: Props) {
             : "sm:max-w-md"
         }
       >
-        <DialogHeader>
-          <DialogTitle className="truncate pr-10">
+        {/* min-w-0 : sans lui, un titre long fait déborder la grille du
+            dialog (min-width:auto) et le truncate ne s'active jamais */}
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="min-w-0 truncate pr-10">
             {resource?.title}
           </DialogTitle>
         </DialogHeader>
