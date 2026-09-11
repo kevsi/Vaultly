@@ -20,7 +20,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level=high
-      - run: pnpm exec biome check src
+      - run: pnpm exec biome check src extension
       - run: pnpm test
       - run: pnpm build
 
@@ -57,3 +57,32 @@ jobs:
           Set-Content -Path dist/index.html -Value "<!doctype html><title>ci</title>"
       - run: cargo test --lib
       - run: cargo clippy --lib -- -D warnings
+
+  # Le release ne se fait QUE sur Windows : ce job prouve que le code reste
+  # compilable et vert hors Windows (windows-sys est bien gated, le fallback
+  # DPAPI de secret.rs passe, aucune hypothèse Windows dans les 62 tests).
+  cross-os:
+    name: Backend Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+    matrix:
+      os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # deps de compilation Tauri v2 sous Linux : webkit2gtk 4.1, épingles
+      # globales (libxdo), tray (ayatana), svg des icônes (rsvg)
+      - name: Dépendances système Tauri (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: cargo check --lib --tests
+      - run: cargo test --lib
