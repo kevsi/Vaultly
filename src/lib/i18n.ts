@@ -723,7 +723,7 @@ const en: Dict = {
     "Vaultly must be open to receive additions — copying a URL is enough: the app automatically offers to add it (Ctrl+N to open the form manually).",
   "Vaultly est gratuit, sans publicité et sans compte. Si l'app te sert au quotidien, un don — même petit — aide à garder le projet vivant : hébergement, temps de développement, nouvelles fonctionnalités.":
     "Vaultly is free, ad-free and account-free. If the app is useful to you daily, a donation — however small — helps keep the project alive: hosting, development time, new features.",
-  "Ko-fi (dons ponctuels)": "Ko-fi (one-time gifts)",
+  "Soutenir sur Ko-fi": "Support on Ko-fi",
   "Les liens s'ouvrent dans ton navigateur. Toutes les fonctionnalités de Vaultly restent gratuites, pour toujours.":
     "Links open in your browser. Every Vaultly feature stays free, forever.",
   "{resourcesAdded} ressource(s) ajoutée(s), {duplicates} doublon(s), {foldersAdded} dossier(s){invalid}":
@@ -739,7 +739,8 @@ const en: Dict = {
     "Global palette (configurable in Settings)",
   "Aller à la recherche": "Go to search",
   "Fermer / sortir du dossier": "Close / exit folder",
-  "Déplacer la tuile (tri manuel)": "Move tile (manual sorting)",
+  "Déplacer la tuile (passe en Placement)":
+    "Move tile (switches to Placement sort)",
   Échap: "Esc",
   Espace: "Space",
   Maj: "Shift",

@@ -38,7 +38,7 @@ const GROUPS: { title: string; items: { keys: string[]; action: string }[] }[] =
       items: [
         {
           keys: ["Ctrl", "Maj", "←", "→"],
-          action: "Déplacer la tuile (tri manuel)",
+          action: "Déplacer la tuile (passe en Placement)",
         },
       ],
     },

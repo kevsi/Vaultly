@@ -310,9 +310,9 @@ export function ResourceGrid(props: ResourceGridProps) {
         key={r.id}
         style={{ animationDelay: tileDelay(index) }}
         onKeyDown={(e) => {
-          // réordonnancement clavier de la tuile focusée (tri manuel)
+          // réordonnancement clavier de la tuile focusée : bascule en tri
+          // « Placement » gérée par moveTileByKey (comme pour le drag)
           if (
-            sortBy === "manual" &&
             e.ctrlKey &&
             e.shiftKey &&
             (e.key === "ArrowLeft" || e.key === "ArrowRight")

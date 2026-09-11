@@ -512,12 +512,15 @@ export function LibraryView() {
   // render annulerait le memo sur toute la grille à chaque dragOver)
   const handleDragStarted = useCallback((r: Resource) => setDragId(r.id), []);
 
-  /** Réordonnancement clavier (accessibilité du drag iOS) : en tri
-   *  « Placement », Ctrl+Maj+←/→ échange la tuile focusée avec sa voisine.
+  /** Réordonnancement clavier (accessibilité du drag iOS) : Ctrl+Maj+←/→
+   *  échange la tuile focusée avec sa voisine. Comme pour le glisser-déposer
+   *  en insertion, on bascule d'abord en tri « Placement » pour que le
+   *  résultat soit visible (seul ce tri respecte les positions).
    *  Le backend ne touchant que les ids envoyées (reorder partiel), la
    *  liste affichée suffit — sans danger en vue filtrée. */
   const moveTileByKey = useCallback(
     async (r: Resource, dir: -1 | 1) => {
+      if (sortBy !== "manual") setSortBy("manual");
       const list = [...(resources ?? [])];
       const i = list.findIndex((x) => x.id === r.id);
       const j = i + dir;
@@ -531,7 +534,7 @@ export function LibraryView() {
       }
       refresh();
     },
-    [resources, qc, queryKey, refresh],
+    [resources, qc, queryKey, refresh, sortBy, setSortBy],
   );
 
   /**
