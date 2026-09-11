@@ -6,6 +6,8 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-11
+
 ### Ajouté
 - Distribution tri-OS : la release GitHub publie aussi Linux (deb + AppImage)
   et macOS Apple Silicon (dmg), avec leurs plateformes dans `latest.json` —

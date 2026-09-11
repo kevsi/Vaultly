@@ -1,6 +1,6 @@
 [package]
 name = "vaultly"
-version = "1.0.3"
+version = "1.1.0"
 description = "Vaultly - hub de ressources avec acces IA"
 authors = ["you"]
 edition = "2021"
