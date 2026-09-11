@@ -561,6 +561,7 @@ const en: Dict = {
   "Utilise un lien YouTube, TikTok, Vimeo, Dailymotion ou Twitch.":
     "Use a YouTube, TikTok, Vimeo, Dailymotion or Twitch link.",
   "Ouvrir dans le navigateur": "Open in the browser",
+  "Lire dans l'app": "Play in the app",
   "Lien de l'outil": "Tool link",
   "https://…": "https://…",
   "Un outil en ligne : son adresse web.": "An online tool: its web address.",
