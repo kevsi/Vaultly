@@ -183,8 +183,14 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
   const [picking, setPicking] = useState<string | null>(null);
   // pagination : page courante, remise à zéro à chaque recherche / onglet
   const [page, setPage] = useState(0);
-  // slugs dont l'aperçu CDN a échoué (snapshot dérivé) : masqués
+  // slugs dont l'aperçu CDN a échoué : masqués + bannière si la page
+  // courante est massivement en échec. Réinitialisé à chaque navigation
+  // (page/onglet/recherche) : un <img> démonté en plein chargement émet
+  // une erreur « abort » qui ne doit pas polluer l'état des vues suivantes.
   const [dead, setDead] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setDead(new Set());
+  }, []);
 
   // recherche distante anti-rebond (350 ms)
   const [debounced, setDebounced] = useState(query);
@@ -193,21 +199,23 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
     return () => clearTimeout(id);
   }, [query]);
 
-  const brandResults = useMemo(() => {
+  const brandAll = useMemo(() => {
     const q = query.trim();
-    const list = !q
+    return !q
       ? POPULAR.map((slug) => BRAND_ICONS.find((b) => b.slug === slug)).filter(
           (b): b is (typeof BRAND_ICONS)[number] => !!b,
         )
       : BRAND_ICONS.filter((b) => brandMatches(b.title, b.slug, q));
-    return list.filter((b) => !dead.has(b.slug));
-  }, [query, dead]);
-  const brandPages = Math.max(1, Math.ceil(brandResults.length / PAGE_SIZE));
+  }, [query]);
+  // pagination sur la liste COMPLÈTE (les ids morts restent comptés) : sinon
+  // chaque échec de chargement ferait « rétrécir » les pages
+  const brandPages = Math.max(1, Math.ceil(brandAll.length / PAGE_SIZE));
   const brandPage = Math.min(page, brandPages - 1);
-  const brandPaged = brandResults.slice(
+  const brandPageAll = brandAll.slice(
     brandPage * PAGE_SIZE,
     brandPage * PAGE_SIZE + PAGE_SIZE,
   );
+  const brandPaged = brandPageAll.filter((b) => !dead.has(b.slug));
 
   const genericQuery = englishQuery(debounced);
   const {
@@ -220,18 +228,22 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
     enabled: tab === "generic" && genericQuery.length >= 2,
     staleTime: 300_000,
   });
-  const genericList = useMemo(
-    () => (genericIds ?? []).filter((id) => !dead.has(id)),
-    [genericIds, dead],
-  );
+  const genericList = genericIds ?? [];
   const genericPages = Math.max(1, Math.ceil(genericList.length / PAGE_SIZE));
   const genericPage = Math.min(page, genericPages - 1);
-  const genericPaged = genericList.slice(
+  const genericPageAll = genericList.slice(
     genericPage * PAGE_SIZE,
     genericPage * PAGE_SIZE + PAGE_SIZE,
   );
+  const genericPaged = genericPageAll.filter((id) => !dead.has(id));
+  // bannière « CDN injoignable » uniquement si la PAGE AFFICHÉE échoue en
+  // masse (et pas un total accumulé à travers pages et onglets)
+  const deadOnPage =
+    tab === "brands"
+      ? brandPageAll.filter((b) => dead.has(b.slug)).length
+      : genericPageAll.filter((id) => dead.has(id)).length;
   const genericHex =
-    GENERIC_TONES.find((t) => t.id === genericTone)?.hex ?? "18181b";
+    GENERIC_TONES.find((x) => x.id === genericTone)?.hex ?? "18181b";
 
   async function pick(svgUrl: string, key: string) {
     setPicking(key);
@@ -348,7 +360,7 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
           </div>
 
           {/* CDN injoignable : la grille semblerait « vide » sinon */}
-          {dead.size >= 12 && (
+          {deadOnPage >= 12 && (
             <p className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
               <WifiOff className="size-4 shrink-0" />
               {t(
@@ -358,7 +370,7 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
           )}
 
           {tab === "brands" ? (
-            brandResults.length > 0 ? (
+            brandAll.length > 0 ? (
               <>
                 <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8">
                   {brandPaged.map((b) => (
@@ -389,7 +401,7 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
                 <PageBar
                   page={brandPage}
                   pages={brandPages}
-                  total={brandResults.length}
+                  total={brandAll.length}
                   onPrev={() => setPage((p) => p - 1)}
                   onNext={() => setPage((p) => p + 1)}
                 />
