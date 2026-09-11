@@ -6,6 +6,20 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+### Ajouté
+- Distribution tri-OS : la release GitHub publie aussi Linux (deb + AppImage)
+  et macOS Apple Silicon (dmg), avec leurs plateformes dans `latest.json` —
+  l'updater intégré sert les trois OS.
+- Jetons protégés au repos par le trousseau système sur macOS (Keychain) et
+  Linux (Secret Service) — Windows garde DPAPI ; sans agent disponible,
+  retour en clair signalé dans les logs comme avant.
+- Import des favoris Brave/Chrome/Edge/Firefox aussi sur macOS et Linux
+  (chemins de profils par plateforme).
+
+### Modifié
+- « Ouvrir le dossier » (ressources, logs) utilise le gestionnaire de fichiers
+  de l'OS : Explorateur (Windows), `open` (macOS), `xdg-open` (Linux).
+
 ## [1.0.3] - 2026-09-11
 
 ### Ajouté

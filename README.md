@@ -43,8 +43,10 @@ Cursor…) pendant que l'app est ouverte.
   cloud, et de **partager un lien** vers une liste JSON du cloud
 - **Thème** : le sombre/clair suit celui de Windows tant qu'aucun choix manuel n'a été
   fait ; ensuite ton choix reste
-- **Local d'abord** : SQLite dans `%APPDATA%\com.kevsi.vaultly`, jetons
-  chiffrés au repos (DPAPI). Aucune donnée n'est envoyée sauf ce que tu déclenches :
+- **Local d'abord** : SQLite dans le dossier de données de l'app (`%APPDATA%\com.kevsi.vaultly`
+  sous Windows, `~/.local/share` ou l'équivalent sous Linux/macOS), jetons
+  protégés au repos (DPAPI sous Windows, trousseau système — Keychain /
+  Secret Service — ailleurs). Aucune donnée n'est envoyée sauf ce que tu déclenches :
   favicons via le service Google s2, captures d'écran optionnelles via mShots
   (`s.wordpress.com`), archives via `archive.org` (clic explicite), et sauvegarde WebDAV
   vers le serveur que TU configures
@@ -57,7 +59,8 @@ pnpm tauri dev      # développement
 pnpm tauri build    # exécutable de production (NSIS + MSI)
 ```
 
-Prérequis : Node 22, pnpm, Rust (MSVC) — [guide Tauri](https://tauri.app/start/prerequisites/).
+Prérequis : Node 22, pnpm, Rust (toolchain MSVC sous Windows) + les dépendances
+système Tauri de ton OS — [guide Tauri](https://tauri.app/start/prerequisites/).
 
 ## Sauvegarde cloud (WebDAV — simple, tout le monde peut le faire)
 
@@ -87,8 +90,9 @@ Ce que Vaultly écrit, uniquement :
 
 `http://` est accepté pour un NAS en réseau local ; sinon mets `https://`.
 Sur Nextcloud avec 2FA, utilise un token (Paramètres → Applis → DAV) comme mot
-de passe. Le mot de passe est stocké chiffré sur ta machine (DPAPI), jamais
-exporté. Supprimer la configuration (Réglages) n'efface rien sur le serveur.
+de passe. Le mot de passe est stocké protégé sur ta machine (DPAPI sous
+Windows, trousseau système sous macOS/Linux), jamais exporté. Supprimer la
+configuration (Réglages) n'efface rien sur le serveur.
 
 > **Et Google Drive ?** L'app ne le propose plus : l'écran de consentement
 > OAuth de Google impose à chaque utilisateur de créer son propre projet
@@ -105,7 +109,7 @@ pour ZCode (`~/.zcode/cli/config.json`), Claude Code et Cursor y sont générés
 Le serveur MCP exige l'en-tête `Authorization: Bearer <token>` ; deux tokens
 coexistent — le **token MCP** (plein accès, clients IA) et le **token de
 l'extension** (ajout uniquement). Ils sont générés au premier lancement,
-chiffrés (DPAPI) et régénérables en un clic.
+protégés au repos (DPAPI / trousseau) et régénérables en un clic.
 
 ## Stack
 
@@ -129,7 +133,7 @@ src-tauri/
     webdav/           # cloud : core (backups), files (explorateur), lists (liens)
     metadata.rs       # récupération titre/favicon d'une page web
     scan.rs           # lecture favoris Brave/Chrome/Edge/Firefox
-    secret.rs         # chiffrement DPAPI des jetons au repos
+    secret.rs         # protection au repos des jetons (DPAPI / keyring)
 extension/            # extension MV3 (popup + token add-only)
 vaultly-landing/      # page de téléchargement (installateurs + SHA256)
 ```

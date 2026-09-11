@@ -1,9 +1,10 @@
-# Release + mise à jour automatique.
+# Release + mise à jour automatique, tri-OS (Windows / Linux / macOS).
 #
-# Déclenché par un tag `v*` (ex : git tag v0.3.0 && git push origin v0.3.0).
-# Construit l'app Windows, signe les artefacts et publie une Release
-# GitHub (brouillon) avec le `latest.json` consommé par l'updater intégré
-# (Réglages › Mise à jour).
+# Déclenché par un tag `v*` (ex : git tag v1.1.0 && git push origin v1.1.0).
+# Trois jobs SÉQUENTIELS (et non en matrice parallèle : chaque tauri-action
+# relit et fusionne le latest.json de la release — en parallèle ils se
+# marcheraient dessus) : Windows crée le brouillon, Linux et macOS ajoutent
+# leurs artefacts + leurs plateformes dans latest.json.
 #
 # PRÉREQUIS — clés de signature (une seule fois) :
 #   1. `pnpm tauri signer generate -w ~/.tauri/vaultly.key`
@@ -15,6 +16,12 @@
 #      - TAURI_SIGNING_PRIVATE_KEY_PASSWORD = le mot de passe
 #   Sans clé publique configurée, l'app détecte les versions mais refuse
 #   l'installation (signature invérifiable) — jamais de crash.
+#
+# macOS : le .dmg est produit pour Apple Silicon (aarch64). Sans certificat
+# Apple Developer + notarisation, Gatekeeper affichera « app non vérifiée » :
+# contournable par clic droit › Ouvrir (documenter côté README si le public
+# mac existe). L'updater macOS est fonctionnel dès la première installation
+# manuelle (le .app.tar.gz signé est publié avec sa .sig).
 name: Release
 
 on:
@@ -22,7 +29,7 @@ on:
     tags: ["v*"]
 
 jobs:
-  release:
+  release-windows:
     name: Build + publie (Windows)
     runs-on: windows-latest
     permissions:
@@ -49,6 +56,78 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Vaultly ${{ github.ref_name }}"
-          releaseBody: "Voir les changements sur la page du tag."
+          releaseBody: "Vaultly pour Windows (NSIS + MSI), Linux (deb + AppImage) et macOS (dmg, Apple Silicon). L'updater intégré sert les trois plateformes via latest.json."
           releaseDraft: true
           includeUpdaterJson: true
+          args: --bundles nsis,msi
+
+  release-linux:
+    name: Build + publie (Linux)
+    needs: release-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      # deps de compilation Tauri v2 sous Linux : webkit2gtk 4.1, épingles
+      # globales (libxdo), tray (ayatana), svg des icônes (rsvg), patchelf
+      # (AppImage)
+      - name: Dépendances système Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          # le brouillon existe déjà (job windows) : tauri-action ajoute ses
+          # artefacts ET fusionne « linux-x86_64 » dans le latest.json existant
+          releaseDraft: true
+          includeUpdaterJson: true
+          args: --bundles deb,appimage
+
+  release-macos:
+    name: Build + publie (macOS · aarch64)
+    needs: release-linux
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true
+          args: --bundles dmg,app
