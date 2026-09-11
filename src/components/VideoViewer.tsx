@@ -55,7 +55,9 @@ export function VideoViewer({ resource, onClose }: Props) {
   const [playing, setPlaying] = useState(false);
   const embed = resource ? videoEmbedUrl(resource.url) : null;
 
-  // nouvelle vidéo demandée → on repart du choix (pas de reprise de lecture)
+  // nouvelle vidéo demandée → on repart du choix (pas de reprise de lecture) :
+  // le composant est monté en permanence, des deps [] ne se déclencheraient
+  // qu'une fois et toutes les vidéos suivantes sauteraient l'écran de choix
   useEffect(() => {
     setPlaying(false);
   }, []);

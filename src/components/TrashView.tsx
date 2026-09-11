@@ -29,7 +29,12 @@ function formatTrashDate(iso: string): string {
   });
 }
 
-const TRASH_KEYS: QueryKey[] = [["trash"], ["resources"], ["allTags"]];
+const TRASH_KEYS: QueryKey[] = [
+  ["trash"],
+  ["resources"],
+  ["allTags"],
+  ["stats"],
+];
 
 /** Corbeille : les suppressions (grille, masse, notes) restent restaurables
  *  30 jours ; la purge des entrées expirées se fait au démarrage de l'app. */
@@ -42,7 +47,11 @@ export function TrashView() {
 
   const { run } = useTauriMutation();
 
-  const { data: trash, isLoading } = useQuery({
+  const {
+    data: trash,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["trash"],
     queryFn: listTrash,
   });
@@ -144,6 +153,18 @@ export function TrashView() {
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               {t("Lecture de la corbeille…")}
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">
+              <History className="size-8 opacity-40" />
+              <p className="font-medium text-foreground">
+                {t("Impossible de lire la corbeille")}
+              </p>
+              <p className="max-w-sm text-sm">
+                {t(
+                  "Réessaie depuis l'onglet Bibliothèque, ou redémarre Vaultly si le problème persiste.",
+                )}
+              </p>
             </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-muted-foreground">

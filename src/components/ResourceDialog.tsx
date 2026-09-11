@@ -79,6 +79,10 @@ export function ResourceDialog({
 }: Props) {
   const { t } = useI18n();
   const [form, setForm] = useState<FormState>(EMPTY);
+  // la dernière URL saisie, lue par les `await` de « Récupérer » pour ne pas
+  // appliquer des métas périmées si l'utilisateur a modifié le champ entre-temps
+  const latestUrlRef = useRef(form.url);
+  latestUrlRef.current = form.url;
   const [favicon, setFavicon] = useState("");
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -233,6 +237,7 @@ export function ResourceDialog({
         /github\.com\/[^/]+\/[^/]/.test(url)
       ) {
         const d = await fetchRepoDetails(url);
+        if (latestUrlRef.current.trim() !== url) return;
         applyRepoDetails(d);
         toast.success(t("Fiche du dépôt récupérée depuis GitHub"));
         return;
@@ -241,6 +246,7 @@ export function ResourceDialog({
       // complète titre/description/tags/type/image encore vides.
       sniffedFor.current = url;
       const s = await sniffResource(url);
+      if (latestUrlRef.current.trim() !== url) return;
       touchedType.current = false;
       touchedIcon.current = false;
       setForm((f) => ({

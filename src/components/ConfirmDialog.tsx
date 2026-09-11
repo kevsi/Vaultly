@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n";
 
 export interface ConfirmState {
   title: string;
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   state: ConfirmState | null;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <Dialog open={state !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -38,7 +40,7 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Annuler
+            {t("Annuler")}
           </Button>
           <Button
             variant={state?.destructive ? "destructive" : "default"}
@@ -47,7 +49,7 @@ export function ConfirmDialog({
               onClose();
             }}
           >
-            {state?.confirmLabel ?? "Confirmer"}
+            {state?.confirmLabel ?? t("Confirmer")}
           </Button>
         </DialogFooter>
       </DialogContent>

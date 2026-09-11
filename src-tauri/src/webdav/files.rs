@@ -117,8 +117,9 @@ pub(crate) async fn propfind_dir(
     })
     .await?;
     let status = resp.status();
-    let text = resp
-        .text()
+    // corps PROPFIND borné (8 Mo) : une liste légitime de fichiers pèse
+    // quelques Ko, un serveur malveillant ne doit pas faire allouer au-delà
+    let text = super::read_capped_text(resp, 8 * 1_048_576)
         .await
         .map_err(|e| format!("réponse illisible : {e}"))?;
     if !(status.is_success() || status.as_u16() == 207) {

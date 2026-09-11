@@ -190,7 +190,7 @@ export function TagManagerDialog({ open, onOpenChange, onChanged }: Props) {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => void runDelete(t.name)}
+                            onClick={() => void runDelete(tag.name)}
                             disabled={busy}
                             className="h-7"
                           >

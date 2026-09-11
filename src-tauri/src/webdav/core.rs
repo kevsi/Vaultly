@@ -234,10 +234,11 @@ pub async fn list_backups(pool: &SqlitePool) -> Result<Vec<String>, String> {
     })
     .await?;
     let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("réponse WebDAV illisible : {e}"))?;
+    // corps PROPFIND borné (4 Mo) : une liste légitime fait quelques Ko
+    let text = match super::read_capped_text(resp, 4 * 1_048_576).await {
+        Ok(t) => t,
+        Err(e) => return Err(format!("réponse WebDAV illisible : {e}")),
+    };
     ensure_ok(status, &text)?;
     let mut names = extract_backup_names(&text);
     names.sort();
@@ -263,7 +264,7 @@ async fn delete_backup(pool: &SqlitePool, name: &str) -> Result<(), String> {
     if status.is_success() || status.as_u16() == 404 {
         return Ok(());
     }
-    let body = resp.text().await.unwrap_or_default();
+    let body = super::read_err_text(resp).await;
     Err(describe_status(status, &body))
 }
 
@@ -304,7 +305,7 @@ pub async fn backup(pool: &SqlitePool) -> Result<String, String> {
     .await?;
     let status = resp.status();
     if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
+        let text = super::read_err_text(resp).await;
         return Err(describe_status(status, &text));
     }
     // prune bornée : un échec ici ne doit pas faire échouer la sauvegarde
@@ -354,15 +355,20 @@ pub async fn restore(
     })
     .await?;
     let status = resp.status();
+    // backup JSON borné (100 Mo largement suffisaires : la base entière pèse
+    // quelques Mo) + corps d'erreur borné aussi
     let bytes = if status.is_success() {
-        resp.bytes()
+        super::read_capped(resp, 100 * 1_048_576, "backup WebDAV")
             .await
             .map_err(|e| format!("lecture du backup impossible : {e}"))?
     } else {
-        let text = resp.text().await.unwrap_or_default();
+        let text = super::read_capped(resp, 64 * 1024, "erreur WebDAV")
+            .await
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default();
         return Err(describe_status(status, &text));
     };
-    let text = String::from_utf8(bytes.to_vec())
+    let text = String::from_utf8(bytes)
         .map_err(|_| "le backup WebDAV n'est pas un texte UTF-8 valide".to_string())?;
     crate::commands::import_payload_from_str(pool, &text).await
 }

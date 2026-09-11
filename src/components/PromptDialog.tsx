@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * Modale de saisie texte, en remplacement de window.prompt (peu fiable
@@ -20,7 +21,7 @@ export function PromptDialog({
   description,
   placeholder,
   initialValue = "",
-  confirmLabel = "Valider",
+  confirmLabel,
   onDone,
 }: {
   open: boolean;
@@ -31,6 +32,7 @@ export function PromptDialog({
   confirmLabel?: string;
   onDone: (value: string | null) => void;
 }) {
+  const { t } = useI18n();
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -72,9 +74,9 @@ export function PromptDialog({
               variant="outline"
               onClick={() => onDone(null)}
             >
-              Annuler
+              {t("Annuler")}
             </Button>
-            <Button type="submit">{confirmLabel}</Button>
+            <Button type="submit">{confirmLabel ?? t("Valider")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

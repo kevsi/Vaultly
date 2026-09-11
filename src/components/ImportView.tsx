@@ -52,6 +52,7 @@ export function ImportView() {
   const {
     data: profiles,
     isLoading,
+    isError,
     refetch,
     isRefetching,
   } = useQuery({
@@ -61,8 +62,11 @@ export function ImportView() {
 
   // clé stable = l'URL du favori (pas sa position) : après « Redétecter »,
   // un réordonnancement ne décale plus les coches
-  function keyOf(p: BrowserProfile, b: { url: string }) {
-    return `${p.browser}:${p.name}:${b.url}`;
+  function keyOf(p: BrowserProfile, b: { url: string; folder?: string }) {
+    // le dossier fait partie de la clé : un export Netscape contient
+    // fréquemment la même URL dans deux dossiers — sans lui, deux lignes
+    // portent la même clé React et leurs coches se suivent mutuellement
+    return `${p.browser}:${p.name}:${b.folder ?? ""}:${b.url}`;
   }
 
   /** Pseudo-profil du fichier : mêmes sélection et import que les
@@ -254,6 +258,12 @@ export function ImportView() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="animate-spin" />
             {t("Détection des navigateurs…")}
+          </div>
+        ) : isError && allProfiles.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-destructive/40 bg-destructive/5 p-8 text-center text-sm text-muted-foreground">
+            {t(
+              "Détection impossible — redémarre Vaultly si le problème persiste.",
+            )}
           </div>
         ) : allProfiles.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">

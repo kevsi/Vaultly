@@ -231,14 +231,14 @@ impl VaultlyMcp {
         }
     }
 
-    #[tool(description = "Supprime définitivement une ressource par son id. Destructif : ne l'appelle que si l'utilisateur demande explicitement la suppression.", annotations(title = "Supprimer une ressource", destructive_hint = true, idempotent_hint = true))]
+    #[tool(description = "Déplace une ressource à la corbeille (restaurable 30 jours) par son id. Destructif en apparence : ne l'appelle que si l'utilisateur demande explicitement la suppression.", annotations(title = "Supprimer une ressource", destructive_hint = true, idempotent_hint = true))]
     async fn delete_resource(
         &self,
         Parameters(GetParams { id }): Parameters<GetParams>,
     ) -> Result<CallToolResult, McpError> {
         match db::delete_resource(&self.pool, id).await {
             Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(
-                format!("Ressource {id} supprimée."),
+                format!("Ressource {id} déplacée à la corbeille (restaurable 30 jours)."),
             )])),
             Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }

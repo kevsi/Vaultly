@@ -234,7 +234,7 @@ export default function App() {
 
   // vérification auto des liens morts : au lancement si la dernière a plus
   // de 24 h, puis toutes les 6 h tant que l'app reste ouverte
-  // biome-ignore lint/correctness/useExhaustiveDependencies: effet au montage seul — t est recréé à chaque rendu
+  // (tt() est lu à l'appel : la langue courante est toujours respectée)
   useEffect(() => {
     async function autoCheck() {
       try {
@@ -249,7 +249,7 @@ export default function App() {
         setDeadCount(dead.length);
         if (dead.length > 0) {
           toast.warning(
-            t(
+            tt(
               "{count} lien(s) ne répondent plus — voir Réglages › Liens morts",
               {
                 count: dead.length,
@@ -325,7 +325,6 @@ export default function App() {
 
   // contrôle silencieux de mise à jour (1/jour max) : notifie, n'installe
   // jamais seul. Échec silencieux en dev / hors-ligne / clé manquante.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: effet au montage seul — t est recréé à chaque rendu
   useEffect(() => {
     if (!updateCheckDue()) return;
     void (async () => {
@@ -334,7 +333,7 @@ export default function App() {
         markUpdateChecked();
         if (update) {
           toast.info(
-            t("Mise à jour disponible : v{version}", {
+            tt("Mise à jour disponible : v{version}", {
               version: update.version,
             }),
             {
@@ -357,21 +356,20 @@ export default function App() {
 
   // rappels échus au lancement (max 3) : « Ouvrir » solde le rappel.
   // Sans application externe, une note n'a rien à ouvrir : simple rappel.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: effet au montage seul — t est recréé à chaque rendu
   useEffect(() => {
     void (async () => {
       try {
         const due = await dueReminders();
         for (const r of due.slice(0, 3)) {
           if (r.resourceType === "note") {
-            toast.info(t("Rappel : « {title} »", { title: r.title }), {
+            toast.info(tt("Rappel : « {title} »", { title: r.title }), {
               duration: 12_000,
             });
           } else {
-            toast.info(t("Rappel : « {title} »", { title: r.title }), {
+            toast.info(tt("Rappel : « {title} »", { title: r.title }), {
               duration: 12_000,
               action: {
-                label: t("Ouvrir"),
+                label: tt("Ouvrir"),
                 onClick: () => {
                   void openResourceById(r.id).catch((e) =>
                     toast.error(describeError(e)),

@@ -197,7 +197,7 @@ export function LibraryView() {
     toggleFolderSelect,
     handleBulkArchive,
     handleBulkDelete,
-  } = useBulkActions({ refresh, setConfirm, openFolder, goUp });
+  } = useBulkActions({ refresh, setConfirm, setFolderStack });
 
   const {
     query,
@@ -265,6 +265,7 @@ export function LibraryView() {
         detailsViewing !== null ||
         folderDialog !== null ||
         cloudDialogOpen ||
+        tagManagerOpen ||
         confirm !== null;
       if (ctrl && e.altKey && e.key.toLowerCase() === "n") {
         if (anyDialogOpen) return;
@@ -297,11 +298,23 @@ export function LibraryView() {
     detailsViewing,
     folderDialog,
     cloudDialogOpen,
+    tagManagerOpen,
     // confirm + setFolderStack en deps : goUp() est inliné (setFolderStack
     // direct) pour éviter le ré-abonnement en boucle d'une fonction recréée
     confirm,
     setFolderStack,
   ]);
+
+  // la palette Ctrl+K délègue l'ouverture des notes ici (elle n'a pas accès
+  // à l'état noteViewing de la bibliothèque)
+  useEffect(() => {
+    const onOpenNote = (e: Event) => {
+      const r = (e as CustomEvent<Resource>).detail;
+      if (r) setNoteViewing(r);
+    };
+    window.addEventListener("vaultly:open-note", onOpenNote);
+    return () => window.removeEventListener("vaultly:open-note", onOpenNote);
+  }, []);
 
   // URL capturée depuis le presse-papiers : modale pré-remplie.
   // Ignorée si un dialogue est déjà ouvert : elle écraserait la saisie en cours.
@@ -370,7 +383,9 @@ export function LibraryView() {
 
   /** Rafraîchir : recolle les données à la source + retente les images. */
   function handleRefresh() {
-    refetch();
+    // refresh() alone = invalidate ["resources"] (entre autres) → refetch()
+    // en double sur la même clé ; le remontage de la grille via imgNonce
+    // relance déjà, lui, le chargement des images
     refresh();
     setImgNonce((n) => n + 1);
   }
@@ -468,14 +483,19 @@ export function LibraryView() {
     }
   }, []);
 
+  const cloudSearchSeq = useRef(0);
   async function searchCloudFiles() {
+    const seq = ++cloudSearchSeq.current;
     setCloudSearching(true);
     try {
-      setCloudResults(await cloudListFiles(cloudQuery.trim() || null));
+      const files = await cloudListFiles(cloudQuery.trim() || null);
+      // si une recherche plus récente a été lancée depuis, on jette ce résultat
+      if (seq !== cloudSearchSeq.current) return;
+      setCloudResults(files);
     } catch (e) {
-      toast.error(describeError(e));
+      if (seq === cloudSearchSeq.current) toast.error(describeError(e));
     } finally {
-      setCloudSearching(false);
+      if (seq === cloudSearchSeq.current) setCloudSearching(false);
     }
   }
 
@@ -520,11 +540,13 @@ export function LibraryView() {
    *  liste affichée suffit — sans danger en vue filtrée. */
   const moveTileByKey = useCallback(
     async (r: Resource, dir: -1 | 1) => {
-      if (sortBy !== "manual") setSortBy("manual");
       const list = [...(resources ?? [])];
       const i = list.findIndex((x) => x.id === r.id);
       const j = i + dir;
+      // vérifier les bornes AVANT de basculer le tri : sinon un Ctrl+Maj en
+      // bout de liste change silencieusement de mode sans aucun mouvement
       if (i === -1 || j < 0 || j >= list.length) return;
+      if (sortBy !== "manual") setSortBy("manual");
       [list[i], list[j]] = [list[j], list[i]];
       qc.setQueryData(queryKey, list); // optimiste : l'échange est immédiat
       try {
@@ -589,6 +611,14 @@ export function LibraryView() {
         action: async () => {
           try {
             await deleteResource(r.id);
+            // ne pas laisser un id mort dans la sélection (barre fantôme,
+            // actions en masse sur du supprimé)
+            setSelectedIds((prev) => {
+              if (!prev.has(r.id)) return prev;
+              const next = new Set(prev);
+              next.delete(r.id);
+              return next;
+            });
             toast.success(tt("Déplacée dans la corbeille"));
             refresh();
           } catch (e) {
@@ -597,7 +627,11 @@ export function LibraryView() {
         },
       });
     },
-    [refresh],
+    [
+      refresh, // ne pas laisser un id mort dans la sélection (barre fantôme,
+      // actions en masse sur du supprimé)
+      setSelectedIds,
+    ],
   );
 
   // clic « Modifier » d'une tuile : note → éditeur de note, sinon dialogue
@@ -610,6 +644,15 @@ export function LibraryView() {
       setDialogOpen(true);
     }
   }, []);
+
+  // changement de vue (grille↔liste↔tableau) : la sélection ne s'y retrouve
+  // pas à l'identique (le kanban ignore même les filtres) → on repart de zéro.
+  // Seule viewMode déclenche : les tailles lues sont un état de garde, pas
+  // des dépendances (sinon chaque coche relancerait le purge).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps volontairement limitées à viewMode
+  useEffect(() => {
+    if (selectedIds.size > 0 || selectedFolderIds.size > 0) clearSelection();
+  }, [viewMode]);
 
   /** Kanban : clic sur une carte — note → lecteur, sans lien → édition, sinon
    *  ouverture réelle (même logique que la tuile / la liste). */
@@ -1018,7 +1061,8 @@ export function LibraryView() {
             />
           ))}
         </div>
-      ) : displayed.length === 0 &&
+      ) : viewMode !== "board" &&
+        displayed.length === 0 &&
         visibleFolders.length === 0 &&
         !isError &&
         !openFolder ? (

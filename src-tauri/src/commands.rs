@@ -1739,6 +1739,10 @@ mod tests {
         db::migrate(&pool).await.unwrap();
         let r = normalize_url(nr("https://a.com", "A")).unwrap();
         let created = db::add_resource(&pool, &r).await.unwrap();
+        // un rappel posé avant suppression doit survivre à la restauration
+        db::set_remind_at(&pool, created.id, Some("2030-01-01 09:00:00".to_string()))
+            .await
+            .unwrap();
         db::delete_resource(&pool, created.id).await.unwrap();
         // la ressource n'est plus dans resources mais est dans la corbeille
         assert_eq!(
@@ -1754,6 +1758,11 @@ mod tests {
         // restauration : remet la ressource en circulation et vide sa ligne
         let restored = db::restore_trash(&pool, trash[0].trash_id).await.unwrap();
         assert_eq!(restored.title, "A");
+        assert_eq!(
+            restored.remind_at.as_deref(),
+            Some("2030-01-01 09:00:00"),
+            "le rappel ne doit pas être perdu par le cycle corbeille"
+        );
         assert!(db::list_trash(&pool).await.unwrap().is_empty());
         assert_eq!(
             db::list_resources(&pool, &ResourceFilter { no_limit: true, ..Default::default() })

@@ -94,6 +94,57 @@ pub(crate) async fn ensure_dir(pool: &SqlitePool, subdir: &str) {
     .await;
 }
 
+/// Limite dure de tout GET sortant : fichiers (import) comme backups (restore).
+const MAX_FETCH_BYTES: u64 = 500 * 1_048_576; // 500 Mo
+
+/// GET borné d'un objet : le serveur (compromis, mal configuré, ou MITM en
+/// http) ne doit jamais pouvoir faire allouer une taille non plafonnée à
+/// l'app. Content-Length est vérifié AVANT lecture, et la somme des chunks
+/// est coupée en direct (les deux sont indépendamment contournables, d'où
+/// la double garde).
+pub(crate) async fn read_capped(
+    resp: reqwest::Response,
+    max: u64,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    if let Some(len) = resp.content_length() {
+        if len > max {
+            return Err(format!("{label} trop volumineux (max {} Mo)", max / 1_048_576));
+        }
+    }
+    let mut acc: Vec<u8> = Vec::new();
+    let stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    let mut stream = std::pin::pin!(stream);
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("lecture {label} impossible : {e}"))?;
+        if (acc.len() as u64) + chunk.len() as u64 > max {
+            return Err(format!("{label} trop volumineux (max {} Mo)", max / 1_048_576));
+        }
+        acc.extend_from_slice(&chunk);
+    }
+    Ok(acc)
+}
+
+/// Texte d'erreur serveur borné (64 Ko) : un corps malveillant ou une
+/// réponse d'erreur géante ne doit jamais être accumulée en mémoire.
+pub(crate) async fn read_err_text(resp: reqwest::Response) -> String {
+    read_capped(resp, 64 * 1024, "réponse WebDAV")
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default()
+}
+
+/// Corps XML (PROPFIND) borné : les listes légitimes pèsent quelques Ko.
+pub(crate) async fn read_capped_text(
+    resp: reqwest::Response,
+    max: u64,
+) -> Result<String, String> {
+    read_capped(resp, max, "réponse WebDAV")
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+}
+
 /// GET d'un objet du dossier configuré : octets ou erreur traduite.
 pub(crate) async fn fetch_object(
     pool: &SqlitePool,
@@ -107,11 +158,10 @@ pub(crate) async fn fetch_object(
     let resp = core::retry2(|| client.get(&url).basic_auth(&cfg.user, Some(&cfg.password))).await?;
     let status = resp.status();
     if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
+        let text = read_err_text(resp).await;
         return Err(core::describe_status(status, &text));
     }
-    let bytes = resp.bytes().await.map_err(|e| format!("lecture impossible : {e}"))?;
-    Ok(bytes.to_vec())
+    read_capped(resp, MAX_FETCH_BYTES, "fichier cloud").await
 }
 
 /// PUT d'un objet dans le dossier configuré (mkdir du sous-dossier si besoin).
@@ -142,7 +192,7 @@ pub(crate) async fn store_object(
     .await?;
     let status = resp.status();
     if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
+        let text = read_err_text(resp).await;
         return Err(core::describe_status(status, &text));
     }
     Ok(())

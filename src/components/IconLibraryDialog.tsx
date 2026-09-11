@@ -192,12 +192,11 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
   const [page, setPage] = useState(0);
   // slugs dont l'aperçu CDN a échoué : masqués + bannière si la page
   // courante est massivement en échec. Réinitialisé à chaque navigation
-  // (page/onglet/recherche) : un <img> démonté en plein chargement émet
-  // une erreur « abort » qui ne doit pas polluer l'état des vues suivantes.
+  // (page/onglet/recherche) ET à chaque teinte : les ids marqués morts en
+  // sombre doivent pouvoir s'afficher en clair (et un <img> démonté en
+  // plein chargement émet une erreur « abort » sans rapport avec la vue
+  // courante). Le reset est déclaré après genericHex (TDZ).
   const [dead, setDead] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    setDead(new Set());
-  }, []);
 
   // recherche distante anti-rebond (350 ms)
   const [debounced, setDebounced] = useState(query);
@@ -251,6 +250,11 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
       : genericPageAll.filter((id) => dead.has(id)).length;
   const genericHex =
     GENERIC_TONES.find((x) => x.id === genericTone)?.hex ?? "18181b";
+
+  // (reset déclaré ici : genericHex doit exister — TDZ)
+  useEffect(() => {
+    setDead(new Set());
+  }, []);
 
   // Aperçus chargés par LOT (1-2 requêtes batch par page, au lieu de 48
   // hits /{id}.svg qui déclenchaient les 429 du rate-limit Iconify → la

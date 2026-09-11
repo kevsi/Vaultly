@@ -116,9 +116,20 @@ export function CommandPalette({
   }
 
   async function launch(r: Resource) {
+    // note : pas d'« ouverture » externe possible — on demande au lecteur
+    // de notes de la bibliothèque de s'afficher (événement écouté par
+    // LibraryView, qui détient l'état noteViewing)
+    if (r.resourceType === "note") {
+      window.dispatchEvent(
+        new CustomEvent<Resource>("vaultly:open-note", { detail: r }),
+      );
+      onOpenChange(false);
+      return;
+    }
     try {
       await openResource(r);
       void qc.invalidateQueries({ queryKey: ["resources"] });
+      void qc.invalidateQueries({ queryKey: ["stats"] });
       onOpenChange(false);
     } catch (e) {
       toast.error(describeError(e));
@@ -139,6 +150,8 @@ export function CommandPalette({
       });
       toast.success(t("Ajouté à la bibliothèque ✓"));
       void qc.invalidateQueries({ queryKey: ["resources"] });
+      void qc.invalidateQueries({ queryKey: ["stats"] });
+      void qc.invalidateQueries({ queryKey: ["allTags"] });
       onOpenChange(false);
     } catch (e) {
       const msg = describeError(e);
@@ -193,6 +206,10 @@ export function CommandPalette({
                 if (it?.kind === "add") void addUrl(it.url);
                 else if (it?.kind === "res") void launch(it.resource);
               } else if (e.key === "Escape") {
+                // ne pas laisser l'Échap remonter jusqu'au listener global de
+                // la bibliothèque (qui ferait « remonter » un niveau de dossier
+                // en plus de fermer la palette)
+                e.stopPropagation();
                 onOpenChange(false);
               }
             }}

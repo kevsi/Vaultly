@@ -12,6 +12,8 @@ import { useSyncExternalStore } from "react";
 const LANG_KEY = "vaultly-lang";
 const listeners = new Set<() => void>();
 
+/** Langue courante (les composants réactifs passent par useI18n ; ce
+ *  getter sert aux utilitaires hors React, ex. formatage des dates). */
 export function getLang(): Lang {
   try {
     const v = localStorage.getItem(LANG_KEY);
@@ -563,6 +565,11 @@ const en: Dict = {
     "Use a YouTube, TikTok, Vimeo, Dailymotion or Twitch link.",
   "Ouvrir dans le navigateur": "Open in the browser",
   "Lire dans l'app": "Play in the app",
+  Confirmer: "Confirm",
+  Valider: "Confirm",
+  "Impossible de lire la corbeille": "Could not read the trash",
+  "Réessaie depuis l'onglet Bibliothèque, ou redémarre Vaultly si le problème persiste.":
+    "Try again from the Library tab, or restart Vaultly if it persists.",
   "Lien de l'outil": "Tool link",
   "https://…": "https://…",
   "Un outil en ligne : son adresse web.": "An online tool: its web address.",
@@ -1071,6 +1078,8 @@ const en: Dict = {
   "HTML Netscape (« Exporter les favoris ») ou CSV Pocket/Raindrop : les favoris lus s'ajoutent ci-dessous, à cocher comme les autres.":
     'Netscape HTML ("Export bookmarks") or Pocket/Raindrop CSV: read bookmarks are added below, to check like the others.',
   "Détection des navigateurs…": "Detecting browsers…",
+  "Détection impossible — redémarre Vaultly si le problème persiste.":
+    "Detection failed — restart Vaultly if the problem persists.",
   "Aucun favori détecté dans Brave, Chrome, Edge ou Firefox. Assure-toi que le navigateur est installé et contient des favoris — ou importe un fichier HTML/CSV ci-dessus.":
     "No bookmarks detected in Brave, Chrome, Edge or Firefox. Make sure the browser is installed and has bookmarks — or import an HTML/CSV file above.",
   "{count} favori(s)": "{count} bookmark(s)",

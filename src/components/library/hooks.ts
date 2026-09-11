@@ -280,6 +280,15 @@ export function useFolderActions({
   function goUp() {
     setFolderStack((s) => s.slice(0, -1));
   }
+  /** Le dossier supprimé/dissous est peut-être un ANCIENRE de la pile : dans
+   *  ce cas tous les niveaux à partir de lui n'existent plus → on coupe la
+   *  pile à son index (sinon vue vide avec fil d'Ariane mort). */
+  function evictFromStack(id: number) {
+    setFolderStack((s) => {
+      const i = s.findIndex((f) => f.id === id);
+      return i === -1 ? s : s.slice(0, i);
+    });
+  }
   const [dragFolderId, setDragFolderId] = useState<number | null>(null);
   const [folderDropHint, setFolderDropHint] = useState<number | null>(null);
 
@@ -327,7 +336,7 @@ export function useFolderActions({
       action: async () => {
         try {
           const trashed = await deleteFolder(f.id);
-          if (openFolder?.id === f.id) goUp();
+          evictFromStack(f.id);
           toast.success(
             trashed > 0
               ? t("{count} ressource(s) déplacée(s) dans la corbeille", {
@@ -353,7 +362,7 @@ export function useFolderActions({
       action: async () => {
         try {
           await dissolveFolder(f.id);
-          if (openFolder?.id === f.id) goUp();
+          evictFromStack(f.id);
           toast.success(t("Dossier « {name} » dissous", { name: f.name }));
           refresh();
         } catch (e) {
@@ -405,13 +414,11 @@ export interface BulkActions {
 export function useBulkActions({
   refresh,
   setConfirm,
-  openFolder,
-  goUp,
+  setFolderStack,
 }: {
   refresh: () => void;
   setConfirm: Dispatch<SetStateAction<ConfirmState | null>>;
-  openFolder: Folder | null;
-  goUp: () => void;
+  setFolderStack: Dispatch<SetStateAction<Folder[]>>;
 }): BulkActions {
   const { t } = useI18n();
   const [selectMode, setSelectMode] = useState(false);
@@ -456,8 +463,11 @@ export function useBulkActions({
           if (ids.length > 0) await deleteResources(ids);
           for (const id of folderIds) {
             await deleteFolder(id);
-            // le dossier ouvert fait partie de la sélection : remonter
-            if (openFolder?.id === id) goUp();
+            // dossier ouvert ou ANCIÊTRE dans la pile : couper la pile
+            setFolderStack((s) => {
+              const i = s.findIndex((f) => f.id === id);
+              return i === -1 ? s : s.slice(0, i);
+            });
           }
           toast.success(t("{count} élément(s) supprimé(s)", { count: total }));
           clearSelection();
@@ -465,6 +475,9 @@ export function useBulkActions({
           refresh();
         } catch (e) {
           toast.error(describeError(e));
+          // des mutations ont pu passer avant l'échec (ressources puis
+          // dossiers) : sans refresh, la grille afficherait des fantômes
+          refresh();
         }
       },
     });
@@ -485,6 +498,8 @@ export function useBulkActions({
       refresh();
     } catch (e) {
       toast.error(describeError(e));
+      // Promise.all : certains statuts ont pu être posés avant l'échec
+      refresh();
     }
   }
 

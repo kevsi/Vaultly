@@ -414,6 +414,8 @@ export function ResourceGrid(props: ResourceGridProps) {
                 onToggleSelect={() => toggleFolderSelect(f)}
                 setFolderStack={setFolderStack}
                 setDragFolderId={setDragFolderId}
+                resourceDragging={dragId !== null}
+                onDropResource={() => void handleDropOnFolder(f)}
               />
             ))}
             {/* ressources */}
@@ -465,7 +467,11 @@ export function ResourceGrid(props: ResourceGridProps) {
               key={`folder-${it.f.id}`}
               // pas de drag de dossier en mode sélection (cohérent avec la
               // vue liste et les tuiles ressources)
-              {...(selectMode ? {} : folderDragProps(it.f, setDragFolderId))}
+              {...(selectMode
+                ? {}
+                : folderDragProps(it.f, setDragFolderId, () =>
+                    setFolderDropHint(null),
+                  ))}
               className="animate-tile-in"
               style={{ animationDelay: tileDelay(i) }}
             >

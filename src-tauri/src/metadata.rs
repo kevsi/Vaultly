@@ -23,16 +23,26 @@ fn host_of(url: &str) -> String {
         .trim_start_matches("http://")
         .trim_start_matches("https://");
     let authority = rest.split('/').next().unwrap_or("");
+    // userinfo : « http://x@127.0.0.1/ » — reqwest retient le host APRÈS le
+    // « @ » ; sans cette coupe, « x@127.0.0.1 » ne se parse pas comme IP et
+    // passerait le test de publicisation (contournement SSRF classique)
+    let authority = match authority.rsplit_once('@') {
+        Some((_, h)) => h,
+        None => authority,
+    };
     // IPv6 entre crochets : [::1] ou [::1]:8080 → on garde l'IP sans crochets
     if let Some(idx) = authority.rfind(']') {
         let inner = &authority[1..idx]; // retire '[' et tout port après ']'
         return inner.to_lowercase();
     }
     // hôte avec port « example.com:8080 » → retire le port numérique
-    match authority.rsplit_once(':') {
-        Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => h.to_lowercase(),
-        _ => authority.to_lowercase(),
-    }
+    let host = match authority.rsplit_once(':') {
+        Some((h, p)) if !h.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => h,
+        _ => authority,
+    };
+    // « 127.0.0.1. » (FQDN absolu) se résout comme « 127.0.0.1 » : le point
+    // final est coupé avant toute comparaison
+    host.trim_end_matches('.').to_lowercase()
 }
 
 /// Hôte visé « public » = ni loopback, ni RFC1918/CGNAT/link-local, ni
@@ -63,12 +73,34 @@ pub(crate) fn host_is_public(url: &str) -> bool {
     if host == "metadata.google.internal" || host == "metadata" {
         return false;
     }
+    // formes « IP » non parsables par IpAddr mais que la pile réseau mappe
+    // silencieusement vers une IPv4 interne (127.1, 2130706433, 0x7f000001) :
+    // une IP parsable et publique (8.8.8.8) reste acceptée, elle passe au
+    // match IpAddr ci-dessous.
+    if ip_literal_shape(&host) && host.parse::<std::net::IpAddr>().is_err() {
+        return false;
+    }
     match host.parse::<std::net::IpAddr>() {
         Ok(ip) => !ip_is_private(ip),
         // pas une IP : hostname « public » (la résolution est laissée au
         // connect ; l'anti-SSRF principal ici est le blocage des redirections)
         Err(_) => true,
     }
+}
+
+/// Vrai si le hôte a une forme d'IP compacte (chiffres/points, ou 0x…) que
+/// le parseur système mappe silencieusement vers une IPv4 interne.
+fn ip_literal_shape(h: &str) -> bool {
+    if h.is_empty() {
+        return true;
+    }
+    if h.starts_with("0x") || h.starts_with("0X") {
+        return true;
+    }
+    !h.chars().any(|c| c.is_ascii_alphabetic())
+        && h
+            .split('.')
+            .all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
 }
 
 fn ip_is_private(ip: std::net::IpAddr) -> bool {
@@ -890,6 +922,13 @@ mod tests {
         // noms internes
         assert!(!host_is_public("http://nas.local/"));
         assert!(!host_is_public("http://metadata.google.internal/"));
+        // contournements classiques : userinfo + formes inet_aton non parsables
+        assert!(!host_is_public("http://x@127.0.0.1:8765/")); // reqwest vise le host après @
+        assert!(!host_is_public("http://x@localhost/"));
+        assert!(!host_is_public("http://127.1/")); // == 127.0.0.1
+        assert!(!host_is_public("http://2130706433/")); // == 127.0.0.1 en décimal
+        assert!(!host_is_public("http://0x7f000001/")); // == 127.0.0.1 en hex
+        assert!(!host_is_public("http://127.0.0.1./")); // FQDN absolu == loopback
         // publics autorisés
         assert!(host_is_public("https://github.com/owner/repo"));
         assert!(host_is_public("https://example.com:8443/x"));

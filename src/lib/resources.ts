@@ -10,7 +10,7 @@ import {
   StickyNote,
   Wrench,
 } from "lucide-react";
-import { tt } from "@/lib/i18n";
+import { getLang, tt } from "@/lib/i18n";
 import type { Resource } from "./types";
 
 export const RESOURCE_TYPES: {
@@ -112,10 +112,11 @@ export function formatRemindAt(iso: string): string {
   if (days <= 0) return tt("aujourd'hui");
   if (days === 1) return tt("demain");
   if (days < 7) return tt("dans {days} j", { days });
-  return parseDbDate(iso).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-  });
+  return parseDbDate(iso).toLocaleDateString(
+    // suit la langue choisie : « 9 sept. » en FR, « 9 Sept » en EN
+    getLang() === "en" ? "en-GB" : "fr-FR",
+    { day: "numeric", month: "short" },
+  );
 }
 
 /** Délai (en jours) après lequel une ressource jamais ouverte est "à revisiter". */

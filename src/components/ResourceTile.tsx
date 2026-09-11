@@ -165,11 +165,20 @@ export const ResourceTile = memo(function ResourceTile({
           role="button"
           tabIndex={0}
           title={resource.title}
-          onClick={() => (onOpenNote ? onOpenNote(resource) : void open())}
+          onClick={() => {
+            if (selectMode) {
+              onToggleSelect?.(resource);
+              return;
+            }
+            if (onOpenNote) onOpenNote(resource);
+            else void open();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault(); // Espace : pas de scroll de page
-              onOpenNote ? onOpenNote(resource) : void open();
+              if (selectMode) onToggleSelect?.(resource);
+              else if (onOpenNote) onOpenNote(resource);
+              else void open();
             }
           }}
           className={cn(

@@ -7,7 +7,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -37,6 +37,11 @@ export const LIST_COLS =
  *  fichiers, initiales en repli — avec gestion locale de l'erreur image. */
 function RowIcon({ resource }: { resource: Resource }) {
   const [imgError, setImgError] = useState(false);
+  // favicon changée (édition, « Récupérer ») : on retente au lieu de
+  // garder l'initiale par défaut pour une image désormais valide
+  useEffect(() => {
+    setImgError(false);
+  }, []);
   const kind =
     resource.resourceType === "fichier" ? fileKindFor(resource) : null;
   const KindIcon = kind?.icon;
@@ -132,6 +137,7 @@ function StarFav() {
 export function folderDragProps(
   f: Folder,
   setDragFolderId: (id: number | null) => void,
+  clearHint?: () => void,
 ) {
   return {
     draggable: true,
@@ -140,7 +146,12 @@ export function folderDragProps(
       e.dataTransfer.effectAllowed = "move";
       setDragFolderId(f.id);
     },
-    onDragEnd: () => setDragFolderId(null),
+    onDragEnd: () => {
+      setDragFolderId(null);
+      // drag annulé hors cible : sans ça, l'anneau « dépose ici » d'un
+      // dossier reste allumé indéfiniment
+      clearHint?.();
+    },
   };
 }
 
@@ -151,6 +162,10 @@ interface FolderListRowProps {
   onToggleSelect?: () => void;
   setFolderStack: (f: (s: Folder[]) => Folder[]) => void;
   setDragFolderId: (id: number | null) => void;
+  /** une ressource est glissée : la ligne devient cible de dépôt (rangée
+   *  dans le dossier, comme en grille) */
+  resourceDragging: boolean;
+  onDropResource: () => void;
 }
 
 /** Ligne DOSSIER de la vue LISTE. */
@@ -161,8 +176,11 @@ export function FolderListRow({
   onToggleSelect,
   setFolderStack,
   setDragFolderId,
+  resourceDragging,
+  onDropResource,
 }: FolderListRowProps) {
   const { t } = useI18n();
+  const [hint, setHint] = useState(false);
   return (
     <div
       {...(selectMode ? {} : folderDragProps(folder, setDragFolderId))}
@@ -177,10 +195,22 @@ export function FolderListRow({
           else setFolderStack((s) => [...s, folder]);
         }
       }}
+      onDragOver={(e) => {
+        if (!resourceDragging) return;
+        e.preventDefault();
+        setHint(true);
+      }}
+      onDragLeave={() => setHint(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setHint(false);
+        onDropResource();
+      }}
       className={cn(
         LIST_COLS,
         "grid cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm outline-none transition-colors last:border-b-0 hover:bg-accent/40 focus-visible:bg-accent/40",
         selected && selectMode && "ring-2 ring-inset ring-amber-500",
+        hint && "outline-2 -outline-offset-2 outline-dashed outline-primary/60",
       )}
     >
       {selectMode ? (
@@ -262,8 +292,21 @@ export function ResourceListRow({
       onDragOver={(e) => {
         if (dragId === null) return;
         e.preventDefault();
+        // zones comme la grille : quart gauche = insérer avant, quart droit =
+        // insérer après, centre = fusion en dossier — sinon chaque tentative
+        // de réordonnancement en liste créait un dossier parasite
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const zone: DropZone["zone"] =
+          x < rect.width * 0.25
+            ? "left"
+            : x > rect.width * 0.75
+              ? "right"
+              : "center";
         setDropZone((h) =>
-          h && h.id === resource.id ? h : { id: resource.id, zone: "center" },
+          h && h.id === resource.id && h.zone === zone
+            ? h
+            : { id: resource.id, zone },
         );
       }}
       onDrop={(e) => {

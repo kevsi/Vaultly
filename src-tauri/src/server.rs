@@ -265,7 +265,10 @@ async fn check_bearer(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("");
-    let is_add_route = req.uri().path().starts_with("/api/");
+    // scope exact : le token add-only ne vaut QUE pour les deux routes
+    // d'ajout — pas un futur /api/… qui hériterait du droit silencieusement
+    let path = req.uri().path();
+    let is_add_route = path == "/api/add" || path == "/api/add-bulk";
     let (mcp, add) = tokens.snapshot().await;
     let ok = constant_time_eq(bearer, &mcp)
         || (is_add_route && !add.is_empty() && constant_time_eq(bearer, &add));
@@ -454,7 +457,10 @@ fn clamp_api_add_body(mut body: ApiAddBody) -> ApiAddBody {
     const MAX_NOTES: usize = 10_000;
     const MAX_URL: usize = 2_048;
     if body.url.len() > MAX_URL {
-        body.url.truncate(MAX_URL);
+        // chars().take() et non truncate() : ce dernier coupe par OCTETS et
+        // panique si l'octet d'arrivée tombe au milieu d'un caractère UTF-8
+        // (URL IDN/accents relayées par l'extension = crash de la tâche)
+        body.url = body.url.chars().take(MAX_URL).collect();
     }
     if let Some(t) = body.title.take() {
         body.title = Some(t.chars().take(MAX_TITLE).collect());
@@ -604,8 +610,14 @@ async fn api_add_bulk(pool: SqlitePool, mut body: ApiAddBulkBody) -> Response {
     if body.items.len() > MAX_ITEMS {
         body.items.truncate(MAX_ITEMS);
     }
-    // dossier cible : existant (nom insensible à la casse) ou créé à la racine
-    let folder_name = body.folder.map(|f| f.trim().to_string()).filter(|s| !s.is_empty());
+    // dossier cible : existant (nom insensible à la casse) ou créé à la racine.
+    // Borné comme les autres champs relayés (le nom vient de la page web).
+    let folder_name = body
+        .folder
+        .take()
+        .map(|f| f.chars().take(80).collect::<String>())
+        .map(|f| f.trim().to_string())
+        .filter(|s| !s.is_empty());
     let mut folder_id: Option<i64> = None;
     if let Some(name) = &folder_name {
         let existing: Option<i64> = sqlx::query_scalar(
@@ -713,6 +725,21 @@ mod tests {
         assert!(tags.len() <= 20);
         assert!(tags.iter().all(|t| t.chars().count() <= 60));
         assert!(c.notes.unwrap().chars().count() <= 10_000);
+    }
+
+    #[test]
+    fn clamp_survives_multibyte_urls() {
+        // 1020 « é » = 2055 octets : un truncate(MAX_URL) tomberait au milieu
+        // d'une séquence UTF-8 et paniquerait ; chars().take() coupe proprement
+        let body = ApiAddBody {
+            url: format!("https://ee.com/{}", "é".repeat(1020)),
+            title: None,
+            tags: None,
+            notes: None,
+        };
+        let c = clamp_api_add_body(body);
+        assert!(c.url.chars().count() <= 2048);
+        assert!(c.url.starts_with("https://ee.com/"));
     }
 
     #[test]

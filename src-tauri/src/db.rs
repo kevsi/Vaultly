@@ -528,7 +528,13 @@ pub async fn update_resource(
     .bind(id)
     .execute(pool)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            "URL déjà enregistrée sur une autre ressource".to_string()
+        } else {
+            e.to_string()
+        }
+    })?;
     if updated.rows_affected() == 0 {
         return Err(format!("ressource {id} introuvable"));
     }
@@ -665,7 +671,7 @@ pub async fn restore_trash(pool: &SqlitePool, trash_id: i64) -> Result<Resource,
     let tags = serde_json::to_string(&res.tags).map_err(|e| e.to_string())?;
     let meta = serde_json::to_string(&res.meta).map_err(|e| e.to_string())?;
     let inserted = sqlx::query(
-        "INSERT INTO resources (url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO resources (url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, remind_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&res.url)
     .bind(&res.title)
@@ -682,11 +688,18 @@ pub async fn restore_trash(pool: &SqlitePool, trash_id: i64) -> Result<Resource,
     .bind(&meta)
     .bind(folder_id)
     .bind(&res.status)
+    .bind(&res.remind_at)
     .bind(&res.created_at)
     .bind(&res.updated_at)
     .execute(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            "URL déjà enregistrée (ajout concurrent)".to_string()
+        } else {
+            e.to_string()
+        }
+    })?;
     sqlx::query("DELETE FROM deleted_resources WHERE id = ?")
         .bind(trash_id)
         .execute(&mut *tx)
@@ -761,7 +774,7 @@ pub async fn restore_trash_bulk(
         let tags = serde_json::to_string(&res.tags).map_err(|e| e.to_string())?;
         let meta = serde_json::to_string(&res.meta).map_err(|e| e.to_string())?;
         sqlx::query(
-            "INSERT INTO resources (url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO resources (url, title, description, resource_type, category, tags, notes, favicon, favorite, open_count, last_opened_at, position, meta, folder_id, status, remind_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&res.url)
         .bind(&res.title)
@@ -778,11 +791,18 @@ pub async fn restore_trash_bulk(
         .bind(&meta)
         .bind(folder_id)
         .bind(&res.status)
+        .bind(&res.remind_at)
         .bind(&res.created_at)
         .bind(&res.updated_at)
         .execute(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                "URL déjà enregistrée (ajout concurrent)".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
         sqlx::query("DELETE FROM deleted_resources WHERE id = ?")
             .bind(trash_id)
             .execute(&mut *tx)
