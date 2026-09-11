@@ -25,6 +25,8 @@ jobs:
   release:
     name: Build + publie (Windows)
     runs-on: windows-latest
+    permissions:
+      contents: write # créer la release + uploder les artefacts (GITHUB_TOKEN)
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
