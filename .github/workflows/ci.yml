@@ -65,8 +65,8 @@ jobs:
     name: Backend Rust (${{ matrix.os }})
     strategy:
       fail-fast: false
-    matrix:
-      os: [ubuntu-latest, macos-latest]
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
