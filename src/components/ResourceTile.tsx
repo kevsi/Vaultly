@@ -74,6 +74,7 @@ export const ResourceTile = memo(function ResourceTile({
   const summary = metaSummary(resource);
   const isNote = resource.resourceType === "note";
   const isFile = resource.resourceType === "fichier";
+  const isVideo = resource.resourceType === "video";
   // icône selon l'extension réelle du fichier (txt, pdf, zip…) — pas de
   // dossier générique : la tuile doit refléter le document
   const fileKind = isFile ? fileKindFor(resource) : null;
@@ -203,6 +204,36 @@ export const ResourceTile = memo(function ResourceTile({
             />
           </div>
           <span className="line-clamp-2 min-h-8 text-center text-xs font-medium leading-tight">
+            {resource.title}
+          </span>
+        </div>
+      ) : isVideo && resource.favicon && !imgError ? (
+        /* vidéo avec vignette (oEmbed/miniature YouTube) : la vignette
+           16:9 occupe la tuile, titre dessous — plutôt qu'une icône
+           timbrée ou une capture mshots de la page de lecture */
+        <div
+          role="button"
+          tabIndex={0}
+          title={`${resource.title}\n${resource.url}`}
+          onClick={() => void open()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              void open();
+            }
+          }}
+          className="flex aspect-square cursor-pointer select-none flex-col gap-1.5 rounded-2xl border bg-card p-3 transition-all duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]"
+        >
+          <div className="min-h-0 w-full flex-1 overflow-hidden rounded-lg bg-black">
+            <img
+              src={resource.favicon}
+              alt=""
+              loading="lazy"
+              className="size-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          </div>
+          <span className="line-clamp-2 text-center text-xs font-medium leading-tight">
             {resource.title}
           </span>
         </div>
