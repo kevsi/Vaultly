@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vaultly — ton hub personnel de ressources</title>
-  <meta name="description" content="Sites, apps, fichiers, notes : tout organisé en tuiles, connecté à ton assistant IA. 100 % local. Gratuit pour Windows." />
+  <meta name="description" content="Sites, apps, fichiers, notes : tout organisé en tuiles, connecté à ton assistant IA. 100 % local. Gratuit pour Windows, Linux et macOS." />
   <link rel="icon" type="image/png" href="logo-256.png" />
   <style>
     :root {
@@ -153,17 +153,18 @@
   <!-- HERO -->
   <div class="hero">
     <div>
-      <span class="badge"><span class="dot"></span> v0.2.0 · Windows 10/11 · gratuit · données 100 % locales</span>
+      <span class="badge"><span class="dot"></span> v1.1.0 · Windows · Linux · macOS · gratuit · données 100 % locales</span>
       <h1>Toutes tes bonnes ressources. <em>Au même endroit.</em></h1>
       <p class="sub">
         Sites, apps, fichiers, notes — organisés en tuiles comme un écran d'accueil,
         reliés à ton assistant IA. Rien dans le cloud sans ton accord.
       </p>
       <div class="cta">
-        <a class="btn primary" href="download/vaultly_0.2.0_x64-setup.exe" download>
+        <a class="btn primary" href="https://github.com/kevsi/Vaultly/releases/download/v1.1.0/Vaultly_1.1.0_x64-setup.exe">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Télécharger pour Windows
         </a>
+        <a class="btn ghost" href="#download">Linux & macOS</a>
         <a class="btn ghost" href="#features">Voir ce qu'il fait</a>
       </div>
     </div>
@@ -233,22 +234,31 @@
       <img src="logo-256.png" alt="" />
       <h2>Télécharger Vaultly</h2>
       <p class="meta">
-        v1.0.0 · 10 septembre 2026 · Windows 10/11 · 64 bits<br />
-        Installateur : raccourci menu Démarrer, désinstallation propre, tes données restent locales.
+        v1.1.0 · 11 septembre 2026 · Windows 10/11 · Debian 12+ / Ubuntu 22.04+ · macOS (Apple Silicon)<br />
+        Installateurs signés (minisign), mises à jour automatiques intégrées, tes données restent locales.
       </p>
-      <a class="btn primary" href="download/vaultly_0.2.0_x64-setup.exe" download>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        vaultly_0.2.0_x64-setup.exe
-      </a>
+      <div class="cta" style="justify-content:center">
+        <a class="btn primary" href="https://github.com/kevsi/Vaultly/releases/download/v1.1.0/Vaultly_1.1.0_x64-setup.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Télécharger pour Windows
+        </a>
+        <a class="btn ghost" href="https://github.com/kevsi/Vaultly/releases/download/v1.1.0/Vaultly_1.1.0_amd64.deb">Linux · .deb</a>
+        <a class="btn ghost" href="https://github.com/kevsi/Vaultly/releases/download/v1.1.0/Vaultly_1.1.0_amd64.AppImage">Linux · AppImage</a>
+        <a class="btn ghost" href="https://github.com/kevsi/Vaultly/releases/download/v1.1.0/Vaultly_1.1.0_aarch64.dmg">macOS · .dmg</a>
+      </div>
       <details>
-        <summary>Alternative MSI & vérification d'intégrité</summary>
+        <summary>Autres formats, vérification d'intégrité & notes de version</summary>
         <p style="margin-top:0.6rem">
           MSI (déploiement entreprise) :
-          <a href="download/vaultly_0.2.0_x64_en-US.msi" download class="inline-code">vaultly_0.2.0_x64_en-US.msi</a>
+          <a href="https://github.com/kevsi/Vaultly/releases/download/v1.1.0/Vaultly_1.1.0_x64_en-US.msi" class="inline-code">Vaultly_1.1.0_x64_en-US.msi</a>
         </p>
         <p style="margin-top:0.6rem">
-          SHA-256 du setup :<br />
-          <code>ba8dea582cb8713f414f12dfb7da0ee762f595cbd30304f42f23262d5af89ffd</code>
+          Toutes les versions, empreintes SHA-256 et signatures <code>.sig</code> :
+          <a href="https://github.com/kevsi/Vaultly/releases/latest" class="inline-code">github.com/kevsi/Vaultly/releases/latest</a>
+        </p>
+        <p style="margin-top:0.6rem">
+          macOS : l'app n'est pas notarisée Apple → au premier lancement,
+          clic droit sur l'app › <strong>Ouvrir</strong>.
         </p>
       </details>
     </div>
