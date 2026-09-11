@@ -158,13 +158,15 @@ export function ResourceFormFields({
               <p className="text-xs text-muted-foreground">{t(spec.hint)}</p>
             )
           )}
-          {/* liens déjà enregistrés sur ce domaine */}
+          {/* liens déjà enregistrés sur ce domaine (informatif — le vrai
+              doublon, lui, bloque via DuplicateWarning) */}
           {similar.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
               <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
               <div className="min-w-0 text-xs">
                 <span className="font-medium">
-                  {t("Déjà enregistré sur {host} :", {
+                  {t("Tu as déjà {count} lien(s) sur {host} :", {
+                    count: similar.length,
                     host: hostOf(similar[0].url),
                   })}
                 </span>{" "}

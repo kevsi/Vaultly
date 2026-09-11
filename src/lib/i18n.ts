@@ -498,7 +498,8 @@ const en: Dict = {
   "Récupérer le titre et le favicon automatiquement":
     "Fetch the title and favicon automatically",
   Récupérer: "Fetch",
-  "Déjà enregistré sur {host} :": "Already saved on {host}:",
+  "Tu as déjà {count} lien(s) sur {host} :":
+    "You already have {count} link(s) on {host}:",
   "Cette URL est déjà dans ta bibliothèque":
     "This URL is already in your library",
   "Voir la ressource": "View resource",

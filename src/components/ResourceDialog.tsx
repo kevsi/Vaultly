@@ -376,14 +376,36 @@ export function ResourceDialog({
     // correspondance est la ressource en cours d'édition → duplicate = null)
     !duplicate;
 
-  // liens similaires déjà enregistrés sur le même domaine
+  // liens similaires déjà enregistrés sur le même domaine. Inutile pour les
+  // plateformes vidéo : chaque lien est une vidéo distincte, et le bloc
+  // « déjà enregistré sur youtube.com » pour chaque nouvel ajout était lu à
+  // tort comme un refus (le vrai doublon, lui, passe par `duplicate`).
   const similarHost = useMemo(() => {
     if (isApp) return null;
     const u = form.url.trim();
     if (!u.startsWith("http")) return null;
     try {
-      const h = new URL(u).hostname.replace(/^www\./, "");
-      return h || null;
+      const h = new URL(u).hostname.replace(/^www\./, "").toLowerCase();
+      if (!h) return null;
+      const videoHosts = [
+        "youtube.com",
+        "youtu.be",
+        "yt.be",
+        "tiktok.com",
+        "vimeo.com",
+        "dailymotion.com",
+        "dai.ly",
+        "twitch.tv",
+        "peertube.tv",
+      ];
+      if (
+        videoHosts.some(
+          (v) => h === v || h.endsWith(`.${v}`) || h === v.replace(/^m\./, ""),
+        )
+      ) {
+        return null;
+      }
+      return h;
     } catch {
       return null;
     }
