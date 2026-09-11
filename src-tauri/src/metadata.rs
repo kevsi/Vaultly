@@ -495,7 +495,7 @@ pub fn detect_type(url: &str) -> &'static str {
             return "repo";
         }
     }
-    if ["youtube.com", "youtu.be", "yt.be", "vimeo.com", "dailymotion.com", "dai.ly", "twitch.tv", "peertube.tv"]
+    if ["youtube.com", "youtu.be", "yt.be", "tiktok.com", "vimeo.com", "dailymotion.com", "dai.ly", "twitch.tv", "peertube.tv"]
         .iter()
         .any(|h| host_is(h) || host.ends_with(h))
     {
@@ -652,6 +652,35 @@ fn absolutize_image(base_url: &str, img: &str) -> String {
     }
 }
 
+/// Endpoint oEmbed public **sans clé** (réponse JSON propre : titre, auteur,
+/// miniature). Seuls ces hôtes l'exposent de façon fiable ; les autres sites
+/// gardent le chemin HTML/og:.
+fn oembed_endpoint(url: &str) -> Option<&'static str> {
+    if youtube_video_id(url).is_some() {
+        return Some("https://www.youtube.com/oembed");
+    }
+    let lower = url.to_lowercase();
+    if lower.contains("tiktok.com/") {
+        return Some("https://www.tiktok.com/oembed");
+    }
+    None
+}
+
+async fn oembed_json(client: &reqwest::Client, url: &str) -> Option<serde_json::Value> {
+    let endpoint = oembed_endpoint(url)?;
+    let encoded =
+        percent_encoding::utf8_percent_encode(url, percent_encoding::NON_ALPHANUMERIC);
+    let resp = client
+        .get(format!("{endpoint}?format=json&url={encoded}"))
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json().await.ok()
+}
+
 /// « Sniff » une URL : type deviné + méta riches (titre, description, image,
 /// tags). N'appelle JAMAIS l'API GitHub (quota) — le détail de dépôt riche
 /// reste via la commande dédiée. Le type + les og: couvrent le « coller → tout
@@ -666,24 +695,46 @@ pub async fn sniff(url: &str) -> Result<Sniff, String> {
     let (mut title, mut description, mut image, mut tags) =
         (String::new(), String::new(), String::new(), Vec::new());
 
+    // YouTube/TikTok : oEmbed d'abord — titre sans le suffixe du site,
+    // miniature garantie, et insensible au mur de consentement comme aux
+    // pages rendues en JS (le HTML de TikTok ne contient aucun og:).
+    if let Some(j) = oembed_json(&client, u).await {
+        if let Some(t) = j.get("title").and_then(|v| v.as_str()) {
+            title = t.trim().to_string();
+        }
+        if let Some(a) = j.get("author_name").and_then(|v| v.as_str()) {
+            let a = a.trim();
+            if !a.is_empty() {
+                description = a.to_string();
+            }
+        }
+        if let Some(t) = j.get("thumbnail_url").and_then(|v| v.as_str()) {
+            image = t.trim().to_string();
+        }
+    }
+
     // requête bornée + redirections coupées (host_is_public déjà vérifié)
-    if let Ok(resp) = client.get(u).send().await {
-        if let Ok(bytes) = read_capped(resp, 200_000).await {
-            let html = String::from_utf8_lossy(&bytes);
-            let (t, d, im, kw) = parse_meta(&html);
-            title = t.unwrap_or_default();
-            description = d.unwrap_or_default();
-            image = im.unwrap_or_default();
-            tags = kw;
-            if title.is_empty() {
-                title = extract_title(&html).unwrap_or_default();
+    if title.is_empty() {
+        if let Ok(resp) = client.get(u).send().await {
+            if let Ok(bytes) = read_capped(resp, 200_000).await {
+                let html = String::from_utf8_lossy(&bytes);
+                let (t, d, im, kw) = parse_meta(&html);
+                title = t.unwrap_or_default();
+                description = d.unwrap_or_default();
+                image = im.unwrap_or_default();
+                tags = kw;
+                if title.is_empty() {
+                    title = extract_title(&html).unwrap_or_default();
+                }
             }
         }
     }
-    // YouTube : miniature canonique sans API (i.ytimg) si rien de mieux
+    // YouTube : miniature canonique sans API (i.ytimg) si rien de mieux —
+    // hqdefault existe pour 100 % des vidéos (oardefault, plus récent, 404
+    // sur une large partie du catalogue)
     if image.is_empty() {
         if let Some(id) = youtube_video_id(u) {
-            image = format!("https://i.ytimg.com/vi/{id}/oardefault.jpg");
+            image = format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg");
         }
     }
     if !image.is_empty() {
@@ -713,6 +764,10 @@ mod tests {
         assert_eq!(detect_type("https://gitlab.com/a/b"), "repo");
         assert_eq!(detect_type("https://youtu.be/dQw4w9WgXcQ"), "video");
         assert_eq!(detect_type("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "video");
+        assert_eq!(
+            detect_type("https://www.tiktok.com/@user/video/1234567890"),
+            "video"
+        );
         assert_eq!(detect_type("https://arxiv.org/abs/2301.00001"), "article");
         assert_eq!(detect_type("https://www.figma.com/file/xyz"), "outil");
         assert_eq!(detect_type("https://www.google.com/search?q=x"), "site");
