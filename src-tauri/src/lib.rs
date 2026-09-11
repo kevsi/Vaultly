@@ -212,10 +212,7 @@ fn open_logs_folder() -> Result<String, String> {
     };
     let dir = base.join("com.kevsi.vaultly").join("logs");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::process::Command::new("explorer")
-        .arg(&dir)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    commands::open_in_file_manager(&dir)?;
     Ok(dir.display().to_string())
 }
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -584,25 +581,28 @@ pub fn run() {
                 // des réglages/jetons « gdrive_* » (libère le port 8790 à
                 // l'usage, nettoie la base). Idempotent, silencieux si rien.
                 commands::purge_legacy_gdrive(&pool).await;
-                // migration une fois : les jetons écrits EN CLAIR avant le
-                // mécanisme DPAPI sont chiffrés dès ce démarrage (sinon il
-                // faudrait attendre leur prochaine réécriture, parfois jamais)
+                // migration une fois : les jetons écrits EN CLAIR avant les
+                // mécanismes de protection au repos (DPAPI / trousseau) sont
+                // protégés dès ce démarrage (sinon il faudrait attendre leur
+                // prochaine réécriture, parfois jamais)
                 for key in ["mcp_token", "api_add_token", "webdav_pass"] {
                     if let Some(v) = db::get_setting(&pool, key).await {
                         if !v.is_empty() && !secret::is_encrypted(&v) {
                             if let Err(e) = db::set_secret(&pool, key, &v).await {
-                                tracing::warn!("migration DPAPI du secret {key} échouée : {e}");
+                                tracing::warn!("protection du secret {key} échouée : {e}");
                             }
                         }
                     }
                 }
-                // DPAPI défaillant : un secret réécrit en clair ne doit pas
-                // passer inaperçu (signalé dans les logs à chaque démarrage)
+                // protection au repos défaillante (DPAPI ou agent de
+                // trousseau indisponibles) : un secret réécrit en clair ne
+                // doit pas passer inaperçu (signalé dans les logs à chaque
+                // démarrage)
                 for key in ["mcp_token", "api_add_token", "webdav_pass"] {
                     if let Some(v) = db::get_setting(&pool, key).await {
                         if secret::plaintext_stored(&v) {
                             tracing::warn!(
-                                "secret {key} stocké EN CLAIR (DPAPI indisponible à sa dernière écriture)"
+                                "secret {key} stocké EN CLAIR (protection au repos indisponible à sa dernière écriture)"
                             );
                         }
                     }

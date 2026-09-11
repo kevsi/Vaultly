@@ -1478,21 +1478,36 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()
     Ok(())
 }
 
-// --- Secrets (chiffrés au repos via DPAPI, voir secret.rs) ---
+// --- Secrets (protégés au repos : DPAPI Windows, trousseau macOS/Linux — voir secret.rs) ---
 
-/// Lecture d'un secret : déchiffre `dpapi1:…` et accepte les valeurs en clair
-/// écrites avant ce mécanisme (elles seront chiffrées à la prochaine
-/// écriture). Un secret indéchiffrable (base restaurée sur un autre poste)
-/// revient vide → le client traitera « non connecté ».
+/// Lecture d'un secret : déchiffre `dpapi1:…`, récupère `key1:…` dans le
+/// trousseau système et accepte les valeurs en clair écrites avant ce
+/// mécanisme (elles seront protégées à la prochaine écriture). Un secret
+/// indéchiffrable (base restaurée sur un autre poste ou un autre OS) revient
+/// vide → le client traitera « non connecté ».
 pub async fn get_secret(pool: &SqlitePool, key: &str) -> Option<String> {
     get_setting(pool, key)
         .await
-        .map(|v| crate::secret::unprotect(&v))
+        .map(|v| crate::secret::unprotect(key, &v))
         .filter(|v| !v.is_empty())
 }
 
 pub async fn set_secret(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
-    set_setting(pool, key, &crate::secret::protect(value)).await
+    set_setting(pool, key, &crate::secret::protect(key, value)).await
+}
+
+/// Supprime un secret en retirant AUSSI sa référence de trousseau (sinon, sur
+/// macOS/Linux, le mot de passe survivrait à la suppression de la ligne).
+pub async fn delete_secret(pool: &SqlitePool, key: &str) -> Result<(), String> {
+    if let Some(v) = get_setting(pool, key).await {
+        crate::secret::erase(key, &v);
+    }
+    sqlx::query("DELETE FROM settings WHERE key = ?")
+        .bind(key)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 

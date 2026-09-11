@@ -445,10 +445,12 @@ pub async fn webdav_set_config(
 
 #[tauri::command]
 pub async fn webdav_clear_config(pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
+    // le mot de passe est un secret : delete_secret retire AUSSI l'entrée de
+    // trousseau (macOS/Linux), sinon le mot de passe survivrait à la config.
+    db::delete_secret(&pool, "webdav_pass").await?;
     for key in [
         "webdav_url",
         "webdav_user",
-        "webdav_pass",
         "webdav_autobackup_enabled",
         "webdav_autobackup_interval_hours",
         "webdav_last_backup_at",

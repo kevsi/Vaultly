@@ -30,16 +30,48 @@ pub struct BrowserProfile {
     pub bookmarks: Vec<ImportedBookmark>,
 }
 
-fn user_data_dir(browser: &str) -> Option<std::path::PathBuf> {
-    let home = std::env::var("USERPROFILE").ok()?;
-    let base = match browser {
+/// Dossier « home » de l'utilisateur courant, multi-OS (Windows/macOS/Linux).
+/// directories::UserDirs::home_dir() = %USERPROFILE% / /Users/x / /home/x.
+fn home_dir() -> Option<std::path::PathBuf> {
+    directories::UserDirs::new().map(|d| d.home_dir().to_path_buf())
+}
+
+/// Chemin relatif (sous home) du répertoire « User Data » d'un navigateur
+/// Chromium, par plateforme. Les fichiers Bookmarks/AccountBookmarks vivent
+/// sous `{user_data}/{Default|Profile N}/` sur les trois OS.
+fn chromium_user_data_rel(browser: &str) -> Option<&'static str> {
+    match browser {
+        "chrome" | "edge" | "brave" => {}
+        _ => return None,
+    }
+    #[cfg(windows)]
+    let rel = match browser {
         "chrome" => "AppData/Local/Google/Chrome/User Data",
         "edge" => "AppData/Local/Microsoft/Edge/User Data",
-        // Brave est basé sur Chromium : même format de fichier Bookmarks
         "brave" => "AppData/Local/BraveSoftware/Brave-Browser/User Data",
-        _ => return None,
+        _ => unreachable!(),
     };
-    Some(std::path::PathBuf::from(home).join(base))
+    #[cfg(target_os = "macos")]
+    let rel = match browser {
+        "chrome" => "Library/Application Support/Google/Chrome",
+        "edge" => "Library/Application Support/Microsoft Edge",
+        "brave" => "Library/Application Support/BraveSoftware/Brave-Browser",
+        _ => unreachable!(),
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let rel = match browser {
+        "chrome" => ".config/google-chrome",
+        "edge" => ".config/microsoft-edge",
+        "brave" => ".config/BraveSoftware/Brave-Browser",
+        _ => unreachable!(),
+    };
+    Some(rel)
+}
+
+fn user_data_dir(browser: &str) -> Option<std::path::PathBuf> {
+    let home = home_dir()?;
+    let rel = chromium_user_data_rel(browser)?;
+    Some(home.join(rel))
 }
 
 /// Détecte et lit les favoris Chrome/Edge (fichier Bookmarks JSON).
@@ -162,12 +194,17 @@ struct ChromiumNode {
 
 /// Détecte et lit les favoris Firefox (places.sqlite).
 pub fn read_firefox() -> Vec<BrowserProfile> {
-    let home = match std::env::var("USERPROFILE") {
-        Ok(h) => h,
-        Err(_) => return vec![],
+    let home = match home_dir() {
+        Some(h) => h,
+        None => return vec![],
     };
-    let profiles_root = std::path::PathBuf::from(&home)
-        .join("AppData/Roaming/Mozilla/Firefox/Profiles");
+    #[cfg(windows)]
+    let rel = "AppData/Roaming/Mozilla/Firefox/Profiles";
+    #[cfg(target_os = "macos")]
+    let rel = "Library/Application Support/Firefox/Profiles";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let rel = ".mozilla/firefox";
+    let profiles_root = home.join(rel);
     let entries = match std::fs::read_dir(&profiles_root) {
         Ok(e) => e,
         Err(_) => return vec![],
@@ -276,6 +313,21 @@ fn read_places_sqlite(path: &std::path::Path) -> Vec<ImportedBookmark> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chromium_rel_supports_three_os_and_rejects_unknown() {
+        // chaque navigateur connu a un chemin sur la plateforme courante
+        for b in ["chrome", "edge", "brave"] {
+            assert!(chromium_user_data_rel(b).is_some(), "doit exister : {b}");
+        }
+        // et user_data_dir ancre ce relatif sous le home (ou None si home
+        // introuvable, jamais un chemin hors du profil utilisateur)
+        if let Some(p) = user_data_dir("chrome") {
+            let home = home_dir().unwrap();
+            assert!(p.starts_with(&home), "sous le home : {}", p.display());
+        }
+        assert!(chromium_user_data_rel("safari").is_none(), "inconnu refusé");
+    }
 
     #[test]
     fn brave_detection_finds_bookmarks_on_this_machine() {

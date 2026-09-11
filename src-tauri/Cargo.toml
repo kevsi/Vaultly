@@ -53,6 +53,11 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security_Cryptography",
 ] }
 
+[target."cfg(not(windows))".dependencies]
+# trousseau système pour les jetons au repos : Keychain (macOS) ou
+# Secret Service (Linux) ; fallback explicite en clair si l'agent absent
+keyring = "3"
+
 [dev-dependencies]
 # oneshot des Router axum dans les tests (server.rs)
 tower = { version = "0.5", features = ["util"] }

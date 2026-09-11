@@ -524,6 +524,22 @@ pub fn resources_root_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
     base.join("Vaultly")
 }
 
+/// Ouvre un dossier dans le gestionnaire de fichiers de l'OS :
+/// explorer (Windows), open (macOS), xdg-open (Linux).
+pub fn open_in_file_manager(dir: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    let opener = "explorer";
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let opener = "xdg-open";
+    std::process::Command::new(opener)
+        .arg(dir)
+        .spawn()
+        .map_err(|e| format!("ouverture impossible : {e}"))?;
+    Ok(())
+}
+
 /// Crée le dossier de ressources s'il manque et l'ouvre dans l'Explorateur.
 #[tauri::command]
 pub async fn open_resources_folder(app: tauri::AppHandle) -> Result<String, String> {
@@ -541,10 +557,7 @@ Icones/ : icones personnalisees des tuiles
 ",
         );
     }
-    std::process::Command::new("explorer")
-        .arg(&dir)
-        .spawn()
-        .map_err(|e| format!("ouverture impossible : {e}"))?;
+    open_in_file_manager(&dir)?;
     Ok(dir.display().to_string())
 }
 
