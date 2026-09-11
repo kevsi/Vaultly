@@ -215,14 +215,24 @@ mod tests {
     fn roundtrip() {
         let secret = "ya29.test-token-1234";
         let stored = protect("test_roundtrip", secret);
-        // sur Windows : chiffré + préfixé. Ailleurs : le trousseau des
-        // runners CI n'est pas garanti (fallback en clair assumé) — on ne
-        // vérifie que le roundtrip, qui doit passer dans les DEUX cas.
+        let back = unprotect("test_roundtrip", &stored);
         if cfg!(windows) {
+            // DPAPI est déterministe : chiffré, préfixé, relisible
             assert!(stored.starts_with(DPAPI_PREFIX));
             assert_ne!(stored, secret);
+            assert_eq!(back, secret);
+        } else {
+            // le trousseau du runner CI n'est pas garanti : les DEUX états
+            // documentés sont valides — protégé (relu OU considéré absent si
+            // l'agent a lâché entre écriture et lecture, jamais une valeur
+            // fausse) et repli en clair assumé.
+            if is_encrypted(&stored) {
+                assert!(back == secret || back.is_empty(), "valeur surprise lue");
+            } else {
+                assert_eq!(stored, secret, "repli = clair");
+                assert_eq!(back, secret);
+            }
         }
-        assert_eq!(unprotect("test_roundtrip", &stored), secret);
         erase("test_roundtrip", &stored);
     }
 

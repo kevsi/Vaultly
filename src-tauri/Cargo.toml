@@ -53,10 +53,15 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security_Cryptography",
 ] }
 
-[target."cfg(not(windows))".dependencies]
-# trousseau système pour les jetons au repos : Keychain (macOS) ou
-# Secret Service (Linux) ; fallback explicite en clair si l'agent absent
-keyring = "3"
+[target."cfg(target_os = \"macos\")".dependencies]
+# Keychain — feature EXPLICITE : sans backend nommé, keyring 3 tombe sur sa
+# « null store » silencieuse qui accepte les écritures sans rien stocker.
+keyring = { version = "3", features = ["apple-native"] }
+
+[target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
+# Secret Service (dbus) avec chiffrement pur Rust : sans backend explicite,
+# keyring n'a RIEN sous Linux et tous les secrets retomberaient en clair
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 
 [dev-dependencies]
 # oneshot des Router axum dans les tests (server.rs)
