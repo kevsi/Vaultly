@@ -6,6 +6,8 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-11
+
 ### Ajouté
 - Tuiles : vignette 16:9 pleine tuile pour les vidéos avec miniature
   (prioritaire sur la capture mShots).
