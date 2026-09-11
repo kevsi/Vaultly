@@ -43,7 +43,8 @@ export function updateCheckDue(): boolean {
 export function markUpdateChecked(): void {
   try {
     localStorage.setItem(KEY, String(Date.now()));
-  } catch {
-    /* ignore */
+  } catch (e) {
+    // quota/accès refusé : le prochain lancement recontrôlera, rien de perdu
+    console.debug("horodatage de contrôle de mise à jour non enregistré", e);
   }
 }

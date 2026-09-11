@@ -2,8 +2,8 @@
   "$schema": "https://biomejs.dev/schemas/2.5.12/biome.json",
   "files": {
     // index.css (Tailwind v4) n'est pas parsable par Biome : on ne traverse
-    // que le TypeScript
-    "includes": ["src/**/*.ts", "src/**/*.tsx"]
+    // que le TypeScript de src/ et le JS de l'extension (popup.js)
+    "includes": ["src/**/*.ts", "src/**/*.tsx", "extension/**/*.js"]
   },
   "linter": {
     "enabled": true,

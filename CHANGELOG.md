@@ -7,6 +7,51 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 ## [Unreleased]
 
 ### Ajouté
+- Tuiles : vignette 16:9 pleine tuile pour les vidéos avec miniature
+  (prioritaire sur la capture mShots).
+
+### Corrigé
+- Sniff YouTube/TikTok via oEmbed (titre propre, miniature garantie) ;
+  `hqdefault` au lieu de `oardefault` (404 sur la majorité des vidéos) ;
+  TikTok détecté comme vidéo.
+- Aperçus d'icônes génériques : endpoint BATCH d'Iconify en séquentiel
+  (cause réelle des 429 : 48 hits `/{id}.svg` parallèles) + cache module.
+- Dédoublonnage : le bloc « déjà enregistré » est masqué pour les plateformes
+  vidéo et reformulé « tu as déjà N liens sur… » (c'était un indice, pas un
+  refus).
+- Modale vidéo : `min-w-0` sur l'en-tête (titre long débordait et se faisait
+  clipper).
+- Audit avant release : 8 bugs UX + 3 failles backend corrigés +
+  durcissements (voir SECURITY.md).
+
+## [1.0.2] - 2026-09-11
+
+### Ajouté
+- Aperçu vidéo in-app : modal lecteur YouTube / TikTok / Vimeo / Dailymotion /
+  Twitch (+ choix « ouvrir dans l'app ou le navigateur ») ; TikTok accepté à
+  l'ajout ; tests `videoEmbed`.
+- Soutien via Ko-fi uniquement (ko-fi.com/kevroughi) ; `Ctrl+Maj+flèches`
+  bascule en tri « Placement » au lieu de rester muet.
+
+### Corrigé
+- CI : création de release (permissions `contents: write` pour `GITHUB_TOKEN`)
+  et `@types/node` en devDependency (`tsc` CI et `node:fs`).
+- Icônes : bannière CDN fantôme à la pagination (dead par vue + bannière sur
+  la page courante), pagination stable sur liste complète, shadowing de `t()`
+  corrigé.
+- Modale vidéo compacte en phase choix, boutons `sm` centrés ; lecteur agrandi
+  (94 vw max 1400 px, plafonné en hauteur).
+
+## [1.0.1] - 2026-09-11
+
+### Corrigé
+- Installation : suppression récursive des dossiers (tout part à la
+  corbeille) ; CSP `img-src` élargie (favicons relayés par MCP/imports) ;
+  repli visuel des aperçus de dossier.
+
+## [1.0.0] - 2026-09-11
+
+### Ajouté
 - Premier lancement : diaporama animé (3 slides, icônes Lottie vectorielles
   maison, `prefers-reduced-motion` respecté) enchaîné sur une visite guidée
   Driver.js (7 étapes ciblant la vraie interface). Une seule fois ; relançable
@@ -69,6 +114,8 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
   message borné) sur les ~50 points d'affichage d'erreur.
 
 ### Corrigé
+- Installeur : `mainBinaryName` « Vaultly » (exe cohérent avec le nom
+  d'affichage).
 - Fenêtre sans decorations : contrôles minimiser/agrandir/fermer intégrés à la
   toolbar, zone de drag + maximize au double-clic (comportement Windows).
 - Grille paginée : placement de la barre dans la toolbar (fil d'Ariane en

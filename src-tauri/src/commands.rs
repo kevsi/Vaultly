@@ -565,7 +565,6 @@ pub async fn read_image_data_url(
     if !allowed {
         return Err("l'image doit se trouver dans le dossier de ressources (Documents\\Vaultly)".into());
     }
-    let p = std::path::PathBuf::from(&path);
     // taille contrôlée AVANT la lecture : un fichier de 2 Go ne doit pas
     // transiter par la mémoire pour être refusé ensuite.
     let len = tokio::fs::metadata(&p)

@@ -33,11 +33,13 @@ function show(msg, isErr, closeAfter) {
 $("save").addEventListener("click", () => {
   // tolérance : si le collé contient le préfixe « Bearer », on l'enlève
   // (le placeholder l'a longtemps incité à le garder)
-  const token = $("token").value.trim().replace(/^Bearer\s+/i, "");
+  const token = $("token")
+    .value.trim()
+    .replace(/^Bearer\s+/i, "");
   const url = $("url").value.trim();
   const title = $("title").value.trim();
-  const tags = $("tags").value
-    .split(",")
+  const tags = $("tags")
+    .value.split(",")
     .map((t) => t.trim())
     .filter(Boolean);
 
@@ -108,7 +110,7 @@ async function doHarvest(token, memoPort) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ folder, items }),
       });
@@ -121,8 +123,7 @@ async function doHarvest(token, memoPort) {
       if (resp.status === 401 || resp.status === 403) authFailed = true;
       break;
     } catch (e) {
-      console.warn("port", port, "sans réponse :", e && e.message);
-      continue;
+      console.warn("port", port, "sans réponse :", e?.message);
     }
   }
   $("save").disabled = false;
@@ -148,7 +149,7 @@ async function tryPorts(order, token, url, title, tags) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ url, title, tags }),
         });
@@ -166,8 +167,7 @@ async function tryPorts(order, token, url, title, tags) {
         }
         break;
       } catch (e) {
-        console.warn("port", port, "sans réponse :", e && e.message);
-        continue; // port fermé : suivant
+        console.warn("port", port, "sans réponse :", e?.message);
       }
     }
     if (goodPort) chrome.storage.local.set({ port: goodPort });
@@ -177,7 +177,8 @@ async function tryPorts(order, token, url, title, tags) {
         true,
       );
     else if (!data) show("Vaultly est-il ouvert sur cette machine ?", true);
-    else if (data.ok && data.duplicate) show("Déjà dans ta bibliothèque", false, true);
+    else if (data.ok && data.duplicate)
+      show("Déjà dans ta bibliothèque", false, true);
     else if (data.ok) show("Ajouté à ta bibliothèque ✓", false, true);
     else show(data.error || "Erreur inattendue", true);
   } catch (e) {

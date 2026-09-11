@@ -285,8 +285,9 @@ export default function App() {
           "vaultly-deadlinks",
           JSON.stringify({ at, count: 0 }),
         );
-      } catch {
-        /* ignore */
+      } catch (e) {
+        // localStorage inaccessible : la pastille retombe à 0 quand même
+        console.debug("réinitialisation du compteur de liens morts", e);
       }
       setDeadCount(0);
     }
@@ -348,8 +349,9 @@ export default function App() {
             },
           );
         }
-      } catch {
-        /* silencieux */
+      } catch (e) {
+        // silencieux côté utilisateur, mais traçable en devtools
+        console.debug("contrôle de mise à jour ignoré", e);
       }
     })();
   }, []);
@@ -386,8 +388,8 @@ export default function App() {
             }),
           );
         }
-      } catch {
-        /* silencieux */
+      } catch (e) {
+        console.debug("rappels échus au lancement ignorés", e);
       }
     })();
   }, []);

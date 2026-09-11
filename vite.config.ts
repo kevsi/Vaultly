@@ -23,6 +23,8 @@ export default defineConfig(async () => ({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // tests = fonctions pures sans état global : un worker partagé suffit
+    isolate: false,
   },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
