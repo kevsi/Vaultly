@@ -82,7 +82,13 @@ export function VideoViewer({ resource, onClose }: Props) {
         if (!o) onClose();
       }}
     >
-      <DialogContent className="w-[min(94vw,1400px)] sm:max-w-[94vw]">
+      <DialogContent
+        className={
+          resource && embed && playing
+            ? "w-[min(94vw,1400px)] sm:max-w-[94vw]"
+            : "sm:max-w-md"
+        }
+      >
         <DialogHeader>
           <DialogTitle className="truncate pr-10">
             {resource?.title}
@@ -123,16 +129,12 @@ export function VideoViewer({ resource, onClose }: Props) {
           </>
         ) : (
           resource && (
-            <div className="flex flex-col items-stretch gap-2 py-2 sm:flex-row">
-              <Button className="flex-1" onClick={playInApp}>
+            <div className="flex justify-center gap-2 py-1">
+              <Button size="sm" onClick={playInApp}>
                 <Play />
                 {t("Lire dans l'app")}
               </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={openInBrowser}
-              >
+              <Button size="sm" variant="outline" onClick={openInBrowser}>
                 <ExternalLink />
                 {t("Ouvrir dans le navigateur")}
               </Button>
