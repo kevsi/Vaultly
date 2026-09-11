@@ -556,10 +556,11 @@ const en: Dict = {
     "Use a GitHub, GitLab, Bitbucket or Codeberg link.",
   "Lien de la vidéo": "Video link",
   "https://youtube.com/watch?v=…": "https://youtube.com/watch?v=…",
-  "YouTube, Vimeo, Dailymotion ou Twitch.":
-    "YouTube, Vimeo, Dailymotion or Twitch.",
-  "Utilise un lien YouTube, Vimeo, Dailymotion ou Twitch.":
-    "Use a YouTube, Vimeo, Dailymotion or Twitch link.",
+  "YouTube, TikTok, Vimeo, Dailymotion ou Twitch — l'aperçu s'affiche dans l'app.":
+    "YouTube, TikTok, Vimeo, Dailymotion or Twitch — the preview opens inside the app.",
+  "Utilise un lien YouTube, TikTok, Vimeo, Dailymotion ou Twitch.":
+    "Use a YouTube, TikTok, Vimeo, Dailymotion or Twitch link.",
+  "Ouvrir dans le navigateur": "Open in the browser",
   "Lien de l'outil": "Tool link",
   "https://…": "https://…",
   "Un outil en ligne : son adresse web.": "An online tool: its web address.",

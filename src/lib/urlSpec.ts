@@ -35,6 +35,7 @@ const VIDEO_HOSTS = [
   "youtu.be",
   "m.youtube.com",
   "music.youtube.com",
+  "tiktok.com",
   "vimeo.com",
   "dailymotion.com",
   "dai.ly",
@@ -94,13 +95,13 @@ export function urlSpecFor(type: string): UrlSpec {
         primaryLabel: "Lien de la vidéo",
         primaryPlaceholder: "https://youtube.com/watch?v=…",
         showFetch: true,
-        hint: "YouTube, Vimeo, Dailymotion ou Twitch.",
+        hint: "YouTube, TikTok, Vimeo, Dailymotion ou Twitch — l'aperçu s'affiche dans l'app.",
         validate: (v) => {
           const base = requireHttps(v);
           if (base) return base;
           const host = hostOf(v);
           if (!VIDEO_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
-            return "Utilise un lien YouTube, Vimeo, Dailymotion ou Twitch.";
+            return "Utilise un lien YouTube, TikTok, Vimeo, Dailymotion ou Twitch.";
           }
           return null;
         },

@@ -26,6 +26,7 @@ import { FirstRun } from "@/components/FirstRun";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VideoViewer } from "@/components/VideoViewer";
 import {
   checkDeadLinks,
   dueReminders,
@@ -34,6 +35,7 @@ import {
   startupNotice,
 } from "@/lib/api";
 import { tt, useI18n } from "@/lib/i18n";
+import type { Resource } from "@/lib/types";
 import {
   checkForUpdates,
   markUpdateChecked,
@@ -209,6 +211,15 @@ export default function App() {
   const [tab, setTab] = useState("library");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // aperçu vidéo in-app : toutes les ouvertures passent par openResource()
+  // qui émet cet événement (tuiles, liste, kanban, palette, fiche détails)
+  const [videoPreview, setVideoPreview] = useState<Resource | null>(null);
+  useEffect(() => {
+    const onPreview = (e: Event) =>
+      setVideoPreview((e as CustomEvent<Resource>).detail);
+    window.addEventListener("vaultly:video-preview", onPreview);
+    return () => window.removeEventListener("vaultly:video-preview", onPreview);
+  }, []);
   useClipboardCapture();
   // pastille « liens morts » sur l'onglet Réglages (vérif auto ci-dessous
   // ou manuelle dans Réglages › Liens morts)
@@ -522,6 +533,10 @@ export default function App() {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <VideoViewer
+        resource={videoPreview}
+        onClose={() => setVideoPreview(null)}
+      />
       <FirstRun />
       <Toaster
         position="bottom-right"

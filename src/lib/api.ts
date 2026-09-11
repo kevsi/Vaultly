@@ -27,6 +27,12 @@ export async function addResource(resource: NewResource): Promise<Resource> {
   return invoke("add_resource", { resource });
 }
 
+/** Comptabilise une ouverture (compteur + dernier ouvert + rappel soldé)
+ *  sans lancer le navigateur — pour les aperçus in-app (vidéos…). */
+export async function recordOpen(id: number): Promise<void> {
+  return invoke("record_open", { id });
+}
+
 export async function updateResource(
   id: number,
   resource: NewResource,
