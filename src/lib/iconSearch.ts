@@ -217,3 +217,53 @@ export function genericIconUrl(
 ): string {
   return `https://api.iconify.design/${id}.svg?height=${height}&color=%23${colorHex}`;
 }
+
+/**
+ * Récupère les SVG d'une page d'icônes génériques en UNE requête par
+ * collection (endpoint batch JSON officiel d'Iconify) : 48 <img> pointant
+ * chacun sur /{id}.svg déclenche systématiquement les 429 de rate-limit de
+ * l'API publique. Retourne id → data:URL SVG (colorée) ; les ids absents
+ * de la réponse sont considérés indisponibles.
+ */
+export async function fetchGenericIcons(
+  ids: string[],
+  colorHex: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const byPrefix = new Map<string, string[]>();
+  for (const id of ids) {
+    const sep = id.indexOf(":");
+    if (sep <= 0) continue;
+    const prefix = id.slice(0, sep);
+    const name = id.slice(sep + 1);
+    const list = byPrefix.get(prefix) ?? [];
+    list.push(name);
+    byPrefix.set(prefix, list);
+  }
+  // EN SÉQUENTIEL : une page peut toucher 20-30 collections différentes ;
+  // tout lâcher en parallèle suffirait à déclencher le rate-limit de l'API
+  for (const [prefix, names] of byPrefix) {
+    const url = `https://api.iconify.design/${prefix}.json?icons=${names
+      .map(encodeURIComponent)
+      .join(",")}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue; // échec → les ids resteront absents → bannière
+      const data = await res.json();
+      const w: number = data.width ?? 24;
+      const h: number = data.height ?? 24;
+      for (const name of names) {
+        const body: string | undefined = data.icons?.[name]?.body;
+        if (!body) continue;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 ${w} ${h}" style="color:#${colorHex}">${body}</svg>`;
+        out.set(
+          `${prefix}:${name}`,
+          `data:image/svg+xml,${encodeURIComponent(svg)}`,
+        );
+      }
+    } catch {
+      /* réseau KO : ids absents → bannière */
+    }
+  }
+  return out;
+}

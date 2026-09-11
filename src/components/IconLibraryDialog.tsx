@@ -6,7 +6,7 @@ import {
   Search,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import { useI18n } from "@/lib/i18n";
 import {
   brandMatches,
   englishQuery,
+  fetchGenericIcons,
   genericIconUrl,
   searchGenericIcons,
 } from "@/lib/iconSearch";
@@ -118,6 +119,12 @@ function brandIconUrl(slug: string, tone: BrandTone): string {
 
 const PAGE_SIZE = 48;
 const FETCH_LIMIT = 192;
+
+/** Aperçus génériques récupérés par lot : la couleur est inline dans le SVG
+ *  → clé « teinte|id ». Survit aux navigations de pages (et réouvertures)
+ *  pour ne jamais re-frapper l'API sur les vues déjà vues. */
+const GENERIC_CACHE = new Map<string, string>();
+const cacheKey = (id: string, hex: string) => `${hex}|${id}`;
 
 /** Barre de pagination : fixe, sous la grille (zéro scroll). */
 function PageBar({
@@ -244,6 +251,48 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
       : genericPageAll.filter((id) => dead.has(id)).length;
   const genericHex =
     GENERIC_TONES.find((x) => x.id === genericTone)?.hex ?? "18181b";
+
+  // Aperçus chargés par LOT (1-2 requêtes batch par page, au lieu de 48
+  // hits /{id}.svg qui déclenchaient les 429 du rate-limit Iconify → la
+  // bannière « les aperçus ne chargent pas » revenait sans arrêt).
+  const [iconData, setIconData] = useState<Map<string, string>>(GENERIC_CACHE);
+  // ids dont le lot est en vol : sans ce garde, chaque re-render pendant la
+  // latence réseau relancerait exactement les mêmes requêtes batch
+  const inFlight = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (tab !== "generic") return;
+    const missing = genericPaged.filter(
+      (id) =>
+        !GENERIC_CACHE.has(cacheKey(id, genericHex)) &&
+        !inFlight.current.has(cacheKey(id, genericHex)),
+    );
+    if (missing.length === 0) return;
+    for (const id of missing) inFlight.current.add(cacheKey(id, genericHex));
+    let cancel = false;
+    void fetchGenericIcons(missing, genericHex).then((res) => {
+      for (const id of missing)
+        inFlight.current.delete(cacheKey(id, genericHex));
+      if (cancel) return;
+      for (const [id, url] of res) {
+        GENERIC_CACHE.set(cacheKey(id, genericHex), url);
+      }
+      setIconData(new Map(GENERIC_CACHE));
+      // ids réclamés sans donnée retournée (batch KO ou icône retirée) :
+      // indisponibles → masqués, et bannière si la page entière échoue
+      for (const id of missing) {
+        if (!res.has(id)) {
+          setDead((prev) => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+          });
+        }
+      }
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [tab, genericPaged, genericHex]);
 
   async function pick(svgUrl: string, key: string) {
     setPicking(key);
@@ -457,30 +506,35 @@ export function IconLibraryDialog({ open, onOpenChange, onPick }: Props) {
           ) : genericList.length > 0 ? (
             <>
               <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8">
-                {genericPaged.map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() =>
-                      void pick(genericIconUrl(id, genericHex), id)
-                    }
-                    disabled={picking !== null}
-                    title={id}
-                    className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-transparent p-2 transition-all outline-none hover:border-primary/50 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
-                  >
-                    {picking === id ? (
-                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                    ) : (
-                      <img
-                        src={genericIconUrl(id, genericHex)}
-                        alt={id}
-                        loading="lazy"
-                        className="size-full object-contain"
-                        onError={() => markDead(id)}
-                      />
-                    )}
-                  </button>
-                ))}
+                {genericPaged.map((id) => {
+                  const url = iconData.get(cacheKey(id, genericHex));
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() =>
+                        void pick(url ?? genericIconUrl(id, genericHex), id)
+                      }
+                      disabled={picking !== null}
+                      title={id}
+                      className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-transparent p-2 transition-all outline-none hover:border-primary/50 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
+                    >
+                      {picking === id ? (
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                      ) : url ? (
+                        <img
+                          src={url}
+                          alt={id}
+                          className="size-full object-contain"
+                        />
+                      ) : (
+                        // le lot est en vol : placard discret plutôt qu'un
+                        // <img> qui n'a pas encore sa data-URL
+                        <div className="h-3/4 w-3/4 animate-pulse rounded bg-muted/60" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
               <PageBar
                 page={genericPage}
