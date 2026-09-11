@@ -774,8 +774,6 @@ const en: Dict = {
   "Donne un nom au dossier": "Give the folder a name",
   "Dossier renommé": "Folder renamed",
   "Supprimer le dossier « {name} » ?": 'Delete folder "{name}"?',
-  "Les ressources qu'il contient ressortiront dans la grille.":
-    "Its resources will reappear in the grid.",
   "Dossier supprimé": "Folder deleted",
   "Dissoudre le dossier « {name} » ?": 'Dissolve folder "{name}"?',
   "Ses ressources reviennent dans la grille et ses sous-dossiers remontent d'un niveau. Rien n'est supprimé.":
@@ -1097,9 +1095,11 @@ const en: Dict = {
   Contour: "Outline",
   "Supprimer {count} élément(s) ?": "Delete {count} item(s)?",
   "{count} élément(s) supprimé(s)": "{count} item(s) deleted",
-  "Les ressources iront dans la corbeille (restaurables 30 jours). Les dossiers sont supprimés : leur contenu ressort dans la grille.":
-    "Resources go to the trash (restorable for 30 days). Folders are deleted: their contents reappear in the grid.",
   "Sélectionner le dossier « {name} »": 'Select folder "{name}"',
+  "Toutes les ressources du dossier et de ses sous-dossiers iront dans la corbeille (restaurables 30 jours). Les sous-dossiers sont supprimés définitivement.":
+    "All resources in the folder and its subfolders will go to the trash (restorable for 30 days). Subfolders are permanently deleted.",
+  "Tout part dans la corbeille (restaurable 30 jours) : les ressources sélectionnées et tout le contenu des dossiers. Les sous-dossiers sont supprimés définitivement.":
+    "Everything goes to the trash (restorable for 30 days): the selected resources and all folder contents. Subfolders are permanently deleted.",
   "{count} autre(s) rappel(s) en attente": "{count} other pending reminder(s)",
   Voir: "View",
   "Image trop lourde (8 Mo maximum)": "Image too large (8 MB maximum)",

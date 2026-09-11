@@ -5,6 +5,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -51,6 +52,9 @@ export function FolderTile({
 }: Props) {
   const { t } = useI18n();
   const slots = [0, 1, 2, 3];
+  // aperçus dont le chargement a échoué (favicon distante indisponible) :
+  // on retombe sur l'icône dossier au lieu d'une image cassée
+  const [brokenIcons, setBrokenIcons] = useState<Set<number>>(new Set());
   return (
     <div
       className="group relative"
@@ -105,8 +109,19 @@ export function FolderTile({
                 key={i}
                 className="flex size-7 items-center justify-center overflow-hidden rounded"
               >
-                {src ? (
-                  <img src={src} alt="" className="size-full object-contain" />
+                {src && !brokenIcons.has(i) ? (
+                  <img
+                    src={src}
+                    alt=""
+                    className="size-full object-contain"
+                    onError={() =>
+                      setBrokenIcons((prev) => {
+                        const next = new Set(prev);
+                        next.add(i);
+                        return next;
+                      })
+                    }
+                  />
                 ) : (
                   <FolderIcon className="size-3.5 text-muted-foreground/60" />
                 )}

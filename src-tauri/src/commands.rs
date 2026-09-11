@@ -1042,7 +1042,7 @@ pub async fn rename_folder(
 }
 
 #[tauri::command]
-pub async fn delete_folder(pool: State<'_, SqlitePool>, id: i64) -> Result<(), String> {
+pub async fn delete_folder(pool: State<'_, SqlitePool>, id: i64) -> Result<usize, String> {
     db::delete_folder(&pool, id).await
 }
 

@@ -1257,23 +1257,51 @@ pub async fn cleanup_legacy_status_folders(pool: &SqlitePool) -> Result<usize, S
     Ok(removed)
 }
 
-pub async fn delete_folder(pool: &SqlitePool, id: i64) -> Result<(), String> {
-    // contrôle des sous-dossiers + suppression dans UNE transaction : sinon
-    // une création concurrente entre les deux requêtes déclenche le
-    // ON DELETE CASCADE de parent_id (0005) et emporte les sous-dossiers,
-    // contrairement à la garde voulue.
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    let children: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE parent_id = ?")
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-    if children > 0 {
-        return Err(
-            "ce dossier contient des sous-dossiers : supprime-les d'abord".into(),
-        );
+/// Supprime un dossier RÉCURSIVEMENT : toutes les ressources du dossier et
+/// de ses sous-dossiers (à tous les niveaux) partent à la corbeille
+/// (restaurables 30 jours), puis le dossier est supprimé — le
+/// ON DELETE CASCADE de parent_id (0005) emporte les sous-dossiers, sûr
+/// désormais que leurs ressources sont déjà à la corbeille.
+/// Retourne le nombre de ressources mises à la corbeille.
+pub async fn delete_folder(pool: &SqlitePool, id: i64) -> Result<usize, String> {
+    // 1) ids du dossier + tous ses descendants (par vagues de parents ; la
+    //    garde anti-cycle de move_folder empêche les boucles, le `seen`
+    //    protège en plus)
+    let mut all: Vec<i64> = vec![id];
+    let mut frontier: Vec<i64> = vec![id];
+    while !frontier.is_empty() {
+        let placeholders = frontier.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("SELECT id FROM folders WHERE parent_id IN ({placeholders})");
+        let mut q = sqlx::query_scalar::<_, i64>(&sql);
+        for fid in &frontier {
+            q = q.bind(fid);
+        }
+        let children = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
+        frontier.clear();
+        for c in children {
+            if !all.contains(&c) {
+                all.push(c);
+                frontier.push(c);
+            }
+        }
     }
-    // les ressources du dossier ressortent dans la grille (ON DELETE SET NULL)
+
+    // 2) toutes les ressources de ces dossiers → corbeille
+    let placeholders = all.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!("SELECT id FROM resources WHERE folder_id IN ({placeholders})");
+    let mut q = sqlx::query_scalar::<_, i64>(&sql);
+    for fid in &all {
+        q = q.bind(fid);
+    }
+    let res_ids = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let trashed = if res_ids.is_empty() {
+        0
+    } else {
+        delete_resources(pool, &res_ids).await?
+    };
+
+    // 3) le dossier (+ sous-dossiers via CASCADE) dans UNE transaction
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let updated = sqlx::query("DELETE FROM folders WHERE id = ?")
         .bind(id)
         .execute(&mut *tx)
@@ -1283,7 +1311,7 @@ pub async fn delete_folder(pool: &SqlitePool, id: i64) -> Result<(), String> {
         return Err(format!("dossier {id} introuvable"));
     }
     tx.commit().await.map_err(|e| e.to_string())?;
-    Ok(())
+    Ok(trashed)
 }
 
 /// Déplace un dossier dans un autre (new_parent_id = None → racine).
@@ -1904,6 +1932,70 @@ mod tests {
         assert!(
             list.iter().any(|r| r.id == created.id),
             "la note doit apparaître dans le dossier courant"
+        );
+    }
+
+    /// Supprimer un dossier avec sous-dossiers doit fonctionner : TOUTES les
+    /// ressources (dossier + sous-dossiers) partent à la corbeille, les
+    /// sous-dossiers disparaissent, la racine est restaurable.
+    #[tokio::test]
+    async fn delete_folder_recursively_trashes_all_resources() {
+        let pool = test_pool().await;
+        let root = create_folder(&pool, "Racine", "", None).await.unwrap();
+        let sub = create_folder(&pool, "Sous", "", Some(root.id))
+            .await
+            .unwrap();
+        let subsub = create_folder(&pool, "SousSous", "", Some(sub.id))
+            .await
+            .unwrap();
+        let a = add_resource(&pool, &new_res("https://a.com", "A", Some(root.id)))
+            .await
+            .unwrap();
+        let b = add_resource(&pool, &new_res("https://b.com", "B", Some(sub.id)))
+            .await
+            .unwrap();
+        let c = add_resource(&pool, &new_res("https://c.com", "C", Some(subsub.id)))
+            .await
+            .unwrap();
+        // hors du dossier : ne doit PAS partir à la corbeille
+        let outside =
+            add_resource(&pool, &new_res("https://d.com", "D", None))
+                .await
+                .unwrap();
+
+        let trashed = delete_folder(&pool, root.id).await.unwrap();
+        assert_eq!(trashed, 3, "les 3 ressources du dossier sont à la corbeille");
+
+        // dossiers disparus
+        let names: Vec<String> = list_folders(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        assert!(!names.iter().any(|n| n == "Racine"));
+        assert!(!names.iter().any(|n| n == "Sous"));
+        assert!(!names.iter().any(|n| n == "SousSous"));
+
+        // ressources : toutes en corbeille sauf celle dehors
+        assert!(get_resource(&pool, a.id).await.is_err());
+        assert!(get_resource(&pool, b.id).await.is_err());
+        assert!(get_resource(&pool, c.id).await.is_err());
+        assert!(get_resource(&pool, outside.id).await.is_ok());
+
+        // la corbeille contient les 3 entrées ; restaurer A remet la
+        // ressource à la racine (son dossier n'existe plus)
+        let trash = list_trash(&pool).await.unwrap();
+        assert_eq!(trash.len(), 3);
+        let entry_a = trash
+            .iter()
+            .find(|e| e.resource.id == a.id)
+            .expect("entrée corbeille de A");
+        let restored = restore_trash(&pool, entry_a.trash_id).await.unwrap();
+        assert_eq!(restored.title, "A");
+        assert_eq!(
+            restored.folder_id, None,
+            "le dossier restauré n'existe plus : ressource à la racine"
         );
     }
 }

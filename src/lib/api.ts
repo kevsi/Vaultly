@@ -239,7 +239,7 @@ export async function renameFolder(id: number, name: string): Promise<void> {
   return invoke("rename_folder", { id, name });
 }
 
-export async function deleteFolder(id: number): Promise<void> {
+export async function deleteFolder(id: number): Promise<number> {
   return invoke("delete_folder", { id });
 }
 

@@ -319,14 +319,22 @@ export function useFolderActions({
   function handleDeleteFolder(f: Folder) {
     setConfirm({
       title: t("Supprimer le dossier « {name} » ?", { name: f.name }),
-      message: t("Les ressources qu'il contient ressortiront dans la grille."),
+      message: t(
+        "Toutes les ressources du dossier et de ses sous-dossiers iront dans la corbeille (restaurables 30 jours). Les sous-dossiers sont supprimés définitivement.",
+      ),
       confirmLabel: t("Supprimer"),
       destructive: true,
       action: async () => {
         try {
-          await deleteFolder(f.id);
+          const trashed = await deleteFolder(f.id);
           if (openFolder?.id === f.id) goUp();
-          toast.success(t("Dossier supprimé"));
+          toast.success(
+            trashed > 0
+              ? t("{count} ressource(s) déplacée(s) dans la corbeille", {
+                  count: trashed,
+                })
+              : t("Dossier supprimé"),
+          );
           refresh();
         } catch (e) {
           toast.error(describeError(e));
@@ -439,7 +447,7 @@ export function useBulkActions({
               "Elles seront restaurables 30 jours dans la corbeille (Réglages).",
             )
           : t(
-              "Les ressources iront dans la corbeille (restaurables 30 jours). Les dossiers sont supprimés : leur contenu ressort dans la grille.",
+              "Tout part dans la corbeille (restaurable 30 jours) : les ressources sélectionnées et tout le contenu des dossiers. Les sous-dossiers sont supprimés définitivement.",
             ),
       confirmLabel: t("Supprimer"),
       destructive: true,
