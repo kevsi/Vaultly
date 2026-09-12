@@ -167,5 +167,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           includeUpdaterJson: true
-          target: x86_64-apple-darwin
-          args: --bundles dmg,app
+          # attention : tauri-action@v0 n'a PAS d'input « target » (il
+          # l'ignore silencieusement et rebuild l'arch hôte) — le triple passe
+          # obligatoirement par args → tauri build --target …
+          args: --target x86_64-apple-darwin --bundles dmg,app
