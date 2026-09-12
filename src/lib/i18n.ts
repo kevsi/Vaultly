@@ -616,8 +616,13 @@ const en: Dict = {
     '{count} track(s) imported into "{name}"',
   Playlists: "Playlists",
   "Nouvelle playlist…": "New playlist…",
-  "Aucune playlist — crée-en une ou importe une playlist YouTube.":
-    "No playlist yet — create one or import a YouTube playlist.",
+  "Aucune playlist — clique + pour en créer une.":
+    "No playlist yet — click + to create one.",
+  "Créer une playlist": "Create a playlist",
+  "Ajouter des vidéos": "Add videos",
+  "Parcourir les vidéos": "Browse videos",
+  "Playlist vide — ajoute des vidéos avec le bouton « + ».":
+    "Empty playlist — add videos with the “+” button.",
   "Importer une playlist YouTube": "Import a YouTube playlist",
   "Nécessite le moteur audio (≈ 18 Mo, officiel yt-dlp).":
     "Requires the audio engine (≈ 18 MB, official yt-dlp).",
@@ -626,8 +631,6 @@ const en: Dict = {
   Importer: "Import",
   "Tout lire": "Play all",
   "Retour aux vidéos": "Back to videos",
-  "Playlist vide — ajoute des pistes depuis la liste des vidéos (bouton +).":
-    "Empty playlist — add tracks from the video list (+ button).",
   "Retirer de la playlist": "Remove from playlist",
   "Vidéos de ta bibliothèque": "Videos in your library",
   "Musiques seules": "Music only",

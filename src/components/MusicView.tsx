@@ -93,7 +93,6 @@ export function MusicView() {
   const qc = useQueryClient();
   const player = usePlayer();
   const [selected, setSelected] = useState<number | null>(null);
-  const [newName, setNewName] = useState("");
   const [musicsOnly, setMusicsOnly] = useState(false);
   const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(
     null,
@@ -103,7 +102,7 @@ export function MusicView() {
   const [importing, setImporting] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [imp, setImp] = useState({ url: "", name: "", limit: "50" });
-  const [addNew, setAddNew] = useState<PlayerTrack | null>(null);
+  const [addNew, setAddNew] = useState<PlayerTrack | "bare" | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
 
   const { data: playlists } = useQuery({
@@ -158,7 +157,6 @@ export function MusicView() {
     if (!n) return null;
     try {
       const pl = await createPlaylist(n);
-      setNewName("");
       setSelected(pl.id);
       refreshLists();
       return pl;
@@ -292,9 +290,24 @@ export function MusicView() {
       <div className="mx-auto flex min-h-full w-full max-w-6xl gap-5 p-6">
         {/* colonne gauche : playlists + import */}
         <aside className="flex w-60 shrink-0 flex-col gap-1.5">
-          <p className="px-2 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            {t("Playlists")}
-          </p>
+          <div className="flex items-center justify-between px-1 pb-1">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              {t("Playlists")}
+            </p>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              title={t("Créer une playlist")}
+              onClick={() => setAddNew("bare")}
+            >
+              <Plus />
+            </Button>
+          </div>
+          {lists.length === 0 && (
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              {t("Aucune playlist — clique + pour en créer une.")}
+            </p>
+          )}
           {lists.map((p) => (
             <div
               key={p.id}
@@ -401,23 +414,6 @@ export function MusicView() {
               )}
             </div>
           ))}
-          <form
-            className="flex gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void create(newName);
-            }}
-          >
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={t("Nouvelle playlist…")}
-              className="h-8 text-sm"
-            />
-            <Button type="submit" size="icon-sm" variant="outline">
-              <Plus />
-            </Button>
-          </form>
 
           {/* import de playlist web */}
           <div className="mt-3 space-y-1.5 rounded-xl border bg-card p-3">
@@ -512,9 +508,6 @@ export function MusicView() {
                     </span>
                   )}
                   <div className="min-w-0 flex-1 pb-1">
-                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                      {t("Playlist")}
-                    </p>
                     <h2 className="truncate text-2xl font-bold">
                       {current.name}
                     </h2>
@@ -545,6 +538,14 @@ export function MusicView() {
                       {t("Tout lire")}
                     </Button>
                     <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelected(null)}
+                    >
+                      <Plus />
+                      {t("Ajouter des vidéos")}
+                    </Button>
+                    <Button
                       size="icon-sm"
                       variant="ghost"
                       onClick={() => setSelected(null)}
@@ -557,11 +558,21 @@ export function MusicView() {
               </div>
 
               {playlistTracks.length === 0 && (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  {t(
-                    "Playlist vide — ajoute des pistes depuis la liste des vidéos (bouton +).",
-                  )}
-                </p>
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {t(
+                      "Playlist vide — ajoute des vidéos avec le bouton « + ».",
+                    )}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelected(null)}
+                  >
+                    <Music2 />
+                    {t("Parcourir les vidéos")}
+                  </Button>
+                </div>
               )}
               <div className="space-y-1">
                 {(items ?? []).map((it, idx) => {
@@ -676,6 +687,17 @@ export function MusicView() {
                   />
                   {t("Musiques seules")}
                 </label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={tracks.length === 0}
+                  onClick={() =>
+                    playQueue(tracks.map(track), 0, "library", t("Vidéos"))
+                  }
+                >
+                  <Play />
+                  {t("Tout lire")}
+                </Button>
               </div>
               {tracks.length === 0 && (
                 <p className="py-16 text-center text-sm text-muted-foreground">
@@ -818,15 +840,15 @@ export function MusicView() {
         title={t("Nouvelle playlist…")}
         placeholder={t("Nom de la playlist")}
         onDone={async (value) => {
-          const tk = addNew;
+          const ask = addNew;
           setAddNew(null);
-          if (!tk || !value) return;
+          if (!ask || !value) return;
           const pl = await create(value);
-          if (pl)
+          if (pl && ask !== "bare")
             void addTo(pl.id, {
-              url: tk.url,
-              title: tk.title,
-              favicon: tk.cover,
+              url: ask.url,
+              title: ask.title,
+              favicon: ask.cover,
             });
         }}
       />

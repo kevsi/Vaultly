@@ -118,7 +118,7 @@ export function TileContextMenu({
                         title: resource.title,
                         cover: resource.favicon,
                       },
-                      resource.title,
+                      "",
                       "tile",
                     )
                   }

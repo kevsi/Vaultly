@@ -79,14 +79,21 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const track = player.track;
   const trackUrl = track?.url ?? "";
+  // t lu via ref : la fonction de traduction change d'identité à chaque
+  // render, la mettre dans les deps relancerait la résolution en boucle
+  const tRef = useRef(t);
+  tRef.current = t;
 
   // — résolution par piste : moteur (audio pur) sinon web player masqué —
   useEffect(() => {
     if (!trackUrl) {
-      setMode(null);
-      setAudioUrl("");
-      setEmbedUrl("");
-      setPos({ cur: 0, dur: 0 });
+      // mises à jour guarded (bail si déjà vides) : sans ça, l'objet neuf de
+      // setPos re-déclenche un render à chaque passe et alimente la boucle
+      setMode((m) => (m === null ? m : null));
+      setAudioUrl((a) => (a === "" ? a : ""));
+      setEmbedUrl((e) => (e === "" ? e : ""));
+      setResolving((r) => (r ? false : r));
+      setPos((p) => (p.cur === 0 && p.dur === 0 ? p : { cur: 0, dur: 0 }));
       return;
     }
     let cancel = false;
@@ -109,7 +116,9 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
         } catch (e) {
           if (!cancel)
             toast.warning(
-              t("Extraction audio impossible — lecture via le lecteur web."),
+              tRef.current(
+                "Extraction audio impossible — lecture via le lecteur web.",
+              ),
               { description: describeError(e) },
             );
         }
@@ -120,7 +129,7 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
         setEmbedUrl(withEmbedAutoplay(embed));
         setMode("embed");
       } else {
-        toast.error(t("Aucun lecteur connu pour ce lien."));
+        toast.error(tRef.current("Aucun lecteur connu pour ce lien."));
         stop();
       }
       setResolving(false);
@@ -128,7 +137,7 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
     return () => {
       cancel = true;
     };
-  }, [trackUrl, t]);
+  }, [trackUrl]);
 
   // — play/pause piloté par le store (audio : élément natif) —
   useEffect(() => {
