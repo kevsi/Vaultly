@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
+  GripVertical,
   ListMusic,
   Loader2,
   Music2,
+  Pause,
   Pencil,
   Play,
   Plus,
@@ -38,30 +40,58 @@ import {
   listResources,
   removePlaylistItem,
   renamePlaylist,
+  reorderPlaylistItems,
   updateResource,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import {
+  type PlayerTrack,
+  playQueue,
+  syncQueue,
+  usePlayer,
+} from "@/lib/playerStore";
 import { hostOf } from "@/lib/resources";
 import type { MusicPlaylist, Resource } from "@/lib/types";
 import { cn, describeError } from "@/lib/utils";
 
-/**播放 d'une piste : le lecteur global (barre basse) écoute cet événement. */
-function playTrack(url: string, title: string, cover: string) {
-  window.dispatchEvent(
-    new CustomEvent("vaultly:play-as-music", {
-      detail: { url, title, favicon: cover },
-    }),
+/** Trois barres animées : la piste en cours se voit de loin. */
+function EqBadge() {
+  return (
+    <span
+      data-eq
+      aria-hidden="true"
+      className="flex h-3.5 shrink-0 items-end gap-[3px] rounded bg-background/70 px-1 py-[3px] shadow"
+    >
+      <span />
+      <span />
+      <span />
+    </span>
   );
 }
 
+function track(r: {
+  url: string;
+  title: string;
+  favicon?: string;
+  cover?: string;
+}): PlayerTrack {
+  return {
+    url: r.url,
+    title: r.title || hostOf(r.url),
+    cover: r.favicon ?? r.cover ?? "",
+  };
+}
+
 /**
- * Section Musique : toutes les vidéos de la bibliothèque comme pistes,
- * drapeau ♫ « musique », playlists locales, et import de playlists YouTube
- * (métadonnées via le moteur yt-dlp, nombre de morceaux plafonné et éditable).
+ * Section Musique : les vidéos de la bibliothèque en cartes vignettes,
+ * drapeau ♫ « musique », playlists locales (pistes réordonnables au glisser)
+ * et import de playlists YouTube plafonné — le tout connecté au lecteur
+ * global (playerStore) avec enchaînement automatique des pistes.
  */
 export function MusicView() {
   const { t } = useI18n();
   const qc = useQueryClient();
+  const player = usePlayer();
   const [selected, setSelected] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   const [musicsOnly, setMusicsOnly] = useState(false);
@@ -73,12 +103,8 @@ export function MusicView() {
   const [importing, setImporting] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [imp, setImp] = useState({ url: "", name: "", limit: "50" });
-  // piste en attente d'ajout dans une playlist à créer (« Nouvelle playlist… »)
-  const [addNew, setAddNew] = useState<{
-    url: string;
-    title: string;
-    cover: string;
-  } | null>(null);
+  const [addNew, setAddNew] = useState<PlayerTrack | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
 
   const { data: playlists } = useQuery({
     queryKey: ["playlists"],
@@ -105,10 +131,22 @@ export function MusicView() {
   }, []);
 
   const lists = playlists ?? [];
-  const tracks = (videos ?? []).filter(
-    (r) => !musicsOnly || r.meta?.isSong === "1",
-  );
+  const allVideos = videos ?? [];
+  const tracks = allVideos.filter((r) => !musicsOnly || r.meta?.isSong === "1");
   const current = lists.find((p) => p.id === selected) ?? null;
+  const playlistTracks: PlayerTrack[] = (items ?? []).map((it) => ({
+    url: it.url,
+    title: it.title || hostOf(it.url),
+    cover: it.cover,
+  }));
+
+  // la playlist affichée alimente-t-elle le lecteur ? toute édition (retrait,
+  // réordonnancement) resynchronise la file sans interrompre la piste
+  // biome-ignore lint/correctness/useExhaustiveDependencies: syncQueue ignore de lui-même toute file qui ne provient pas de CETTE playlist (garde sourceKey)
+  useEffect(() => {
+    if (selected === null || !current) return;
+    syncQueue(`playlist:${selected}`, playlistTracks, current.name);
+  }, [items, selected]);
 
   async function refreshLists() {
     void qc.invalidateQueries({ queryKey: ["playlists"] });
@@ -175,6 +213,26 @@ export function MusicView() {
     }
   }
 
+  function dropReorder(target: number) {
+    if (dragFrom === null || dragFrom === target || selected === null) {
+      setDragFrom(null);
+      return;
+    }
+    const arr = [...(items ?? [])];
+    const [moved] = arr.splice(dragFrom, 1);
+    arr.splice(target, 0, moved);
+    setDragFrom(null);
+    // optimiste : l'ordre s'affiche tout de suite
+    void qc.setQueryData(["playlistItems", selected], arr);
+    void reorderPlaylistItems(
+      selected,
+      arr.map((i) => i.id),
+    ).catch((e) => {
+      toast.error(describeError(e));
+      refreshLists();
+    });
+  }
+
   async function doImport() {
     const url = imp.url.trim();
     if (!url) return;
@@ -189,7 +247,10 @@ export function MusicView() {
         setImporting(false);
         return;
       }
-      const added = await addPlaylistItems(pl.id, found);
+      const added = await addPlaylistItems(
+        pl.id,
+        found.map((f) => ({ url: f.url, title: f.title, cover: f.cover })),
+      );
       toast.success(
         t("{count} piste(s) importée(s) dans « {name} »", {
           count: added,
@@ -219,86 +280,83 @@ export function MusicView() {
     }
   }
 
+  const playingUrl =
+    player.sourceKey === `playlist:${selected}` ||
+    player.sourceKey === "library"
+      ? player.track?.url
+      : undefined;
+
+  // ───────────────────────────────────────────────────────────────────────
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto flex min-h-full w-full max-w-5xl gap-4 p-6">
+      <div className="mx-auto flex min-h-full w-full max-w-6xl gap-5 p-6">
         {/* colonne gauche : playlists + import */}
-        <aside className="flex w-56 shrink-0 flex-col gap-1">
+        <aside className="flex w-60 shrink-0 flex-col gap-1.5">
           <p className="px-2 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             {t("Playlists")}
           </p>
-          <form
-            className="flex gap-1 pb-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void create(newName);
-            }}
-          >
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={t("Nouvelle playlist…")}
-              className="h-8 text-sm"
-            />
-            <Button type="submit" size="icon-sm" variant="outline">
-              <Plus />
-            </Button>
-          </form>
-          {lists.length === 0 && (
-            <p className="px-2 py-1 text-xs text-muted-foreground">
-              {t(
-                "Aucune playlist — crée-en une ou importe une playlist YouTube.",
-              )}
-            </p>
-          )}
           {lists.map((p) => (
             <div
               key={p.id}
-              className={cn(
-                "group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm",
-                selected === p.id
-                  ? "bg-accent font-medium text-foreground"
-                  : "cursor-pointer text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-              )}
               role="button"
               tabIndex={0}
               onClick={() => setSelected(p.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") setSelected(p.id);
               }}
+              className={cn(
+                "group flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2 transition-colors outline-none",
+                selected === p.id
+                  ? "border-primary/50 bg-primary/10 text-foreground"
+                  : "bg-card text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+              )}
             >
-              <ListMusic className="size-4 shrink-0" />
-              {renaming?.id === p.id ? (
-                <form
-                  className="flex min-w-0 flex-1 gap-1"
-                  onClick={(e) => e.stopPropagation()}
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    try {
-                      await renamePlaylist(p.id, renaming.name);
-                      setRenaming(null);
-                      refreshLists();
-                    } catch (err) {
-                      toast.error(describeError(err));
-                    }
-                  }}
-                >
-                  <Input
-                    autoFocus
-                    value={renaming.name}
-                    onChange={(e) =>
-                      setRenaming({ id: p.id, name: e.target.value })
-                    }
-                    onBlur={() => setRenaming(null)}
-                    className="h-6 flex-1 px-1.5 text-sm"
-                  />
-                </form>
-              ) : (
+              <span
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                  selected === p.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted",
+                )}
+              >
+                <ListMusic className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                {renaming?.id === p.id ? (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      try {
+                        await renamePlaylist(p.id, renaming.name);
+                        setRenaming(null);
+                        refreshLists();
+                      } catch (err) {
+                        toast.error(describeError(err));
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Input
+                      autoFocus
+                      value={renaming.name}
+                      onChange={(e) =>
+                        setRenaming({ id: p.id, name: e.target.value })
+                      }
+                      onBlur={() => setRenaming(null)}
+                      className="h-6 px-1.5 text-sm"
+                    />
+                  </form>
+                ) : (
+                  <>
+                    <p className="truncate text-sm font-medium">{p.name}</p>
+                    <p className="text-[11px] tabular-nums">
+                      {p.count} {t("piste(s)")}
+                    </p>
+                  </>
+                )}
+              </div>
+              {renaming?.id !== p.id && (
                 <>
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {p.count}
-                  </span>
                   <button
                     type="button"
                     title={t("Renommer")}
@@ -306,7 +364,7 @@ export function MusicView() {
                       e.stopPropagation();
                       setRenaming({ id: p.id, name: p.name });
                     }}
-                    className="hidden cursor-pointer rounded p-0.5 text-muted-foreground group-hover:block hover:text-foreground"
+                    className="hidden cursor-pointer rounded p-1 text-muted-foreground group-hover:block hover:text-foreground"
                   >
                     <Pencil className="size-3" />
                   </button>
@@ -335,7 +393,7 @@ export function MusicView() {
                         },
                       });
                     }}
-                    className="hidden cursor-pointer rounded p-0.5 text-muted-foreground group-hover:block hover:text-destructive"
+                    className="hidden cursor-pointer rounded p-1 text-muted-foreground group-hover:block hover:text-destructive"
                   >
                     <Trash2 className="size-3" />
                   </button>
@@ -343,15 +401,32 @@ export function MusicView() {
               )}
             </div>
           ))}
+          <form
+            className="flex gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void create(newName);
+            }}
+          >
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t("Nouvelle playlist…")}
+              className="h-8 text-sm"
+            />
+            <Button type="submit" size="icon-sm" variant="outline">
+              <Plus />
+            </Button>
+          </form>
 
           {/* import de playlist web */}
-          <div className="mt-3 rounded-xl border bg-card/60 p-2.5">
-            <p className="pb-1.5 text-xs font-semibold">
+          <div className="mt-3 space-y-1.5 rounded-xl border bg-card p-3">
+            <p className="text-xs font-semibold">
               {t("Importer une playlist YouTube")}
             </p>
             {engine === false && (
               <>
-                <p className="pb-1.5 text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground">
                   {t("Nécessite le moteur audio (≈ 18 Mo, officiel yt-dlp).")}
                 </p>
                 <Button
@@ -417,99 +492,178 @@ export function MusicView() {
           </div>
         </aside>
 
-        {/* colonne droite : bibliothèque vidéo OU pistes de la playlist */}
-        <section className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* colonne principale */}
+        <section className="flex min-w-0 flex-1 flex-col gap-4">
           {current ? (
             <>
-              <div className="flex items-center gap-2">
-                <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">
-                  {current.name}
-                </h2>
-                {(items?.length ?? 0) > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const first = items?.[0];
-                      if (first) playTrack(first.url, first.title, first.cover);
-                    }}
-                  >
-                    <Play />
-                    {t("Tout lire")}
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelected(null)}
-                  title={t("Retour aux vidéos")}
-                >
-                  <X />
-                </Button>
+              {/* héro playlist */}
+              <div className="relative overflow-hidden rounded-2xl border bg-card">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-transparent to-transparent" />
+                <div className="relative flex items-end gap-4 p-5">
+                  {current && playlistTracks[0]?.cover ? (
+                    <img
+                      src={playlistTracks[0].cover}
+                      alt=""
+                      className="size-28 shrink-0 rounded-xl object-cover shadow-xl"
+                    />
+                  ) : (
+                    <span className="flex size-28 shrink-0 items-center justify-center rounded-xl bg-muted shadow-xl">
+                      <ListMusic className="size-8 text-muted-foreground" />
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1 pb-1">
+                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                      {t("Playlist")}
+                    </p>
+                    <h2 className="truncate text-2xl font-bold">
+                      {current.name}
+                    </h2>
+                    <p className="text-sm text-muted-foreground tabular-nums">
+                      {playlistTracks.length} {t("piste(s)")}
+                      {playlistTracks.length > 0 && (
+                        <span className="text-[11px]">
+                          {" · "}
+                          {t("glisser pour réordonner")}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 pb-1">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        playQueue(
+                          playlistTracks,
+                          0,
+                          `playlist:${current.id}`,
+                          current.name,
+                        )
+                      }
+                      disabled={playlistTracks.length === 0}
+                    >
+                      <Play />
+                      {t("Tout lire")}
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => setSelected(null)}
+                      title={t("Retour aux vidéos")}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                </div>
               </div>
-              {(items?.length ?? 0) === 0 && (
+
+              {playlistTracks.length === 0 && (
                 <p className="py-10 text-center text-sm text-muted-foreground">
                   {t(
                     "Playlist vide — ajoute des pistes depuis la liste des vidéos (bouton +).",
                   )}
                 </p>
               )}
-              {(items ?? []).map((it, idx) => (
-                <div
-                  key={it.id}
-                  className="group flex items-center gap-2.5 rounded-xl border bg-card px-2.5 py-1.5"
-                >
-                  <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">
-                    {idx + 1}
-                  </span>
-                  {it.cover ? (
-                    <img
-                      src={it.cover}
-                      alt=""
-                      className="size-9 shrink-0 rounded-lg object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <Music2 className="size-3.5 text-muted-foreground" />
-                    </span>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {it.title || hostOf(it.url)}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {hostOf(it.url)}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title={t("Lecture")}
-                    onClick={() => playTrack(it.url, it.title, it.cover)}
-                  >
-                    <Play />
-                  </Button>
-                  <button
-                    type="button"
-                    title={t("Retirer de la playlist")}
-                    onClick={async () => {
-                      try {
-                        await removePlaylistItem(it.id);
-                        refreshLists();
-                      } catch (e) {
-                        toast.error(describeError(e));
-                      }
-                    }}
-                    className="cursor-pointer rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity outline-none group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-              ))}
+              <div className="space-y-1">
+                {(items ?? []).map((it, idx) => {
+                  const isCurrent =
+                    playingUrl === it.url &&
+                    player.sourceKey === `playlist:${current.id}`;
+                  return (
+                    <div
+                      key={it.id}
+                      draggable
+                      onDragStart={() => setDragFrom(idx)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => dropReorder(idx)}
+                      className={cn(
+                        "group flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-colors",
+                        isCurrent
+                          ? "bg-primary/10 ring-1 ring-primary/40"
+                          : "hover:bg-accent/60",
+                        dragFrom === idx && "opacity-40",
+                      )}
+                    >
+                      <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/40 group-hover:text-muted-foreground" />
+                      {isCurrent && player.playing ? (
+                        <EqBadge />
+                      ) : (
+                        <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">
+                          {idx + 1}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          isCurrent
+                            ? undefined
+                            : playQueue(
+                                playlistTracks,
+                                idx,
+                                `playlist:${current.id}`,
+                                current.name,
+                              )
+                        }
+                        className="relative shrink-0"
+                        title={t("Lecture")}
+                      >
+                        {it.cover ? (
+                          <img
+                            src={it.cover}
+                            alt=""
+                            className="size-10 rounded-lg object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="flex size-10 items-center justify-center rounded-lg bg-muted">
+                            <Music2 className="size-4 text-muted-foreground" />
+                          </span>
+                        )}
+                        <span className="absolute inset-0 hidden items-center justify-center rounded-lg bg-black/55 text-white group-hover:flex">
+                          {isCurrent && player.playing ? (
+                            <Pause className="size-4" />
+                          ) : (
+                            <Play className="size-4" />
+                          )}
+                        </span>
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            "truncate text-sm",
+                            isCurrent
+                              ? "font-semibold text-primary"
+                              : "font-medium",
+                          )}
+                        >
+                          {it.title || hostOf(it.url)}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {hostOf(it.url)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        title={t("Retirer de la playlist")}
+                        onClick={async () => {
+                          try {
+                            await removePlaylistItem(it.id);
+                            refreshLists();
+                          } catch (e) {
+                            toast.error(describeError(e));
+                          }
+                        }}
+                        className="cursor-pointer rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity outline-none group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           ) : (
             <>
+              {/* bibliothèque vidéo en cartes vignettes */}
               <div className="flex items-center gap-3">
                 <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">
                   {t("Vidéos de ta bibliothèque")}
@@ -524,8 +678,8 @@ export function MusicView() {
                 </label>
               </div>
               {tracks.length === 0 && (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  {videos?.length
+                <p className="py-16 text-center text-sm text-muted-foreground">
+                  {allVideos.length
                     ? t(
                         "Aucune piste marquée ♫ — clique la note sur une vidéo pour la déclarer musique.",
                       )
@@ -534,96 +688,126 @@ export function MusicView() {
                       )}
                 </p>
               )}
-              {tracks.map((r) => {
-                const isSong = r.meta?.isSong === "1";
-                return (
-                  <div
-                    key={r.id}
-                    className="group flex items-center gap-2.5 rounded-xl border bg-card px-2.5 py-1.5"
-                  >
-                    {r.favicon ? (
-                      <img
-                        src={r.favicon}
-                        alt=""
-                        className="size-9 shrink-0 rounded-lg object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <Music2 className="size-3.5 text-muted-foreground" />
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{r.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {hostOf(r.url)}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      title={
-                        isSong
-                          ? t("Retirer du filtre musiques")
-                          : t("Déclarer comme musique")
-                      }
-                      onClick={() => void toggleSong(r)}
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {tracks.map((r, idx) => {
+                  const isSong = r.meta?.isSong === "1";
+                  const isCurrent = playingUrl === r.url;
+                  const cardTracks = tracks.map(track);
+                  return (
+                    <div
+                      key={r.id}
                       className={cn(
-                        "cursor-pointer rounded-md p-1.5 outline-none transition-colors",
-                        isSong
-                          ? "text-primary"
-                          : "text-muted-foreground/50 hover:text-foreground",
+                        "group overflow-hidden rounded-xl border bg-card transition-all hover:shadow-lg",
+                        isCurrent && "border-primary/60 ring-1 ring-primary/40",
                       )}
                     >
-                      <Music2
-                        className={cn("size-4", isSong && "fill-current")}
-                      />
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title={t("Lecture")}
-                      onClick={() => playTrack(r.url, r.title, r.favicon)}
-                    >
-                      <Play />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        aria-label={t("Ajouter à…")}
-                        className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                      {/* vignette 16:9 */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          playQueue(cardTracks, idx, "library", t("Vidéos"))
+                        }
+                        className="relative block aspect-video w-full overflow-hidden bg-black outline-none"
+                        title={t("Lecture")}
                       >
-                        <Plus className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-44">
-                        <DropdownMenuLabel>
-                          {t("Ajouter à la playlist")}
-                        </DropdownMenuLabel>
-                        {lists.map((p) => (
-                          <DropdownMenuItem
-                            key={p.id}
-                            onClick={() => void addTo(p.id, r)}
-                          >
-                            <ListMusic />
-                            {p.name}
-                          </DropdownMenuItem>
-                        ))}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() =>
-                            setAddNew({
-                              url: r.url,
-                              title: r.title,
-                              cover: r.favicon,
-                            })
+                        {r.favicon ? (
+                          <img
+                            src={r.favicon}
+                            alt=""
+                            loading="lazy"
+                            className="size-full object-cover opacity-90 transition-transform duration-300 group-hover:scale-105"
+                          />
+                        ) : (
+                          <span className="flex size-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-2xl font-black text-muted-foreground/60 uppercase">
+                            {r.title.slice(0, 2)}
+                          </span>
+                        )}
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/35 group-hover:opacity-100">
+                          <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl">
+                            <Play className="size-5" />
+                          </span>
+                        </span>
+                        {isCurrent && player.playing && (
+                          <span className="absolute top-2 right-2">
+                            <EqBadge />
+                          </span>
+                        )}
+                      </button>
+                      {/* barre d'actions */}
+                      <div className="flex items-center gap-1 px-2.5 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {r.title}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {hostOf(r.url)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          title={
+                            isSong
+                              ? t("Retirer du filtre musiques")
+                              : t("Déclarer comme musique")
                           }
+                          onClick={() => void toggleSong(r)}
+                          className={cn(
+                            "cursor-pointer rounded-md p-1.5 outline-none transition-colors",
+                            isSong
+                              ? "text-primary"
+                              : "text-muted-foreground/50 hover:text-foreground",
+                          )}
                         >
-                          <Plus />
-                          {t("Nouvelle playlist…")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                );
-              })}
+                          <Music2
+                            className={cn("size-4", isSong && "fill-current")}
+                          />
+                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            aria-label={t("Ajouter à…")}
+                            className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                          >
+                            <Plus className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-44">
+                            <DropdownMenuLabel>
+                              {t("Ajouter à la playlist")}
+                            </DropdownMenuLabel>
+                            {lists.map((p) => (
+                              <DropdownMenuItem
+                                key={p.id}
+                                onClick={() =>
+                                  void addTo(p.id, {
+                                    url: r.url,
+                                    title: r.title,
+                                    favicon: r.favicon,
+                                  })
+                                }
+                              >
+                                <ListMusic />
+                                {p.name}
+                              </DropdownMenuItem>
+                            ))}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAddNew({
+                                  url: r.url,
+                                  title: r.title,
+                                  cover: r.favicon,
+                                })
+                              }
+                            >
+                              <Plus />
+                              {t("Nouvelle playlist…")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </section>
@@ -634,15 +818,15 @@ export function MusicView() {
         title={t("Nouvelle playlist…")}
         placeholder={t("Nom de la playlist")}
         onDone={async (value) => {
-          const track = addNew;
+          const tk = addNew;
           setAddNew(null);
-          if (!track || !value) return;
+          if (!tk || !value) return;
           const pl = await create(value);
           if (pl)
             void addTo(pl.id, {
-              url: track.url,
-              title: track.title,
-              favicon: track.cover,
+              url: tk.url,
+              title: tk.title,
+              favicon: tk.cover,
             });
         }}
       />

@@ -778,6 +778,7 @@ pub fn run() {
             commands::list_playlist_items,
             commands::add_playlist_items,
             commands::remove_playlist_item,
+            commands::reorder_playlist_items,
             commands::detect_openers,
             commands::get_open_prefs,
             commands::set_open_prefs,

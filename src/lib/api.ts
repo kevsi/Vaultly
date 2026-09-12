@@ -97,6 +97,14 @@ export async function removePlaylistItem(itemId: number): Promise<void> {
   return invoke("remove_playlist_item", { itemId });
 }
 
+/** Réordonne une playlist : ids des pistes dans l'ordre voulu. */
+export async function reorderPlaylistItems(
+  playlistId: number,
+  orderedIds: number[],
+): Promise<void> {
+  return invoke("reorder_playlist_items", { playlistId, orderedIds });
+}
+
 export async function updateResource(
   id: number,
   resource: NewResource,

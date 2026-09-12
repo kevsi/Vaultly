@@ -1678,6 +1678,15 @@ pub async fn remove_playlist_item(
 ) -> Result<(), String> {
     db::remove_playlist_item(&pool, item_id).await
 }
+
+#[tauri::command]
+pub async fn reorder_playlist_items(
+    pool: State<'_, SqlitePool>,
+    playlist_id: i64,
+    ordered_ids: Vec<i64>,
+) -> Result<(), String> {
+    db::reorder_playlist_items(&pool, playlist_id, &ordered_ids).await
+}
 #[cfg(test)]
 mod tests {
     use super::*;

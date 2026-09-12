@@ -1,41 +1,33 @@
 import {
   ChevronUp,
-  Download,
   ListMusic,
-  Loader2,
   Music2,
   Pause,
   Play,
+  Shuffle,
+  SkipBack,
+  SkipForward,
   Square,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  audioEngineInstall,
-  audioEngineInstalled,
-  audioResolve,
-  sniffResource,
-} from "@/lib/api";
+import { audioEngineInstalled, audioResolve } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import {
+  advance,
+  previous,
+  setPlaying,
+  stop,
+  toggleShuffle,
+  usePlayer,
+} from "@/lib/playerStore";
 import { hostOf } from "@/lib/resources";
 import { cn, describeError } from "@/lib/utils";
 import { videoEmbedUrl } from "@/lib/videoEmbed";
 
-interface Props {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-}
-
-interface Track {
-  url: string;
-  title: string;
-  cover: string;
-}
-
-/** autoplay selon le lecteur embarqué (best-effat : sans geste utilisateur,
+/** autoplay selon le lecteur embarqué (best-effort : sans geste utilisateur,
  *  certains ignorent le paramètre — l'utilisateur a déjà cliqué « Lancer ») */
 function withEmbedAutoplay(embed: string): string {
   try {
@@ -55,216 +47,175 @@ function withEmbedAutoplay(embed: string): string {
   }
 }
 
+function fmtTime(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return "0:00";
+  const m = Math.floor(s / 60);
+  const r = Math.floor(s % 60);
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+interface Props {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}
+
 /**
- * Lecteur « Musique » : n'importe quel lien vidéo devient un morceau.
- * 1. Moteur audio installé (yt-dlp sidecar, optionnel) → flux AUDIO pur dans
- *    un élément <audio> : vrais contrôles, fond opaque, rien d'autre ne joue.
- * 2. Sinon, lecteur web de la plateforme monté HORS ÉCRAN : on n'entend que
- *    le son ; pause/lecture via postMessage (YouTube/Vimeo/Dailymotion).
- * La fenêtre minimisée ou masquée dans le tray garde la lecture (WebView2).
+ * Barre lecteur Musique globale : pilotée par le store de file
+ * (playerStore.ts), donc la vue Musique, le menu ⋯ des tuiles et cette
+ * barre sont toujours synchronisés. Moteur yt-dlp dispo → vrai flux audio
+ * (seek/volume/next) ; sinon lecteur web masqué (next sur YouTube via
+ * onStateChange, contrôles basiques ailleurs). La lecture continue quand
+ * la fenêtre est masquée dans le tray (WebView2).
  */
 export function MusicPlayer({ open, onOpenChange }: Props) {
   const { t } = useI18n();
-  const [track, setTrack] = useState<Track | null>(null);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
+  const player = usePlayer();
   const [mode, setMode] = useState<"audio" | "embed" | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
   const [embedUrl, setEmbedUrl] = useState("");
-  const [playing, setPlaying] = useState(true);
-  const [engine, setEngine] = useState<boolean | null>(null);
-  const [installing, setInstalling] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [pos, setPos] = useState({ cur: 0, dur: 0 });
   const audioRef = useRef<HTMLAudioElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const track = player.track;
+  const trackUrl = track?.url ?? "";
 
-  async function play(url: string, title?: string, cover?: string) {
-    const trimmed = url.trim();
-    if (!/^https?:\/\//i.test(trimmed)) {
-      toast.error(t("Le lien doit commencer par http:// ou https://"));
+  // — résolution par piste : moteur (audio pur) sinon web player masqué —
+  useEffect(() => {
+    if (!trackUrl) {
+      setMode(null);
+      setAudioUrl("");
+      setEmbedUrl("");
+      setPos({ cur: 0, dur: 0 });
       return;
     }
-    setBusy(true);
-    try {
-      let shownTitle = title ?? "";
-      let shownCover = cover ?? "";
-      if (!shownTitle) {
-        try {
-          const s = await sniffResource(trimmed);
-          shownTitle = s.title;
-          shownCover = shownCover || s.image;
-        } catch {
-          /* hors-ligne : on affichera l'hôte */
-        }
-      }
+    let cancel = false;
+    setResolving(true);
+    void (async () => {
       let hasEngine = false;
       try {
         hasEngine = await audioEngineInstalled();
       } catch {
-        /* commande absente (vieille build) : treated as absent */
+        /* treated as absent */
       }
-      setEngine(hasEngine);
-      if (hasEngine) {
+      if (hasEngine && !cancel) {
         try {
-          const stream = await audioResolve(trimmed);
+          const stream = await audioResolve(trackUrl);
+          if (cancel) return;
           setAudioUrl(stream);
           setMode("audio");
-          setPlaying(true);
-          setTrack({
-            url: trimmed,
-            title: shownTitle || hostOf(trimmed) || trimmed,
-            cover: shownCover,
-          });
+          setResolving(false);
           return;
         } catch (e) {
-          toast.warning(
-            t("Extraction audio impossible — lecture via le lecteur web."),
-            {
-              description: describeError(e),
-            },
-          );
+          if (!cancel)
+            toast.warning(
+              t("Extraction audio impossible — lecture via le lecteur web."),
+              { description: describeError(e) },
+            );
         }
       }
-      const embed = videoEmbedUrl(trimmed);
-      if (!embed) {
+      if (cancel) return;
+      const embed = videoEmbedUrl(trackUrl);
+      if (embed) {
+        setEmbedUrl(withEmbedAutoplay(embed));
+        setMode("embed");
+      } else {
         toast.error(t("Aucun lecteur connu pour ce lien."));
-        return;
+        stop();
       }
-      setEmbedUrl(withEmbedAutoplay(embed));
-      setMode("embed");
-      setPlaying(true);
-      setTrack({
-        url: trimmed,
-        title: shownTitle || hostOf(trimmed) || trimmed,
-        cover: shownCover,
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // « Écouter » depuis les tuiles vidéo (événement porté par le Resource) :
-  // play() lu via une ref pour que le listener ne se redéroule pas à chaque render
-  const playRef = useRef(play);
-  playRef.current = play;
-  useEffect(() => {
-    const onEvent = (e: Event) => {
-      const r = (
-        e as CustomEvent<{ url?: string; title?: string; favicon?: string }>
-      ).detail;
-      if (!r?.url) return;
-      onOpenChange(true);
-      void playRef.current(r.url, r.title, r.favicon);
+      setResolving(false);
+    })();
+    return () => {
+      cancel = true;
     };
-    window.addEventListener("vaultly:play-as-music", onEvent);
-    return () => window.removeEventListener("vaultly:play-as-music", onEvent);
-  }, [onOpenChange]);
+  }, [trackUrl, t]);
 
-  // statut du moteur à l'ouverture du panneau
+  // — play/pause piloté par le store (audio : élément natif) —
   useEffect(() => {
-    if (open)
-      void audioEngineInstalled()
-        .then(setEngine)
-        .catch(() => setEngine(false));
-  }, [open]);
+    if (mode !== "audio" || !audioRef.current) return;
+    if (player.playing) void audioRef.current.play().catch(() => {});
+    else audioRef.current.pause();
+  }, [mode, player.playing]);
 
-  function stop() {
-    setTrack(null);
-    setMode(null);
-    setAudioUrl("");
-    setEmbedUrl("");
-    setPlaying(true);
-  }
+  // — fin de piste YouTube (onStateChange 0) → piste suivante —
+  useEffect(() => {
+    if (mode !== "embed" || !embedUrl.includes("youtube-nocookie")) return;
+    const onMsg = (e: MessageEvent) => {
+      if (typeof e.data !== "string") return;
+      try {
+        const d = JSON.parse(e.data);
+        if (d?.event === "onStateChange" && d?.info?.playerState === 0)
+          advance();
+      } catch {
+        /* message non JSON d'un autre iframe : ignorer */
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [mode, embedUrl]);
 
   function toggle() {
-    if (mode === "audio" && audioRef.current) {
-      if (playing) audioRef.current.pause();
-      else void audioRef.current.play();
-      setPlaying(!playing);
-      return;
-    }
-    if (mode === "embed" && iframeRef.current?.contentWindow) {
-      const w = iframeRef.current.contentWindow;
-      try {
-        if (embedUrl.includes("youtube-nocookie")) {
-          w?.postMessage(
-            JSON.stringify({
-              event: "command",
-              func: playing ? "pauseVideo" : "playVideo",
-              args: [],
-            }),
-            "*",
-          );
-        } else if (embedUrl.includes("player.vimeo.com")) {
-          w?.postMessage(
-            JSON.stringify({ method: playing ? "pause" : "play" }),
-            "*",
-          );
-        } else if (embedUrl.includes("dailymotion")) {
-          w?.postMessage(
-            JSON.stringify({ command: playing ? "pause" : "play" }),
-            "*",
-          );
-        }
-        setPlaying(!playing);
-      } catch {
-        toast.info(
-          t(
-            "Ce lecteur web ne répond pas aux commandes — utilise ses propres contrôles en lecture affichée.",
-          ),
-        );
-      }
-    }
+    setPlaying(!player.playing);
   }
 
-  const canToggle =
+  const canRemoteControl =
     mode === "audio" ||
     (mode === "embed" &&
       /youtube-nocookie|player\.vimeo|dailymotion/.test(embedUrl));
 
-  async function install() {
-    setInstalling(true);
-    try {
-      const v = await audioEngineInstall();
-      setEngine(true);
-      toast.success(
-        `${t("Moteur audio installé — les liens vidéo ne livreront plus que le son.")} (${v})`,
-      );
-    } catch (e) {
-      toast.error(describeError(e));
-    } finally {
-      setInstalling(false);
-    }
+  function stopAll() {
+    stop();
   }
 
+  // — mini-barre quand une piste joue mais le panneau est fermé —
   if (!open && track) {
-    // piste en cours mais panneau fermé → mini-barre persistante (le son,
-    // lui, continue : c'est tout l'intérêt du mode « morceau »)
     return (
-      <div className="fixed bottom-4 left-4 z-40 flex max-w-[380px] items-center gap-2 rounded-2xl border bg-popover p-2 pl-2.5 text-popover-foreground shadow-2xl">
+      <div className="fixed bottom-4 left-4 z-40 flex max-w-[420px] items-center gap-2 rounded-2xl border bg-popover p-2 pl-2.5 text-popover-foreground shadow-2xl">
         {track.cover ? (
           <img
             src={track.cover}
             alt=""
-            className="size-8 shrink-0 rounded-md object-cover"
+            className="size-9 shrink-0 rounded-lg object-cover"
           />
         ) : (
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-            <Music2 className="size-3.5 text-muted-foreground" />
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <Music2 className="size-4 text-muted-foreground" />
           </span>
         )}
-        <p className="min-w-0 flex-1 truncate text-sm font-medium">
-          {track.title}
-        </p>
-        {canToggle && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggle}
-            title={playing ? t("Pause") : t("Lecture")}
-          >
-            {playing ? <Pause /> : <Play />}
-          </Button>
-        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{track.title}</p>
+          {player.source && (
+            <p className="truncate text-[11px] text-muted-foreground">
+              {player.source}
+            </p>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={previous}
+          disabled={player.index <= 0}
+          title={t("Piste précédente")}
+        >
+          <SkipBack />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggle}
+          title={player.playing ? t("Pause") : t("Lecture")}
+        >
+          {player.playing ? <Pause /> : <Play />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => advance()}
+          disabled={player.index >= player.queue.length - 1}
+          title={t("Piste suivante")}
+        >
+          <SkipForward />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -279,26 +230,16 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-[360px] max-w-[calc(100vw-2rem)] animate-pop-in space-y-2 rounded-2xl border bg-popover p-3 text-popover-foreground shadow-2xl">
+    <div className="fixed bottom-4 left-4 z-40 w-[380px] max-w-[calc(100vw-2rem)] animate-pop-in space-y-2.5 rounded-2xl border bg-popover p-3.5 text-popover-foreground shadow-2xl">
       <div className="flex items-center gap-2">
         <Music2 className="size-4 text-primary" />
         <span className="text-sm font-semibold">{t("Musique")}</span>
         <span className="grow" />
-        {track && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={stop}
-            title={t("Nouveau lien")}
-          >
-            <ListMusic />
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={() => onOpenChange(false)}
-          title={t("Fermer")}
+          title={t("Réduire")}
         >
           <X />
         </Button>
@@ -306,72 +247,166 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
 
       {track ? (
         <>
-          <div className="flex items-center gap-2.5">
+          {/* « en ce moment » */}
+          <div className="flex items-center gap-3">
             {track.cover ? (
               <img
                 src={track.cover}
                 alt=""
-                className="size-11 shrink-0 rounded-lg object-cover"
+                className="size-14 shrink-0 rounded-xl object-cover shadow-md"
               />
             ) : (
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted">
-                <Music2 className="size-4 text-muted-foreground" />
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-muted">
+                <Music2 className="size-5 text-muted-foreground" />
               </span>
             )}
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{track.title}</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{track.title}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {hostOf(track.url)} ·{" "}
-                {mode === "audio" ? t("son pur") : t("lecteur web (son seul)")}
+                {player.source ? `${player.source} · ` : ""}
+                {hostOf(track.url)}
+                {resolving && " · …"}
+                {!resolving && mode === "audio" && ` · ${t("son pur")}`}
+                {!resolving && mode === "embed" && ` · ${t("lecteur web")}`}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {canToggle && (
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={toggle}
-                title={playing ? t("Pause") : t("Lecture")}
-              >
-                {playing ? <Pause /> : <Play />}
-              </Button>
-            )}
+
+          {/* progression (audio natif uniquement) */}
+          {mode === "audio" && pos.dur > 0 && (
+            <div className="flex items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
+              <span>{fmtTime(pos.cur)}</span>
+              <input
+                type="range"
+                min={0}
+                max={pos.dur}
+                value={pos.cur}
+                aria-label={t("Progression")}
+                className="h-1 flex-1 accent-primary"
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (audioRef.current) audioRef.current.currentTime = v;
+                  setPos((p) => ({ ...p, cur: v }));
+                }}
+              />
+              <span>{fmtTime(pos.dur)}</span>
+            </div>
+          )}
+
+          {/* contrôles de file */}
+          <div className="flex items-center justify-center gap-1">
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon-sm"
-              onClick={stop}
+              onClick={toggleShuffle}
+              title={t("Lecture aléatoire")}
+              className={cn(player.shuffle && "bg-primary/10 text-primary")}
+            >
+              <Shuffle />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={previous}
+              disabled={player.index <= 0}
+              title={t("Piste précédente")}
+            >
+              <SkipBack />
+            </Button>
+            <Button
+              size="icon"
+              className="size-10 rounded-full"
+              onClick={toggle}
+              disabled={!canRemoteControl}
+              title={player.playing ? t("Pause") : t("Lecture")}
+            >
+              {player.playing ? <Pause /> : <Play />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => advance()}
+              disabled={player.index >= player.queue.length - 1}
+              title={t("Piste suivante")}
+            >
+              <SkipForward />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={stopAll}
               title={t("Arrêter")}
             >
               <Square />
             </Button>
-            {mode === "audio" && (
+          </div>
+
+          {/* volume (audio natif) */}
+          {mode === "audio" && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {t("Volume")}
+              </span>
               <input
                 type="range"
                 min={0}
                 max={100}
                 defaultValue={80}
                 aria-label={t("Volume")}
-                className="ml-1 w-24 accent-primary"
+                className="h-1 flex-1 accent-primary"
                 onChange={(e) => {
                   if (audioRef.current)
                     audioRef.current.volume = Number(e.target.value) / 100;
                 }}
               />
-            )}
-          </div>
+            </div>
+          )}
+
+          {mode === "embed" && !canRemoteControl && (
+            <p className="text-[11px] text-muted-foreground">
+              {t(
+                "Ce lecteur web ne se pilote pas à distance — utilise ses propres contrôles.",
+              )}
+            </p>
+          )}
+          {player.queue.length > 1 && (
+            <p className="text-center text-[11px] text-muted-foreground tabular-nums">
+              {player.index + 1} / {player.queue.length}
+            </p>
+          )}
+
           {mode === "audio" && (
             // biome-ignore lint/a11y/useMediaCaption: flux audio de plateforme vidéo, aucune piste de sous-titres n'existe
             <audio
+              key={audioUrl}
               ref={audioRef}
               src={audioUrl}
-              autoPlay
-              onError={() => {
-                // un flux expiré (les URL sont temporaires) → on nettoie
-                toast.error(t("Le flux audio a expiré — relance le lien."));
-                stop();
+              onPlay={() => setPlaying(true)}
+              onPause={() => {
+                // « advance() » enchaîne sans pause : ne pas éteindre la
+                // volonté de lecture sur les micro-pauses du décodage
+                if (!audioRef.current?.ended) setPlaying(false);
               }}
-              onEnded={stop}
+              onTimeUpdate={(e) =>
+                setPos({
+                  cur: e.currentTarget.currentTime,
+                  dur: e.currentTarget.duration || 0,
+                })
+              }
+              onLoadedMetadata={(e) =>
+                setPos((p) => ({
+                  ...p,
+                  dur: e.currentTarget.duration || 0,
+                }))
+              }
+              onEnded={() => {
+                if (!advance()) setPlaying(false);
+              }}
+              onError={() => {
+                // un flux expiré (les URL sont temporaires) → piste suivante
+                toast.error(t("Le flux audio a expiré — piste suivante."));
+                if (!advance()) stop();
+              }}
             />
           )}
           {mode === "embed" && (
@@ -388,58 +423,12 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
           )}
         </>
       ) : (
-        <>
-          <form
-            className="flex items-center gap-1.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void play(input);
-              setInput("");
-            }}
-          >
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={t("Coller un lien vidéo (YouTube, TikTok…)")}
-              disabled={busy}
-              className="h-8 text-sm"
-            />
-            <Button type="submit" size="sm" disabled={busy || !input.trim()}>
-              {busy ? <Loader2 className="animate-spin" /> : <Play />}
-              {t("Lancer")}
-            </Button>
-          </form>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {engine === null ? (
-              <span>…</span>
-            ) : engine ? (
-              <span className={cn("text-emerald-500")}>
-                ✓ {t("Moteur audio installé")}
-              </span>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void install()}
-                disabled={installing}
-              >
-                {installing ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Download />
-                )}
-                {t("Installer le moteur audio")}
-              </Button>
-            )}
-          </div>
-          {engine === false && (
-            <p className="text-xs text-muted-foreground">
-              {t(
-                "Sans le moteur, la vidéo tourne masquée (son seul) ; avec, tu obtiens un vrai flux audio.",
-              )}
-            </p>
-          )}
-        </>
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <ListMusic className="size-6 text-muted-foreground/50" />
+          <p className="text-sm text-muted-foreground">
+            {t("Choisis une vidéo ou une playlist dans l'onglet Musique.")}
+          </p>
+        </div>
       )}
     </div>
   );

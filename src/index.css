@@ -405,6 +405,22 @@ body::before {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* égaliseur « en cours de lecture » (section Musique) */
+@keyframes eq-bounce {
+  0%, 100% { height: 30%; }
+  50%      { height: 100%; }
+}
+[data-eq] span {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--primary);
+  transform-origin: bottom;
+  animation: eq-bounce 1s ease-in-out infinite;
+}
+[data-eq] span:nth-child(2) { animation-delay: 0.25s; }
+[data-eq] span:nth-child(3) { animation-delay: 0.5s; }
 
 @layer utilities {
   .animate-tile-in { animation: tile-in 0.38s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
@@ -420,6 +436,10 @@ body::before {
   .animate-pop-in,
   .animate-slide-down {
     animation: none;
+  }
+  [data-eq] span {
+    animation: none;
+    height: 60%;
   }
 }
 

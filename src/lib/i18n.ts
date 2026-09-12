@@ -567,6 +567,21 @@ const en: Dict = {
     "Use a YouTube, TikTok, Vimeo, Dailymotion or Twitch link.",
   "Ouvrir dans le navigateur": "Open in the browser",
   "Lire dans l'app": "Play in the app",
+  "Piste précédente": "Previous track",
+  "Piste suivante": "Next track",
+  "Lecture aléatoire": "Shuffle",
+  Réduire: "Collapse",
+  Progression: "Progress",
+  "lecteur web": "web player",
+  "Le flux audio a expiré — piste suivante.":
+    "The audio stream expired — next track.",
+  "Ce lecteur web ne se pilote pas à distance — utilise ses propres contrôles.":
+    "This web player can't be controlled remotely — use its own controls.",
+  "Choisis une vidéo ou une playlist dans l'onglet Musique.":
+    "Pick a video or a playlist in the Music tab.",
+  "piste(s)": "track(s)",
+  Playlist: "Playlist",
+  "glisser pour réordonner": "drag to reorder",
   Confirmer: "Confirm",
   Valider: "Confirm",
   // --- Lecteur musique ---
@@ -585,10 +600,6 @@ const en: Dict = {
   "Extraction audio impossible — lecture via le lecteur web.":
     "Audio extraction failed — playing through the web player.",
   "Aucun lecteur connu pour ce lien.": "No known player for this link.",
-  "Le flux audio a expiré — relance le lien.":
-    "The audio stream expired — reload the link.",
-  "Ce lecteur web ne répond pas aux commandes — utilise ses propres contrôles en lecture affichée.":
-    "This web player doesn't respond to commands — use its own controls when video is shown.",
   "Moteur audio installé": "Audio engine installed",
   "Moteur audio installé — les liens vidéo ne livreront plus que le son.":
     "Audio engine installed — video links now yield sound only.",

@@ -1778,6 +1778,30 @@ pub async fn remove_playlist_item(pool: &SqlitePool, item_id: i64) -> Result<(),
     Ok(())
 }
 
+/// Réordonne une playlist : `ordered_ids` = ids des items dans l'ordre voulu.
+/// Les positions sont réécrites 0..n-1 ; les ids hors playlist sont ignorés
+/// (concurrence : un item retiré entre-temps ne doit pas faire échouer le drop).
+pub async fn reorder_playlist_items(
+    pool: &SqlitePool,
+    playlist_id: i64,
+    ordered_ids: &[i64],
+) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    for (pos, id) in ordered_ids.iter().enumerate() {
+        sqlx::query(
+            "UPDATE playlist_items SET position = ? WHERE id = ? AND playlist_id = ?",
+        )
+        .bind(pos as i64)
+        .bind(id)
+        .bind(playlist_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub async fn list_playlist_items(
     pool: &SqlitePool,
     playlist_id: i64,
@@ -2161,6 +2185,32 @@ mod tests {
             title: title.into(),
             cover: String::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn playlist_reorder_rewrites_positions() {
+        let pool = test_pool().await;
+        let pl = create_playlist(&pool, "Ordre").await.unwrap();
+        add_playlist_items(
+            &pool,
+            pl.id,
+            &[
+                new_track("https://youtu.be/one", "1"),
+                new_track("https://youtu.be/two", "2"),
+                new_track("https://youtu.be/three", "3"),
+            ],
+        )
+        .await
+        .unwrap();
+        let before = list_playlist_items(&pool, pl.id).await.unwrap();
+        // ordre inverse + un id fantôme ignoré
+        let mut ids: Vec<i64> = before.iter().rev().map(|i| i.id).collect();
+        ids.push(9999);
+        reorder_playlist_items(&pool, pl.id, &ids).await.unwrap();
+        let after = list_playlist_items(&pool, pl.id).await.unwrap();
+        assert_eq!(after[0].title, "3");
+        assert_eq!(after[2].title, "1");
+        assert_eq!(after[0].position, 0);
     }
 
     /// Une note créée depuis un dossier ouvert (folder_id passé par le

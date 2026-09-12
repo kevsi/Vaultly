@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/i18n";
+import { playTrack } from "@/lib/playerStore";
 import { formatRemindAt } from "@/lib/resources";
 import type { Folder, Resource } from "@/lib/types";
 
@@ -111,10 +112,14 @@ export function TileContextMenu({
               resource.url.startsWith("http") && (
                 <DropdownMenuItem
                   onClick={() =>
-                    window.dispatchEvent(
-                      new CustomEvent<Resource>("vaultly:play-as-music", {
-                        detail: resource,
-                      }),
+                    playTrack(
+                      {
+                        url: resource.url,
+                        title: resource.title,
+                        cover: resource.favicon,
+                      },
+                      resource.title,
+                      "tile",
                     )
                   }
                 >
