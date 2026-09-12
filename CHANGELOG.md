@@ -6,6 +6,20 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+### Ajouté
+- Lecteur « Musique » (bouton ♫ dans le header) : n'importe quel lien vidéo
+  (YouTube, TikTok, Vimeo, Dailymotion, Twitch…) s'écoute comme un morceau —
+  lecteur web masqué par défaut, et vraie extraction de flux audio pur via un
+  moteur yt-dlp optionnel téléchargeable en un clic (≈ 18 Mo, release
+  officielle GitHub). « Écouter » aussi disponible dans le menu ⋯ des tuiles
+  vidéo ; la lecture continue quand la fenêtre est masquée dans le tray.
+
+### Changé
+- Releases : Windows + Linux uniquement. macOS est retiré des cibles à partir
+  de cette version (coût de maintenance double architecture + notarisation
+  non justifié) ; les installs 1.1.x mac continuent de fonctionner mais ne
+  recevront plus de mises à jour.
+
 ## [1.1.1] - 2026-09-12
 
 ### Corrigé

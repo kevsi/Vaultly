@@ -1,10 +1,10 @@
-# Release + mise à jour automatique, tri-OS (Windows / Linux / macOS).
+# Release + mise à jour automatique, bi-OS (Windows / Linux).
 #
-# Déclenché par un tag `v*` (ex : git tag v1.1.1 && git push origin v1.1.1).
-# Quatre jobs SÉQUENTIELS (et non en matrice parallèle : chaque tauri-action
+# Déclenché par un tag `v*` (ex : git tag v1.2.0 && git push origin v1.2.0).
+# Deux jobs SÉQUENTIELS (et non en matrice parallèle : chaque tauri-action
 # relit et fusionne le latest.json de la release — en parallèle ils se
-# marcheraient dessus) : Windows crée le brouillon, puis Linux, puis macOS
-# Apple Silicon, puis macOS Intel ajoutent leurs artefacts + plateformes.
+# marcheraient dessus) : Windows crée le brouillon, puis Linux ajoute ses
+# artefacts + plateformes.
 #
 # PRÉREQUIS — clés de signature (une seule fois) :
 #   1. `pnpm tauri signer generate -w ~/.tauri/vaultly.key`
@@ -17,11 +17,10 @@
 #   Sans clé publique configurée, l'app détecte les versions mais refuse
 #   l'installation (signature invérifiable) — jamais de crash.
 #
-# macOS : le .dmg est produit pour Apple Silicon (aarch64). Sans certificat
-# Apple Developer + notarisation, Gatekeeper affichera « app non vérifiée » :
-# contournable par clic droit › Ouvrir (documenter côté README si le public
-# mac existe). L'updater macOS est fonctionnel dès la première installation
-# manuelle (le .app.tar.gz signé est publié avec sa .sig).
+# macOS : retiré des releases à partir de v1.2.0 (décision produit — la
+# maintenance tri-OS + Gatekeeper n'est pas justifiée pour l'instant). Les
+# versions 1.1.x publiées restent téléchargeables par les premiers testeurs
+# mac ; leur updater ne verra simplement plus de nouvelle version macOS.
 name: Release
 
 on:
@@ -56,7 +55,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Vaultly ${{ github.ref_name }}"
-          releaseBody: "Vaultly pour Windows (NSIS + MSI), Linux (deb + AppImage) et macOS (dmg, Apple Silicon). L'updater intégré sert les trois plateformes via latest.json."
+          releaseBody: "Vaultly pour Windows (NSIS + MSI) et Linux (deb + AppImage). L'updater intégré sert les deux plateformes via latest.json."
           releaseDraft: true
           includeUpdaterJson: true
           args: --bundles nsis,msi
@@ -101,73 +100,3 @@ jobs:
           includeUpdaterJson: true
           args: --bundles deb,appimage
 
-  release-macos:
-    name: Build + publie (macOS · Apple Silicon)
-    needs: release-linux
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseDraft: true
-          includeUpdaterJson: true
-          args: --bundles dmg,app
-
-  # Mac Intel : sans ce job, l'app montre l'icône « interdite » sur x86_64
-  # (le binaire arm64 ne s'y exécute pas — retourné de l'installation 1.1.0).
-  release-macos-intel:
-    name: Build + publie (macOS · Intel)
-    needs: release-macos
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseDraft: true
-          includeUpdaterJson: true
-          # attention : tauri-action@v0 n'a PAS d'input « target » (il
-          # l'ignore silencieusement et rebuild l'arch hôte) — le triple passe
-          # obligatoirement par args → tauri build --target …
-          args: --target x86_64-apple-darwin --bundles dmg,app

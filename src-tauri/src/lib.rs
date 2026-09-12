@@ -1,3 +1,4 @@
+mod audio;
 mod commands;
 mod db;
 mod mcp;
@@ -766,6 +767,9 @@ pub fn run() {
             commands::open_resources_folder,
             commands::read_image_data_url,
             commands::open_resource,
+            audio::audio_engine_installed,
+            audio::audio_engine_install,
+            audio::audio_resolve,
             commands::detect_openers,
             commands::get_open_prefs,
             commands::set_open_prefs,

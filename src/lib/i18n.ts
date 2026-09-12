@@ -567,6 +567,32 @@ const en: Dict = {
   "Lire dans l'app": "Play in the app",
   Confirmer: "Confirm",
   Valider: "Confirm",
+  // --- Lecteur musique ---
+  Musique: "Music",
+  Écouter: "Listen",
+  "Coller un lien vidéo (YouTube, TikTok…)":
+    "Paste a video link (YouTube, TikTok…)",
+  Lancer: "Start",
+  "Nouveau lien": "New link",
+  "son pur": "pure audio",
+  "lecteur web (son seul)": "web player (audio only)",
+  Lecture: "Play",
+  Pause: "Pause",
+  Arrêter: "Stop",
+  Volume: "Volume",
+  "Extraction audio impossible — lecture via le lecteur web.":
+    "Audio extraction failed — playing through the web player.",
+  "Aucun lecteur connu pour ce lien.": "No known player for this link.",
+  "Le flux audio a expiré — relance le lien.":
+    "The audio stream expired — reload the link.",
+  "Ce lecteur web ne répond pas aux commandes — utilise ses propres contrôles en lecture affichée.":
+    "This web player doesn't respond to commands — use its own controls when video is shown.",
+  "Moteur audio installé": "Audio engine installed",
+  "Moteur audio installé — les liens vidéo ne livreront plus que le son.":
+    "Audio engine installed — video links now yield sound only.",
+  "Installer le moteur audio": "Install the audio engine",
+  "Sans le moteur, la vidéo tourne masquée (son seul) ; avec, tu obtiens un vrai flux audio.":
+    "Without the engine, the video plays hidden (audio only); with it you get a real audio stream.",
   "Impossible de lire la corbeille": "Could not read the trash",
   "Réessaie depuis l'onglet Bibliothèque, ou redémarre Vaultly si le problème persiste.":
     "Try again from the Library tab, or restart Vaultly if it persists.",

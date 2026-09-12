@@ -13,6 +13,7 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  Music2,
   Settings,
   StickyNote,
   Trash2,
@@ -23,6 +24,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { CommandPalette } from "@/components/CommandPalette";
 import { FirstRun } from "@/components/FirstRun";
+import { MusicPlayer } from "@/components/MusicPlayer";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -211,6 +213,8 @@ export default function App() {
   const [tab, setTab] = useState("library");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // lecteur « Musique » : n'importe quel lien vidéo écouté comme un morceau
+  const [musicOpen, setMusicOpen] = useState(false);
   // aperçu vidéo in-app : toutes les ouvertures passent par openResource()
   // qui émet cet événement (tuiles, liste, kanban, palette, fiche détails)
   const [videoPreview, setVideoPreview] = useState<Resource | null>(null);
@@ -509,6 +513,14 @@ export default function App() {
           </Tabs>
           <span className="grow" />
           <Button
+            variant={musicOpen ? "default" : "ghost"}
+            size="icon"
+            onClick={() => setMusicOpen((v) => !v)}
+            title={t("Musique")}
+          >
+            <Music2 />
+          </Button>
+          <Button
             variant="ghost"
             size="icon"
             data-tour="shortcuts"
@@ -537,6 +549,7 @@ export default function App() {
         resource={videoPreview}
         onClose={() => setVideoPreview(null)}
       />
+      <MusicPlayer open={musicOpen} onOpenChange={setMusicOpen} />
       <FirstRun />
       <Toaster
         position="bottom-right"

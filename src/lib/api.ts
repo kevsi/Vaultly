@@ -33,6 +33,23 @@ export async function recordOpen(id: number): Promise<void> {
   return invoke("record_open", { id });
 }
 
+// --- Moteur audio (yt-dlp sidecar, optionnel) ---
+
+/** Le moteur d'extraction audio est-il présent ? */
+export async function audioEngineInstalled(): Promise<boolean> {
+  return invoke("audio_engine_installed");
+}
+
+/** Télécharge le moteur (dernière release yt-dlp) ; retourne sa version. */
+export async function audioEngineInstall(): Promise<string> {
+  return invoke("audio_engine_install");
+}
+
+/** Résout l'URL du flux AUDIO pur d'un lien vidéo (éphémère, non stockée). */
+export async function audioResolve(url: string): Promise<string> {
+  return invoke("audio_resolve", { url });
+}
+
 export async function updateResource(
   id: number,
   resource: NewResource,

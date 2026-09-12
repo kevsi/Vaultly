@@ -60,13 +60,15 @@ jobs:
 
   # Le release ne se fait QUE sur Windows : ce job prouve que le code reste
   # compilable et vert hors Windows (windows-sys est bien gated, le fallback
-  # DPAPI de secret.rs passe, aucune hypothèse Windows dans les 62 tests).
+  # DPAPI de secret.rs passe, aucune hypothèse Windows dans les tests).
+  # macOS retiré des cibles de release (décision v1.2.0) : ubuntu seul reste
+  # le garde de portabilité non-Windows.
   cross-os:
     name: Backend Rust (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:

@@ -8,6 +8,7 @@ import {
   Info,
   ListTodo,
   MoreHorizontal,
+  Music2,
   Pencil,
   Star,
   Trash2,
@@ -105,6 +106,22 @@ export function TileContextMenu({
                 {t("Détails")}
               </DropdownMenuItem>
             )}
+            {/* vidéo web : écoute « comme un morceau » dans le lecteur Musique */}
+            {resource.resourceType === "video" &&
+              resource.url.startsWith("http") && (
+                <DropdownMenuItem
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent<Resource>("vaultly:play-as-music", {
+                        detail: resource,
+                      }),
+                    )
+                  }
+                >
+                  <Music2 />
+                  {t("Écouter")}
+                </DropdownMenuItem>
+              )}
             <DropdownMenuItem onClick={onCopy}>
               <Copy />
               {t("Copier l'URL")}
