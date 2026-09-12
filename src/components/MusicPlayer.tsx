@@ -1,4 +1,5 @@
 import {
+  ChevronUp,
   Download,
   ListMusic,
   Loader2,
@@ -235,6 +236,46 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
     }
   }
 
+  if (!open && track) {
+    // piste en cours mais panneau fermé → mini-barre persistante (le son,
+    // lui, continue : c'est tout l'intérêt du mode « morceau »)
+    return (
+      <div className="fixed bottom-4 left-4 z-40 flex max-w-[380px] items-center gap-2 rounded-2xl border bg-popover p-2 pl-2.5 text-popover-foreground shadow-2xl">
+        {track.cover ? (
+          <img
+            src={track.cover}
+            alt=""
+            className="size-8 shrink-0 rounded-md object-cover"
+          />
+        ) : (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+            <Music2 className="size-3.5 text-muted-foreground" />
+          </span>
+        )}
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">
+          {track.title}
+        </p>
+        {canToggle && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={toggle}
+            title={playing ? t("Pause") : t("Lecture")}
+          >
+            {playing ? <Pause /> : <Play />}
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onOpenChange(true)}
+          title={t("Ouvrir le lecteur")}
+        >
+          <ChevronUp />
+        </Button>
+      </div>
+    );
+  }
   if (!open) return null;
 
   return (

@@ -6,8 +6,11 @@ import type {
   DeadLink,
   Folder,
   ImportedBookmark,
+  ImportedTrack,
   ImportReport,
   McpServerStatus,
+  MusicPlaylist,
+  MusicPlaylistItem,
   NewResource,
   PageMetadata,
   Resource,
@@ -48,6 +51,50 @@ export async function audioEngineInstall(): Promise<string> {
 /** Résout l'URL du flux AUDIO pur d'un lien vidéo (éphémère, non stockée). */
 export async function audioResolve(url: string): Promise<string> {
   return invoke("audio_resolve", { url });
+}
+
+/** Énumère les pistes d'une playlist web (métadonnées seules, cap = limit). */
+export async function audioImportPlaylist(
+  url: string,
+  limit: number,
+): Promise<ImportedTrack[]> {
+  return invoke("audio_import_playlist", { url, limit });
+}
+
+// --- Playlists musique locales ---
+
+export async function listPlaylists(): Promise<MusicPlaylist[]> {
+  return invoke("list_playlists");
+}
+
+export async function createPlaylist(name: string): Promise<MusicPlaylist> {
+  return invoke("create_playlist", { name });
+}
+
+export async function renamePlaylist(id: number, name: string): Promise<void> {
+  return invoke("rename_playlist", { id, name });
+}
+
+export async function deletePlaylist(id: number): Promise<void> {
+  return invoke("delete_playlist", { id });
+}
+
+export async function listPlaylistItems(
+  playlistId: number,
+): Promise<MusicPlaylistItem[]> {
+  return invoke("list_playlist_items", { playlistId });
+}
+
+/** Ajoute des pistes ; retourne le nombre réellement insérées (dédup URLs). */
+export async function addPlaylistItems(
+  playlistId: number,
+  items: { url: string; title?: string; cover?: string }[],
+): Promise<number> {
+  return invoke("add_playlist_items", { playlistId, items });
+}
+
+export async function removePlaylistItem(itemId: number): Promise<void> {
+  return invoke("remove_playlist_item", { itemId });
 }
 
 export async function updateResource(

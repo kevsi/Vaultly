@@ -47,6 +47,7 @@ const fr: Dict = {
   // --- App shell ---
   settings: "Réglages",
   "nav.library": "Bibliothèque",
+  "nav.music": "Musique",
   "nav.import": "Importer",
   "nav.stats": "Statistiques",
   "nav.trash": "Corbeille",
@@ -238,6 +239,7 @@ const en: Dict = {
   // --- App shell ---
   settings: "Settings",
   "nav.library": "Library",
+  "nav.music": "Music",
   "nav.import": "Import",
   "nav.stats": "Stats",
   "nav.trash": "Trash",
@@ -593,6 +595,42 @@ const en: Dict = {
   "Installer le moteur audio": "Install the audio engine",
   "Sans le moteur, la vidéo tourne masquée (son seul) ; avec, tu obtiens un vrai flux audio.":
     "Without the engine, the video plays hidden (audio only); with it you get a real audio stream.",
+  // --- Section Musique ---
+  "Ouvrir le lecteur": "Open the player",
+  "Piste ajoutée à « {name} »": 'Track added to "{name}"',
+  "Cette piste est déjà dans la playlist.":
+    "This track is already in the playlist.",
+  "Playlist importée": "Imported playlist",
+  "{count} piste(s) importée(s) dans « {name} »":
+    '{count} track(s) imported into "{name}"',
+  Playlists: "Playlists",
+  "Nouvelle playlist…": "New playlist…",
+  "Aucune playlist — crée-en une ou importe une playlist YouTube.":
+    "No playlist yet — create one or import a YouTube playlist.",
+  "Importer une playlist YouTube": "Import a YouTube playlist",
+  "Nécessite le moteur audio (≈ 18 Mo, officiel yt-dlp).":
+    "Requires the audio engine (≈ 18 MB, official yt-dlp).",
+  "Nom de la playlist": "Playlist name",
+  "Morceaux max": "Max tracks",
+  Importer: "Import",
+  "Tout lire": "Play all",
+  "Retour aux vidéos": "Back to videos",
+  "Playlist vide — ajoute des pistes depuis la liste des vidéos (bouton +).":
+    "Empty playlist — add tracks from the video list (+ button).",
+  "Retirer de la playlist": "Remove from playlist",
+  "Vidéos de ta bibliothèque": "Videos in your library",
+  "Musiques seules": "Music only",
+  "Aucune piste marquée ♫ — clique la note sur une vidéo pour la déclarer musique.":
+    "No track marked ♫ — click the note on a video to declare it music.",
+  "Aucune vidéo dans la bibliothèque — ajoute un lien YouTube ou TikTok.":
+    "No video in the library — add a YouTube or TikTok link.",
+  "Retirer du filtre musiques": "Unmark as music",
+  "Déclarer comme musique": "Mark as music",
+  "Ajouter à…": "Add to…",
+  "Ajouter à la playlist": "Add to playlist",
+  "Supprimer la playlist « {name} » ?": 'Delete playlist "{name}"?',
+  "Ses pistes disparaissent, jamais les ressources de la bibliothèque.":
+    "Its tracks disappear — never the library resources.",
   "Impossible de lire la corbeille": "Could not read the trash",
   "Réessaie depuis l'onglet Bibliothèque, ou redémarre Vaultly si le problème persiste.":
     "Try again from the Library tab, or restart Vaultly if it persists.",

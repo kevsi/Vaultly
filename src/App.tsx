@@ -52,6 +52,9 @@ import { describeError } from "@/lib/utils";
 const ImportView = lazy(() =>
   import("@/components/ImportView").then((m) => ({ default: m.ImportView })),
 );
+const MusicView = lazy(() =>
+  import("@/components/MusicView").then((m) => ({ default: m.MusicView })),
+);
 const StatsView = lazy(() =>
   import("@/components/StatsView").then((m) => ({ default: m.StatsView })),
 );
@@ -487,6 +490,10 @@ export default function App() {
                 <Library />
                 {t("nav.library")}
               </TabsTrigger>
+              <TabsTrigger value="music">
+                <Music2 />
+                {t("nav.music")}
+              </TabsTrigger>
               <TabsTrigger value="import">
                 <StickyNote />
                 {t("nav.import")}
@@ -513,14 +520,6 @@ export default function App() {
           </Tabs>
           <span className="grow" />
           <Button
-            variant={musicOpen ? "default" : "ghost"}
-            size="icon"
-            onClick={() => setMusicOpen((v) => !v)}
-            title={t("Musique")}
-          >
-            <Music2 />
-          </Button>
-          <Button
             variant="ghost"
             size="icon"
             data-tour="shortcuts"
@@ -536,6 +535,7 @@ export default function App() {
         <main className="min-h-0 flex-1">
           <Suspense fallback={<ViewFallback />}>
             {tab === "library" && <LibraryViewLazy />}
+            {tab === "music" && <MusicView />}
             {tab === "import" && <ImportView />}
             {tab === "stats" && <StatsView />}
             {tab === "trash" && <TrashView />}

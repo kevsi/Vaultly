@@ -1623,6 +1623,61 @@ pub(crate) async fn purge_legacy_gdrive(pool: &SqlitePool) {
     );
 }
 
+// --- Playlists « Musique » ---
+
+#[tauri::command]
+pub async fn list_playlists(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<db::Playlist>, String> {
+    db::list_playlists(&pool).await
+}
+
+#[tauri::command]
+pub async fn create_playlist(
+    pool: State<'_, SqlitePool>,
+    name: String,
+) -> Result<db::Playlist, String> {
+    db::create_playlist(&pool, &name).await
+}
+
+#[tauri::command]
+pub async fn rename_playlist(
+    pool: State<'_, SqlitePool>,
+    id: i64,
+    name: String,
+) -> Result<(), String> {
+    db::rename_playlist(&pool, id, &name).await
+}
+
+#[tauri::command]
+pub async fn delete_playlist(pool: State<'_, SqlitePool>, id: i64) -> Result<(), String> {
+    db::delete_playlist(&pool, id).await
+}
+
+#[tauri::command]
+pub async fn list_playlist_items(
+    pool: State<'_, SqlitePool>,
+    playlist_id: i64,
+) -> Result<Vec<db::PlaylistItem>, String> {
+    db::list_playlist_items(&pool, playlist_id).await
+}
+
+#[tauri::command]
+pub async fn add_playlist_items(
+    pool: State<'_, SqlitePool>,
+    playlist_id: i64,
+    items: Vec<db::NewTrack>,
+) -> Result<usize, String> {
+    db::add_playlist_items(&pool, playlist_id, &items).await
+}
+
+#[tauri::command]
+pub async fn remove_playlist_item(
+    pool: State<'_, SqlitePool>,
+    item_id: i64,
+) -> Result<(), String> {
+    db::remove_playlist_item(&pool, item_id).await
+}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,7 +7,14 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 ## [Unreleased]
 
 ### Ajouté
-- Lecteur « Musique » (bouton ♫ dans le header) : n'importe quel lien vidéo
+- Section Musique (nouvel onglet du header) : toutes les vidéos de la
+  bibliothèque en pistes, drapeau ♫ « musique » par piste + filtre « musiques
+  seules », playlists locales (création/renommage/suppression, pistes
+  persistées en base), et import d'une playlist YouTube : énumération des
+  pistes via le moteur yt-dlp, nombre de morceaux plafonné et éditable
+  (défaut 50, jusqu'à 200), la playlist de l'app est créée automatiquement.
+- Lecteur « Musique » (onglet ou événement « Écouter » des tuiles) : n'importe
+  quel lien vidéo
   (YouTube, TikTok, Vimeo, Dailymotion, Twitch…) s'écoute comme un morceau —
   lecteur web masqué par défaut, et vraie extraction de flux audio pur via un
   moteur yt-dlp optionnel téléchargeable en un clic (≈ 18 Mo, release

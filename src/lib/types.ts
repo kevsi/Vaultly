@@ -148,3 +148,29 @@ export interface AppendLinkResult {
   added: boolean;
   total: number;
 }
+
+// --- Playlists « Musique » (locales, SQLite) ---
+
+/** Playlist locale : conteneur de pistes (la file du lecteur Musique). */
+export interface MusicPlaylist {
+  id: number;
+  name: string;
+  count: number;
+}
+
+/** Piste d'une playlist : un lien web + métadonnées figées à l'ajout. */
+export interface MusicPlaylistItem {
+  id: number;
+  playlistId: number;
+  url: string;
+  title: string;
+  cover: string;
+  position: number;
+}
+
+/** Piste telle que renvoyée par l'import de playlist YouTube (yt-dlp). */
+export interface ImportedTrack {
+  url: string;
+  title: string;
+  cover: string;
+}

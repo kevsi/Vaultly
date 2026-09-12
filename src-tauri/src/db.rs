@@ -201,6 +201,7 @@ pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         ("0007_trash", include_str!("../migrations/0007_trash.sql")),
         ("0008_remind_at", include_str!("../migrations/0008_remind_at.sql")),
         ("0009_indexes", include_str!("../migrations/0009_indexes.sql")),
+        ("0010_playlists", include_str!("../migrations/0010_playlists.sql")),
     ] {
         // chaque migration est exécutée dans une transaction
         let mut tx = pool.begin().await?;
@@ -1621,6 +1622,186 @@ pub async fn stats(pool: &SqlitePool) -> Result<DbStats, String> {
     })
 }
 
+// --- Playlists « Musique » ---
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Playlist {
+    pub id: i64,
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistItem {
+    pub id: i64,
+    pub playlist_id: i64,
+    pub url: String,
+    pub title: String,
+    pub cover: String,
+    pub position: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewTrack {
+    pub url: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub cover: String,
+}
+
+pub async fn create_playlist(pool: &SqlitePool, name: &str) -> Result<Playlist, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("donne un nom à la playlist".into());
+    }
+    let r = sqlx::query("INSERT INTO playlists (name) VALUES (?)")
+        .bind(name)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Playlist {
+        id: r.last_insert_rowid(),
+        name: name.to_string(),
+        count: 0,
+    })
+}
+
+pub async fn rename_playlist(pool: &SqlitePool, id: i64, name: &str) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("donne un nom à la playlist".into());
+    }
+    let r = sqlx::query("UPDATE playlists SET name = ? WHERE id = ?")
+        .bind(name)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if r.rows_affected() == 0 {
+        return Err(format!("playlist {id} introuvable"));
+    }
+    Ok(())
+}
+
+pub async fn delete_playlist(pool: &SqlitePool, id: i64) -> Result<(), String> {
+    // ON DELETE CASCADE emporte les items
+    sqlx::query("DELETE FROM playlists WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn list_playlists(pool: &SqlitePool) -> Result<Vec<Playlist>, String> {
+    let rows: Vec<(i64, String, i64)> = sqlx::query_as(
+        "SELECT p.id, p.name, COUNT(i.id) FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id = p.id GROUP BY p.id ORDER BY p.id ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, name, count)| Playlist { id, name, count })
+        .collect())
+}
+
+/// Ajoute des morceaux en ignorant les URLs déjà présentes dans la playlist
+/// (le même clip importé deux fois ne doit pas doubler la file).
+pub async fn add_playlist_items(
+    pool: &SqlitePool,
+    playlist_id: i64,
+    items: &[NewTrack],
+) -> Result<usize, String> {
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM playlists WHERE id = ?")
+            .bind(playlist_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    if exists.is_none() {
+        return Err(format!("playlist {playlist_id} introuvable"));
+    }
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut max_pos: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(position), 0) FROM playlist_items WHERE playlist_id = ?",
+    )
+    .bind(playlist_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    let mut added = 0usize;
+    for it in items {
+        let url = it.url.trim();
+        if url.is_empty() {
+            continue;
+        }
+        let dup: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM playlist_items WHERE playlist_id = ? AND url = ? COLLATE NOCASE",
+        )
+        .bind(playlist_id)
+        .bind(url)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        if dup.is_some() {
+            continue;
+        }
+        max_pos += 1;
+        sqlx::query(
+            "INSERT INTO playlist_items (playlist_id, url, title, cover, position) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(playlist_id)
+        .bind(url)
+        .bind(it.title.trim())
+        .bind(it.cover.trim())
+        .bind(max_pos)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        added += 1;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(added)
+}
+
+pub async fn remove_playlist_item(pool: &SqlitePool, item_id: i64) -> Result<(), String> {
+    sqlx::query("DELETE FROM playlist_items WHERE id = ?")
+        .bind(item_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn list_playlist_items(
+    pool: &SqlitePool,
+    playlist_id: i64,
+) -> Result<Vec<PlaylistItem>, String> {
+    let rows: Vec<(i64, i64, String, String, String, i64)> = sqlx::query_as(
+        "SELECT id, playlist_id, url, title, cover, position FROM playlist_items WHERE playlist_id = ? ORDER BY position ASC",
+    )
+    .bind(playlist_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, playlist_id, url, title, cover, position)| PlaylistItem {
+            id,
+            playlist_id,
+            url,
+            title,
+            cover,
+            position,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1941,6 +2122,45 @@ mod tests {
             .collect();
         assert!(names.iter().any(|n| n == "À traiter"));
         assert!(!names.iter().any(|n| n == "Archivés"));
+    }
+
+    /// Playlists : CRUD + dédup URL + suppression en cascade des items.
+    #[tokio::test]
+    async fn playlist_crud_dedupes_and_cascades() {
+        let pool = test_pool().await;
+        let pl = create_playlist(&pool, "  Route  ").await.unwrap();
+        assert_eq!(pl.name, "Route");
+        let added = add_playlist_items(
+            &pool,
+            pl.id,
+            &[
+                new_track("https://youtu.be/aaa", "A"),
+                new_track("https://youtu.be/bbb", "B"),
+                new_track("https://youtu.be/AAA", "A bis (majuscules = même URL)"),
+            ],
+        )
+        .await
+        .unwrap();
+        assert_eq!(added, 2, "la troisième est un doublon NOCASE");
+        let items = list_playlist_items(&pool, pl.id).await.unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "A");
+        assert_eq!(items[1].position, 2);
+        let lists = list_playlists(&pool).await.unwrap();
+        assert_eq!(lists[0].count, 2);
+        rename_playlist(&pool, pl.id, "Road trip").await.unwrap();
+        delete_playlist(&pool, pl.id).await.unwrap();
+        assert!(list_playlist_items(&pool, pl.id).await.unwrap().is_empty());
+        // items orphelins emportés par la cascade, plus de playlist listée
+        assert!(list_playlists(&pool).await.unwrap().is_empty());
+    }
+
+    fn new_track(url: &str, title: &str) -> NewTrack {
+        NewTrack {
+            url: url.into(),
+            title: title.into(),
+            cover: String::new(),
+        }
     }
 
     /// Une note créée depuis un dossier ouvert (folder_id passé par le
