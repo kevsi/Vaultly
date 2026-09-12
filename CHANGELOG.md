@@ -6,6 +6,14 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-12
+
+### Corrigé
+- macOS Intel : la release précédente ne publiait qu'un `.dmg` Apple Silicon —
+  sur un Mac Intel, l'app affichait une icône « interdite » (architecture
+  incompatible). Un `.dmg` et un paquet updater `darwin-x86_64` sont désormais
+  construits et publiés à chaque release.
+
 ## [1.1.0] - 2026-09-11
 
 ### Ajouté

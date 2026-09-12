@@ -1,10 +1,10 @@
 # Release + mise à jour automatique, tri-OS (Windows / Linux / macOS).
 #
-# Déclenché par un tag `v*` (ex : git tag v1.1.0 && git push origin v1.1.0).
-# Trois jobs SÉQUENTIELS (et non en matrice parallèle : chaque tauri-action
+# Déclenché par un tag `v*` (ex : git tag v1.1.1 && git push origin v1.1.1).
+# Quatre jobs SÉQUENTIELS (et non en matrice parallèle : chaque tauri-action
 # relit et fusionne le latest.json de la release — en parallèle ils se
-# marcheraient dessus) : Windows crée le brouillon, Linux et macOS ajoutent
-# leurs artefacts + leurs plateformes dans latest.json.
+# marcheraient dessus) : Windows crée le brouillon, puis Linux, puis macOS
+# Apple Silicon, puis macOS Intel ajoutent leurs artefacts + plateformes.
 #
 # PRÉREQUIS — clés de signature (une seule fois) :
 #   1. `pnpm tauri signer generate -w ~/.tauri/vaultly.key`
@@ -102,7 +102,7 @@ jobs:
           args: --bundles deb,appimage
 
   release-macos:
-    name: Build + publie (macOS · aarch64)
+    name: Build + publie (macOS · Apple Silicon)
     needs: release-linux
     runs-on: macos-latest
     permissions:
@@ -117,6 +117,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -130,4 +132,40 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           includeUpdaterJson: true
+          args: --bundles dmg,app
+
+  # Mac Intel : sans ce job, l'app montre l'icône « interdite » sur x86_64
+  # (le binaire arm64 ne s'y exécute pas — retourné de l'installation 1.1.0).
+  release-macos-intel:
+    name: Build + publie (macOS · Intel)
+    needs: release-macos
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true
+          target: x86_64-apple-darwin
           args: --bundles dmg,app
