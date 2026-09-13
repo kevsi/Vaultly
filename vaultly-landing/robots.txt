@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vaultly-landing-2fh.pages.dev/sitemap.xml
