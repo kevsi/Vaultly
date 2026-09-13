@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="index,follow" />
+  <title>Ideas — Vaultly</title>
+  <meta name="description" content="Suggest a feature for Vaultly. Write your idea, then send it to the project." />
+  <link rel="canonical" href="https://vaultly-landing-2fh.pages.dev/ideas/" />
+  <link rel="icon" type="image/png" href="../logo-256.png" />
+  <style>
+    :root {
+      --bg: oklch(0.975 0.012 85);
+      --card: oklch(0.99 0.006 85);
+      --primary: oklch(0.63 0.13 45);
+      --primary-soft: oklch(0.63 0.13 45 / 0.12);
+      --text: oklch(0.32 0.03 50);
+      --muted: oklch(0.52 0.03 55);
+      --border: oklch(0.88 0.02 80);
+      --radius: 1.25rem;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(60rem 30rem at 80% -10%, oklch(0.63 0.13 45 / 0.07), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      line-height: 1.6;
+    }
+    main { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    header { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; }
+    header img { width: 2.25rem; height: 2.25rem; border-radius: 0.65rem; }
+    .name { font-weight: 700; margin-right: auto; }
+    .link { color: var(--muted); text-decoration: none; font-size: 0.9rem; padding: 0.35rem 0.6rem; border-radius: 0.5rem; }
+    .link:hover { color: var(--text); background: var(--primary-soft); }
+    h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); line-height: 1.15; margin-bottom: 0.5rem; }
+    p { color: var(--muted); margin-bottom: 1.25rem; }
+    form {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px oklch(0.32 0.03 50 / 0.08);
+    }
+    label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+    textarea {
+      width: 100%;
+      min-height: 13rem;
+      padding: 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      color: var(--text);
+      background: var(--bg);
+      font: inherit;
+      resize: vertical;
+    }
+    textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+    .actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: 1px solid transparent;
+      border-radius: 0.9rem;
+      background: var(--primary);
+      color: oklch(0.99 0.005 85);
+      font: inherit;
+      font-weight: 600;
+      padding: 0.75rem 1.15rem;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.06); }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    .status { min-height: 1.5rem; color: var(--muted); }
+    .error { color: oklch(0.48 0.18 25); }
+    .success { color: oklch(0.45 0.13 150); }
+    .honeypot { position: absolute; left: -9999px; opacity: 0; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+  <!-- Cloudflare Web Analytics -->
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"e46ce940c38446c986036fa750a8cfcd"}'></script>
+  <!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+  <main>
+    <header>
+      <img src="../logo-256.png" alt="Vaultly logo" />
+      <span class="name">Vaultly</span>
+      <a class="link" href="/"><strong>EN</strong></a>
+      <a class="link" href="/fr/"><strong>FR</strong></a>
+    </header>
+
+    <h1>Suggest a feature</h1>
+    <p>Write your idea in French or English. Keep it simple: problem, desired feature, why it matters to you.</p>
+
+    <form id="idea-form">
+      <label for="idea">Your idea</label>
+      <textarea id="idea" name="idea" placeholder="It would be useful if Vaultly..." required minlength="10" maxlength="5000"></textarea>
+      <div class="honeypot" aria-hidden="true">
+        <label for="company">Company</label>
+        <input id="company" name="company" tabindex="-1" autocomplete="off" />
+      </div>
+      <div class="actions">
+        <button id="submit" type="submit">Send</button>
+        <div id="status" class="status" aria-live="polite"></div>
+      </div>
+    </form>
+  </main>
+
+  <script type="module">
+    const form = document.querySelector("#idea-form");
+    const status = document.querySelector("#status");
+    const button = document.querySelector("#submit");
+    const textarea = document.querySelector("#idea");
+
+    function setStatus(message, kind = "") {
+      status.textContent = message;
+      status.className = `status ${kind}`.trim();
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const text = textarea.value.trim();
+      if (text.length < 10) {
+        setStatus("Please write at least 10 characters.", "error");
+        return;
+      }
+
+      button.disabled = true;
+      setStatus("Sending…");
+
+      try {
+        const response = await fetch("/api/ideas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            idea: text.slice(0, 5000),
+            company: form.company.value,
+          }),
+        });
+
+        const result = await response.json().catch(() => ({ error: "Unexpected server response." }));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || "Could not send your idea.");
+        }
+
+        setStatus("Thanks! Your idea was sent.", "success");
+        textarea.value = "";
+      } catch (error) {
+        setStatus(error.message || "Could not send your idea.", "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
