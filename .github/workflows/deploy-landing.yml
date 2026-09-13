@@ -19,6 +19,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
       - name: Ensure Pages project exists
         continue-on-error: true
         run: npx --yes wrangler@4 pages project create vaultly-landing --production-branch main
