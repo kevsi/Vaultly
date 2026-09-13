@@ -60,9 +60,7 @@ jobs:
           GITHUB_ISSUE_TOKEN: ${{ secrets.GITHUB_ISSUE_TOKEN }}
 
       - name: Deploy to Cloudflare Pages
-        run: |
-          COMPAT_DATE="$(date +%F)"
-          npx --yes wrangler@4 pages deploy vaultly-landing --project-name=vaultly-landing --branch main --compatibility-date="$COMPAT_DATE"
+        run: npx --yes wrangler@4 pages deploy vaultly-landing --project-name=vaultly-landing --branch main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
