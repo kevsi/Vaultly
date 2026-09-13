@@ -107,8 +107,7 @@ stockés en clair.
 
 ### macOS
 
-Les versions macOS existantes continuent de fonctionner, mais macOS n’est plus
-une cible de release depuis v1.2.0.
+A venir
 
 ## Télécharger
 
