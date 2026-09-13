@@ -6,6 +6,13 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-13
+
+### Corrigé
+- Démarrage sur les WebView sans `requestIdleCallback` (Linux/WebKitGTK) :
+  le préchargement paresseux de la bibliothèque retombe désormais sur
+  `setTimeout` au lieu de lever un `TypeError` bloquant.
+
 ## [1.2.0] - 2026-09-13
 
 ### Ajouté

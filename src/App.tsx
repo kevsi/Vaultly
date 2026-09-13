@@ -326,10 +326,18 @@ export default function App() {
 
   // préchargement du chunk Bibliothèque quand le navigateur est inactif
   useEffect(() => {
-    const id = window.requestIdleCallback(
-      () => void import("@/components/LibraryView"),
-    );
-    return () => window.cancelIdleCallback(id);
+    const load = () => void import("@/components/LibraryView");
+    // WebKitGTK/Linux ne fournit pas requestIdleCallback : sans repli,
+    // la lazy-loadingLibrary plantait au démarrage.
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(load);
+      return () => {
+        if (typeof window.cancelIdleCallback === "function")
+          window.cancelIdleCallback(id);
+      };
+    }
+    const id = window.setTimeout(load, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   // contrôle silencieux de mise à jour (1/jour max) : notifie, n'installe
