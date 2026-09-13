@@ -1,139 +1,161 @@
 # Vaultly
 
-Hub personnel de ressources — sites web, apps, outils — avec accès IA intégré via MCP.
+Vaultly est un hub personnel pour rassembler tes sites, apps, fichiers, notes et
+vidéos au même endroit.
 
-> Anciennement **ConnectAll** : au premier lancement après renommage, l'app
-> migre automatiquement ses données (`%APPDATA%\com.alexanders.connectall`
-> et `Documents\ConnectAll`) vers les nouveaux dossiers.
+Le but est simple : tu ouvres une ressource, tu la ranges, tu la retrouves, et
+tu peux la faire exploiter par une IA quand l’app est ouverte.
 
-## Pourquoi
+## C’est quoi, concrètement ?
 
-Ne plus jamais perdre un site utile : toutes tes ressources dans une base locale,
-recherchables, classées, et **exploitables par tes assistants IA** (ZCode, Claude,
-Cursor…) pendant que l'app est ouverte.
+Vaultly, c’est une fenêtre avec des tuiles.
 
-## Fonctionnalités
+Tu peux y mettre :
 
-- **Bibliothèque** : CRUD complet, recherche plein texte (raccourci `/`), filtres par
-  type/catégorie/tag/favori/statut, tri manuel par glisser-déposer (trait d'insertion
-  entre tuiles, dépôt au centre = création de dossier) ou au clavier (Ctrl+Maj+←/→),
-  dossiers imbriquables, **corbeille 30 jours** restaurable depuis Réglages
-- **Notes post-it** : contenu riche (gras, listes, liens), couleurs, tags
-- **Palette de commandes** : `Ctrl+K` dans l'app, `Ctrl+Alt+Espace` partout dans Windows ;
-  coller une URL dedans propose de l'ajouter directement (barre de capture)
-- **Launcher permanent** : icône dans la barre des tâches (la croix masque l'app,
-  « Quitter » sauvegarde puis ferme), démarrage automatique à l'ouverture de session
-  (désactivable dans Réglages)
-- **Serveur MCP intégré** (HTTP streamable, `127.0.0.1:8765/mcp`) : l'IA peut chercher,
-  consulter, ajouter, modifier, supprimer, créer des dossiers, vérifier les liens morts
-  et lancer des apps — **12 outils** exposés
-- **Extension navigateur** (Brave/Chrome/Edge, dossier `extension/`) : ajoute la page
-  courante en un clic via `POST /api/add`, avec un **token add-only** séparé du token MCP
-- **Dédoublonnage intelligent** : les URLs sont canonisées (`www.`, `/` final, paramètres
-  de tracking `utm_*`/`gclid`/`fbclid` retirés) — plus de tuiles en double pour un même site
-- **Import de favoris** : Brave, Chrome, Edge et Firefox (détection auto des profils,
-  favoris synchronisés inclus, dédoublonnage par URL, dossiers convertis en tags)
-- **Liens morts & archivage** : vérification des 404/410/5xx, et par lien mort un bouton
-  « Archiver » qui retrouve une capture sur **archive.org** (ou en demande une)
-- **Sauvegarde** : export/import JSON, backup automatique à la fermeture/masquage
-  (`Documents\Vaultly\Sauvegardes`), et sauvegarde cloud **WebDAV** (Koofr, Nextcloud,
-  Synology — 3 champs à renseigner, aucun compte développeur requis ; sauvegarde
-  automatique à intervalle réglable, restauration en un clic). Le menu ⋯ d'une tuile
-  permet aussi d'**envoyer un fichier vers le cloud**, d'en **joindre** un depuis le
-  cloud, et de **partager un lien** vers une liste JSON du cloud
-- **Thème** : le sombre/clair suit celui de Windows tant qu'aucun choix manuel n'a été
-  fait ; ensuite ton choix reste
-- **Local d'abord** : SQLite dans le dossier de données de l'app (`%APPDATA%\com.kevsi.vaultly`
-  sous Windows, `~/.local/share` ou l'équivalent sous Linux/macOS), jetons
-  protégés au repos (DPAPI sous Windows, trousseau système — Keychain /
-  Secret Service — ailleurs). Aucune donnée n'est envoyée sauf ce que tu déclenches :
-  favicons via le service Google s2, captures d'écran optionnelles via mShots
-  (`s.wordpress.com`), archives via `archive.org` (clic explicite), et sauvegarde WebDAV
-  vers le serveur que TU configures
+- des sites web
+- des liens GitHub
+- des apps locales
+- des fichiers
+- des notes
+- des vidéos YouTube, TikTok, Vimeo, Dailymotion ou Twitch
 
-## Démarrage
+Et tu les classes comme tu veux : dossiers, tags, favoris, statuts, recherche,
+palette de commandes.
+
+## Ce que tu peux faire avec
+
+### Ranger tes ressources
+
+- ajouter un lien et récupérer automatiquement titre/favicon
+- créer des dossiers et sous-dossiers
+- glisser-déposer pour réorganiser
+- recherche rapide avec `/`
+- palette de commandes avec `Ctrl+K`
+
+### Garder des notes
+
+Vaultly a des notes post-it directement dans la bibliothèque : titres, listes,
+liens, couleurs.
+
+### Écouter de la musique
+
+Tu peux mettre des liens vidéo dans une playlist et les écouter dans l’app,
+même fenêtre réduite.
+
+Le lecteur peut se réduire en mini-barre, puis en petit bouton flottant avec la
+pochette du morceau en cours.
+
+### Connecter une IA
+
+Quand Vaultly est ouvert, une IA compatible MCP peut :
+
+- chercher dans ta bibliothèque
+- lire une ressource
+- en ajouter une nouvelle
+- créer des dossiers
+- vérifier des liens morts
+- lancer certaines apps
+
+Les tokens et snippets de configuration sont dans **Réglages**.
+
+### Sauvegarder et retrouver
+
+- corbeille avec restauration pendant 30 jours
+- backup automatique local
+- export/import JSON
+- sauvegarde cloud WebDAV : Koofr, Nextcloud, Synology…
+- extension navigateur pour ajouter une page en un clic
+
+## Ce que tu dois savoir
+
+### Tes données restent chez toi
+
+Vaultly est local. La base est dans un dossier sur ta machine. Il n’y a pas de
+compte Vaultly obligatoire et pas de cloud par défaut.
+
+Quelques fonctions peuvent utiliser Internet quand tu les déclenches :
+
+- récupérer le titre d’un lien
+- afficher une favicon
+- vérifier un lien mort
+- demander une archive web
+- sauvegarder sur ton WebDAV personnel
+
+### Les tokens sont sensibles
+
+Le token MCP donne accès à ta bibliothèque quand l’app tourne.
+Le token de l’extension ne peut que ajouter des liens.
+
+Si tu partages une machine ou si tu penses qu’un token a fuité, régénère-le
+dans **Réglages**.
+
+### Raccourcis utiles
+
+| Action | Raccourci |
+|---|---|
+| Recherche bibliothèque | `/` |
+| Palette de commandes | `Ctrl+K` |
+| Palette globale Windows | `Ctrl+Alt+Espace`, configurable |
+| Déplacer une ressource au clavier | `Ctrl+Maj+←` ou `Ctrl+Maj+→` |
+| Fermer la fenêtre | l’app se masque dans la barre des tâches |
+
+### Linux : le trousseau système
+
+Sous Linux, Vaultly essaie de protéger tes tokens avec le trousseau système.
+Si ce n’est pas disponible, l’app peut te prévenir que certains secrets sont
+stockés en clair.
+
+### macOS
+
+Les versions macOS existantes continuent de fonctionner, mais macOS n’est plus
+une cible de release depuis v1.2.0.
+
+## Télécharger
+
+La dernière version est ici :
+
+https://github.com/kevsi/Vaultly/releases/latest
+
+Versions actuellement publiées :
+
+- Windows : `.exe` et `.msi`
+- Linux : `.deb` et `.AppImage`
+
+## Pour les développeurs
+
+### Prérequis
+
+- Node 22
+- pnpm
+- Rust
+- dépendances système Tauri de ton OS
+
+### Lancer le projet
 
 ```bash
 pnpm install
-pnpm tauri dev      # développement
-pnpm tauri build    # exécutable de production (NSIS + MSI)
+pnpm tauri dev
 ```
 
-Prérequis : Node 22, pnpm, Rust (toolchain MSVC sous Windows) + les dépendances
-système Tauri de ton OS — [guide Tauri](https://tauri.app/start/prerequisites/).
+### Construire l’app
 
-## Sauvegarde cloud (WebDAV — simple, tout le monde peut le faire)
-
-Tes sauvegardes, tes fichiers et tes listes de liens vivent sur **ton** nuage,
-accessible par trois champs : une URL, un identifiant, un mot de passe. Pas de
-compte développeur, pas d'OAuth, pas de console à configurer.
-
-1. Crée un compte gratuit sur [koofr.eu](https://koofr.eu) (2 Go), ou prends
-   ton Nextcloud/Synology existant.
-2. Sur Koofr : **Settings → WebDAV** → génère un mot de passe. L'URL est
-   `https://app.koofr.net/dav/Koofr/Vaultly` (crée le dossier Vaultly une
-   fois via le web, ou cible directement `/dav/Koofr`).
-3. Vaultly → **Réglages → Sauvegarde → Sauvegarde cloud (WebDAV)** : URL,
-   identifiant, mot de passe → **Enregistrer et tester**.
-4. Active la sauvegarde automatique (intervalle réglable) — les 5 derniers
-   backups sont conservés en ligne, « Restaurer la dernière » se connecte au
-   plus récent.
-
-Ce que Vaultly écrit, uniquement :
-
-```
-<Dossier WebDAV>/
-  vaultly-backup-<horodatage>.json   ← sauvegardes (5 conservées)
-  fichiers/                          ← fichiers envoyés depuis la bibliothèque
-  listes/vaultly-list-<nom>.json     ← listes de liens partagés
+```bash
+pnpm tauri build
 ```
 
-`http://` est accepté pour un NAS en réseau local ; sinon mets `https://`.
-Sur Nextcloud avec 2FA, utilise un token (Paramètres → Applis → DAV) comme mot
-de passe. Le mot de passe est stocké protégé sur ta machine (DPAPI sous
-Windows, trousseau système sous macOS/Linux), jamais exporté. Supprimer la
-configuration (Réglages) n'efface rien sur le serveur.
+### Commandes utiles
 
-> **Et Google Drive ?** L'app ne le propose plus : l'écran de consentement
-> OAuth de Google impose à chaque utilisateur de créer son propre projet
-> Cloud Console (mode « Testing », plafond de 100 comptes, jetons expirant
-> après 7 jours) — inutilisable pour une app distribuée simplement. WebDAV
-> couvre les mêmes besoins (sauvegarde, fichiers, listes de liens) avec un
-> compte gratuit en 5 minutes.
+```bash
+pnpm lint
+pnpm test
+pnpm build
+```
 
-## Connecter une IA
-
-Ouvre l'app → onglet **Réglages** : les tokens et des snippets prêts à coller
-pour ZCode (`~/.zcode/cli/config.json`), Claude Code et Cursor y sont générés.
-
-Le serveur MCP exige l'en-tête `Authorization: Bearer <token>` ; deux tokens
-coexistent — le **token MCP** (plein accès, clients IA) et le **token de
-l'extension** (ajout uniquement). Ils sont générés au premier lancement,
-protégés au repos (DPAPI / trousseau) et régénérables en un clic.
-
-## Stack
-
-Tauri 2 · React 19 · TypeScript · Tailwind 4 + shadcn/ui (Base UI) · sqlx/SQLite ·
-rmcp 3 (Model Context Protocol) · axum
-
-## Structure
+## Architecture rapide
 
 ```
-src/                  # frontend React
-  components/         # vues (Bibliothèque, Importer, Stats, Réglages) + tuiles/modales
-  lib/                # wrappers invoke, types, sanitisation HTML des notes
-src-tauri/
-  migrations/         # schéma SQLite (0001→0007)
-  src/
-    lib.rs            # setup Tauri : DB, plugins, raccourci global, backups auto
-    db.rs             # couche données partagée UI + MCP (ressources, dossiers, settings)
-    commands.rs       # commandes Tauri (pont invoke) : CRUD, import/export, ouverture
-    mcp.rs            # serveur MCP : 12 outils rmcp
-    server.rs         # axum : auth Bearer à deux jetons, /api/add, choix du port
-    webdav/           # cloud : core (backups), files (explorateur), lists (liens)
-    metadata.rs       # récupération titre/favicon d'une page web
-    scan.rs           # lecture favoris Brave/Chrome/Edge/Firefox
-    secret.rs         # protection au repos des jetons (DPAPI / keyring)
-extension/            # extension MV3 (popup + token add-only)
-vaultly-landing/      # page de téléchargement (installateurs + SHA256)
+src/              interface React
+src-tauri/        backend Rust, SQLite, MCP, WebDAV
+extension/        extension navigateur
+vaultly-landing/  page de téléchargement
 ```
