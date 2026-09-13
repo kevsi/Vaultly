@@ -65,11 +65,11 @@ jobs:
 
       - name: Configure idea endpoint secret
         continue-on-error: true
-        run: printf '%s' "$GITHUB_ISSUE_TOKEN" | npx --yes wrangler@4 pages secret put GITHUB_ISSUE_TOKEN --project-name=vaultly-landing
+        run: printf '%s' "$VAULTLY_ISSUE_TOKEN" | npx --yes wrangler@4 pages secret put VAULTLY_ISSUE_TOKEN --project-name=vaultly-landing
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          GITHUB_ISSUE_TOKEN: ${{ secrets.GITHUB_ISSUE_TOKEN }}
+          VAULTLY_ISSUE_TOKEN: ${{ secrets.VAULTLY_ISSUE_TOKEN }}
 
       - name: Deploy to Cloudflare Pages
         run: npx --yes wrangler@4 pages deploy vaultly-landing --project-name=vaultly-landing --branch main

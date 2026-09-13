@@ -58,7 +58,7 @@ function makeBody(text, request) {
 }
 
 async function handleIdeas(request, env) {
-  if (!env.GITHUB_ISSUE_TOKEN) {
+  if (!env.VAULTLY_ISSUE_TOKEN) {
     return json({ error: "The idea endpoint is not configured yet." }, 500);
   }
 
@@ -83,7 +83,7 @@ async function handleIdeas(request, env) {
   const response = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.GITHUB_ISSUE_TOKEN}`,
+      Authorization: `Bearer ${env.VAULTLY_ISSUE_TOKEN}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "vaultly-landing-ideas",
@@ -115,8 +115,8 @@ export default {
 
     if (url.pathname === "/api/ideas-config") {
       return json({
-        hasToken: Boolean(env.GITHUB_ISSUE_TOKEN),
-        tokenLength: (env.GITHUB_ISSUE_TOKEN || "").length,
+        hasToken: Boolean(env.VAULTLY_ISSUE_TOKEN),
+        tokenLength: (env.VAULTLY_ISSUE_TOKEN || "").length,
       });
     }
 
