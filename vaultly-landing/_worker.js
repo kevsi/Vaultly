@@ -4,7 +4,7 @@ const RATE_MAX = 5;
 const recentSubmissions = new Map();
 
 function json(data, status = 200) {
-  return Response.json(data, {
+  return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
