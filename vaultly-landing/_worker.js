@@ -51,15 +51,13 @@ function makeBody(text, request) {
     "",
     "### Metadata",
     "",
-    `- Page: Vaultly landing ideas form`,
+    "- Page: Vaultly landing ideas form",
     `- Date: ${new Date().toISOString()}`,
     `- User agent: ${sanitizeText(request.headers.get("User-Agent") || "", 500)}`,
   ].join("\n");
 }
 
-export async function onRequestPost(context) {
-  const { request, env } = context;
-
+async function handleIdeas(request, env) {
   if (!env.GITHUB_ISSUE_TOKEN) {
     return json({ error: "The idea endpoint is not configured yet." }, 500);
   }
@@ -107,11 +105,27 @@ export async function onRequestPost(context) {
   return json({ ok: true });
 }
 
-export function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      Allow: "POST",
-    },
-  });
-}
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/api/ideas") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            Allow: "POST",
+          },
+        });
+      }
+
+      if (request.method !== "POST") {
+        return json({ error: "Method not allowed." }, 405);
+      }
+
+      return handleIdeas(request, env);
+    }
+
+    return env.ASSETS.fetch(request);
+  },
+};
