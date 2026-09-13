@@ -109,6 +109,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/api/ideas-debug") {
+      return json({ ok: true });
+    }
+
     if (url.pathname === "/api/ideas") {
       if (request.method === "OPTIONS") {
         return new Response(null, {
