@@ -113,6 +113,13 @@ export default {
       return json({ ok: true });
     }
 
+    if (url.pathname === "/api/ideas-config") {
+      return json({
+        hasToken: Boolean(env.GITHUB_ISSUE_TOKEN),
+        tokenLength: (env.GITHUB_ISSUE_TOKEN || "").length,
+      });
+    }
+
     if (url.pathname === "/api/ideas") {
       if (request.method === "OPTIONS") {
         return new Response(null, {
