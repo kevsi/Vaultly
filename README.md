@@ -10,7 +10,7 @@ tu peux la faire exploiter par une IA quand l’app est ouverte.
 
 ![Lecteur de musique de Vaultly](vaultly-landing/images/musique.png)
 
-![Types de ressources disponibles dans Vaultly](vaultly-landing/images/types-ressources.png)
+![Types de ressources disponibles dans Vaultly](vaultly-landing/images/types-ressources.png?v=20260913)
 
 ## C’est quoi, concrètement ?
 
