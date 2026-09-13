@@ -5,10 +5,12 @@ Modèle de menace, frontières de confiance et mesures en place. Doc interne ;
 
 ## Nature de l'application
 
-Vaultly est un **hub personnel desktop (Tauri 2 / Windows), 100 % local**. Il
+Vaultly est un **hub personnel desktop (Tauri 2 / Windows, Linux), 100 %
+local**. Il
 n'existe pas de serveur Vaultly distant ni de compte cloud obligatoire. Les
-seules données sont sur la machine de l'utilisateur (`%APPDATA%\com.kevsi.vaultly`,
-SQLite + DPAPI). Par « attaquant » on entend surtout : un **site web / contenu
+seules données sont sur la machine de l'utilisateur (`%APPDATA%\com.kevsi.vaultly`
+sous Windows, `~/.local/share/com.kevsi.vaultly` sous Linux, SQLite + protection
+système). Par « attaquant » on entend surtout : un **site web / contenu
 distant de confiance zero** (README GitHub, page ajoutée via extension, favoris
 importés, image/personnalisation) et un **client réseau local** non autorisé.
 
@@ -26,9 +28,12 @@ importés, image/personnalisation) et un **client réseau local** non autorisé.
    Deux jetons : **MCP** (accès complet) et **add-only** (uniquement
    `POST /api/add`). `/api/add` refuse les schémas `exe:`/`file:`/`local:`.
 3. **Secrets au repos.** Tokens MCP/add et mot de passe WebDAV chiffrés par
-   **DPAPI** (`dpapi1:…`) lié au profil Windows ; jamais journalisés (seuls des
-   noms de clés apparaissent dans les logs). Dégradation visible si DPAPI
-   indisponible.
+   **DPAPI** (`dpapi1:…`) sous Windows, ou par le **trousseau système**
+   (`key1:…`) sous Linux (Secret Service) ; jamais journalisés (seuls des
+   noms de clés apparaissent dans les logs). Si le moyen de protection est
+   indisponible, la valeur retombe en clair et l'application affiche désormais
+   un avertissement visible au démarrage (`secrets_plaintext`) — ce repli ne
+   doit pas rester silencieux.
 4. **Contenu distant rendu** (notes riches, README GitHub). Passé par
    `sanitizeHtml` (allowlist de balises + `href`/`src` limités à http/https/
    mailto/#) ; le README est de plus filtré au schéma de lien et ses clics
@@ -70,13 +75,29 @@ nécessite donc d'abord de configurer une clé (`tauri signer generate`,
 
 ## Limites assumées (modèle de menace desktop)
 
-- Un **malware exécuté sous le même compte Windows** peut lire la base, déchiffrer
-  DPAPI et appeler le serveur local muni du token : c'est « game over » sur toute
-  app desktop, hors périmètre.
+- Un **malware exécuté sous le même compte Windows ou Linux** peut lire la base,
+  déchiffrer les secrets protégés par le profil utilisateur et appeler le serveur
+  local muni du token : c'est « game over » sur toute app desktop, hors périmètre.
 - Le **token MCP** donne CRUD complet + `launch_app` : à traiter comme un secret.
   « Régénérer » est disponible instantanément (lecture en direct, sans
   redémarrage).
 - DNS-rebind **total** sur les fetch sortants non couverts (voir SSRF ci-dessus).
+- `cloud_upload_file` reçoit un chemin local issu d'une ressource déjà créée par
+  l'utilisateur ; il n'est pas encore canoniquement confiné à
+  `Documents/Vaultly`. Une compromission de la webview pourrait envoyer un
+  fichier jusqu'à 4 Mo vers le WebDAV configuré. À durcir avant un usage cloud
+  multi-utilisateurs ou une extension plus large du partage.
+- `export_data` / `import_data` acceptent un chemin `*.json` arbitraire choisi
+  via la dialogue native ; la webview ne fournit donc pas directement ce chemin.
+  Une XSS persistante pourrait toutefois les exploiter. Confinement à
+  l'arborescence Vaultly à prévoir.
+- Les fichiers importés depuis WebDAV peuvent garder une extension exécutable
+  (`.bat`, `.cmd`, `.html`…) dans `Fichiers` et être proposés au clic. Le partage
+  reste l'espace personnel de l'utilisateur et l'action est explicite ; filtrer
+  ces extensions est recommandé si le dossier cloud devient mutualisé.
+- Le moteur audio yt-dlp est téléchargé depuis la dernière release GitHub avec
+  TLS et borne de taille, mais son empreinte SHA-256 n'est pas encore épinglée.
+  Épingler version + hash à la prochaine mise à jour du sidecar.
 
 ## Journal des décisions de sécurité
 

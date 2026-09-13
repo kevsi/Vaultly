@@ -88,9 +88,10 @@ export function advance(): boolean {
   if (state.shuffle) {
     const rest = state.queue.filter((_, i) => i !== state.index);
     if (rest.length === 0) {
-      // seule piste : on la rejoue
-      set({ playing: true });
-      return true;
+      // file à 1 piste : rien à enchaîner → arrêt propre (sinon l'UI
+      // « playing » ne peut que diverger : aucun re-mount ne rejouera)
+      set({ playing: false });
+      return false;
     }
     const pick = rest[Math.floor(Math.random() * rest.length)];
     set({
@@ -166,4 +167,9 @@ export function usePlayer(): PlayerState {
     () => state,
     () => state,
   );
+}
+
+/** Lecture non réactive (tests, utilitaires hors React). */
+export function getPlayerState(): PlayerState {
+  return state;
 }

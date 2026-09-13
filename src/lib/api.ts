@@ -285,6 +285,11 @@ export async function startupNotice(): Promise<string | null> {
   return invoke("startup_notice");
 }
 
+/** Vrai si un secret est actuellement stocké en clair dans la base. */
+export async function secretsPlaintext(): Promise<boolean> {
+  return invoke("secrets_plaintext");
+}
+
 /** Ouvre le dossier des logs dans l'Explorateur (support). */
 export async function openLogsFolder(): Promise<string> {
   return invoke("open_logs_folder");

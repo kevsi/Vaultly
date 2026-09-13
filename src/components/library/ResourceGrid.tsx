@@ -434,6 +434,7 @@ export function ResourceGrid(props: ResourceGridProps) {
                 onDropOnTile={handleDropOnTile}
                 onToggleSelect={toggleSelect}
                 onOpenRow={(row) => void openRow(row)}
+                onMoveTile={(dir) => void moveTileByKey(r, dir)}
                 onDetails={setDetailsViewing}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

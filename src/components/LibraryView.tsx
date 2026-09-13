@@ -1018,8 +1018,9 @@ export function LibraryView() {
         </div>
       )}
 
-      {/* hint tri manuel */}
-      {sortBy === "manual" && !openFolder && (
+      {/* hint tri manuel : affiché en tri Placement uniquement, car le
+          raccourci Ctrl+Maj n'existe que là (grille ET liste depuis récemment) */}
+      {viewMode !== "board" && sortBy === "manual" && !openFolder && (
         <div className="px-4 pt-2 text-xs text-muted-foreground">
           {t(
             "Glisse une tuile : un trait entre deux cartes les réordonne — lâche au centre d'une carte pour créer un dossier avec les deux — pose sur un dossier pour la ranger dedans. Au clavier : Ctrl+Maj+←/→ déplace la tuile sélectionnée.",

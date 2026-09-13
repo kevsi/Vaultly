@@ -6,6 +6,8 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-13
+
 ### Ajouté
 - Section Musique (nouvel onglet du header) : les vidéos de la bibliothèque
   en cartes vignettes 16:9, drapeau ♫ « musique » par piste + filtre « musiques
@@ -19,6 +21,9 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
   (flux audio natif, et YouTube via onStateChange), barre de progression
   avec seek et volume. Le lecteur reste visible en mini-barre quand on ferme
   le panneau, et la file se resynchronise live quand on édite la playlist.
+- Réduction de la mini-barre en bouton flottant rond affichant la pochette de
+  la piste en cours ; le média reste monté pendant la réduction pour ne pas
+  relancer la piste.
 - Lecteur « Musique » (onglet ou événement « Écouter » des tuiles) : n'importe
   quel lien vidéo
   (YouTube, TikTok, Vimeo, Dailymotion, Twitch…) s'écoute comme un morceau —
@@ -26,6 +31,33 @@ Tous les changements notables de Vaultly sont documentés ici, en suivant
   moteur yt-dlp optionnel téléchargeable en un clic (≈ 18 Mo, release
   officielle GitHub). « Écouter » aussi disponible dans le menu ⋯ des tuiles
   vidéo ; la lecture continue quand la fenêtre est masquée dans le tray.
+- Avertissement visible si un secret est stocké en clair (protection au repos
+  indisponible, surtout sous Linux sans agent Secret Service).
+
+### Corrigé
+- Réordonnancement des pistes de playlist : la source est identifiée par son
+  id au dépôt, les événements de drag Firefox sont pris en charge, et un
+  retrait/refetch pendant le drag ne peut plus corrompre le cache.
+- Lecture/pause d'une piste déjà active depuis une carte ou une ligne : le
+  bouton alterne réellement Pause/Lecture et son libellé accessible suit l'état.
+- Les lecteurs web masqués (YouTube/Vimeo/Dailymotion) restent synchronisés
+  avec l'état global ; les commandes sont envoyées seulement après chargement
+  de l'iframe.
+- Événements audio différés ignorés : plus de `TypeError` ni de fausse pause
+  quand un ancien élément `<audio>` émet un dernier `pause`/`duration`.
+- Volume : valeur persistée et réappliquée à chaque nouvelle piste ; le curseur
+  n'est plus non contrôlé et n'affiche plus 80 % pendant que la piste joue à
+  100 %.
+- La piste en cours reste accessible quand la file est épuisée ou qu'un flux
+  expire, sans faire disparaître brutalement le lecteur.
+- Retours d'état : squelette pendant le chargement des pistes d'une playlist,
+  indicateur de résolution dans la mini-barre, contrôles désactivés pendant ce
+  temps.
+- Bibliothèque en vue liste : raccourci `Ctrl+Maj+←/→` pour réordonner, comme
+  dans la grille ; playlists accessibles au clavier et pistes réordonnables au
+  clavier.
+- Traductions FR/EN complétées pour les nouveaux libellés du lecteur et de la
+  palette de commandes.
 
 ### Changé
 - Releases : Windows + Linux uniquement. macOS est retiré des cibles à partir

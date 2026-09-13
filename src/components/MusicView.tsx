@@ -12,7 +12,12 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  type DragEvent as ReactDragEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { ConfirmDialog, type ConfirmState } from "@/components/ConfirmDialog";
 import { PromptDialog } from "@/components/PromptDialog";
@@ -21,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -47,6 +53,7 @@ import { useI18n } from "@/lib/i18n";
 import {
   type PlayerTrack,
   playQueue,
+  setPlaying,
   syncQueue,
   usePlayer,
 } from "@/lib/playerStore";
@@ -131,19 +138,27 @@ export function MusicView() {
 
   const lists = playlists ?? [];
   const allVideos = videos ?? [];
-  const tracks = allVideos.filter((r) => !musicsOnly || r.meta?.isSong === "1");
+  const tracks = useMemo(
+    () => allVideos.filter((r) => !musicsOnly || r.meta?.isSong === "1"),
+    [allVideos, musicsOnly],
+  );
+  // file partagée par les cartes : UNE seule conversion, pas une par carte
+  // (le .map dans le render coûtait O(n²) à chaque frame)
+  const cardTracks = useMemo(() => tracks.map(track), [tracks]);
   const current = lists.find((p) => p.id === selected) ?? null;
-  const playlistTracks: PlayerTrack[] = (items ?? []).map((it) => ({
+  const playlistItems = items ?? [];
+  const playlistTracks: PlayerTrack[] = playlistItems.map((it) => ({
     url: it.url,
     title: it.title || hostOf(it.url),
     cover: it.cover,
   }));
 
   // la playlist affichée alimente-t-elle le lecteur ? toute édition (retrait,
-  // réordonnancement) resynchronise la file sans interrompre la piste
+  // réordonnancement) resynchronise la file sans interrompre la piste.
+  // items === undefined = chargement en cours : ne jamais couper la lecture
   // biome-ignore lint/correctness/useExhaustiveDependencies: syncQueue ignore de lui-même toute file qui ne provient pas de CETTE playlist (garde sourceKey)
   useEffect(() => {
-    if (selected === null || !current) return;
+    if (selected === null || !current || !items) return;
     syncQueue(`playlist:${selected}`, playlistTracks, current.name);
   }, [items, selected]);
 
@@ -211,15 +226,30 @@ export function MusicView() {
     }
   }
 
-  function dropReorder(target: number) {
-    if (dragFrom === null || dragFrom === target || selected === null) {
-      setDragFrom(null);
+  function reorderPlaylistTracks(
+    from: number,
+    target: number,
+    clearDrag = false,
+  ) {
+    if (!items || selected === null) return;
+    if (from === -1) {
+      if (clearDrag) setDragFrom(null);
+      refreshLists();
       return;
     }
-    const arr = [...(items ?? [])];
-    const [moved] = arr.splice(dragFrom, 1);
+    if (from === target || !items[from]) {
+      if (clearDrag) setDragFrom(null);
+      return;
+    }
+    const arr = [...items];
+    const [moved] = arr.splice(from, 1);
+    if (!moved) {
+      if (clearDrag) setDragFrom(null);
+      refreshLists();
+      return;
+    }
     arr.splice(target, 0, moved);
-    setDragFrom(null);
+    if (clearDrag) setDragFrom(null);
     // optimiste : l'ordre s'affiche tout de suite
     void qc.setQueryData(["playlistItems", selected], arr);
     void reorderPlaylistItems(
@@ -229,6 +259,16 @@ export function MusicView() {
       toast.error(describeError(e));
       refreshLists();
     });
+  }
+
+  function dropReorder(target: number, e: ReactDragEvent<HTMLDivElement>) {
+    // le cache peut avoir changé entre dragStart et drop (refetch, retrait)
+    // : la source est retrouvée par id, pas par l'index mémorisé au dragstart
+    const draggedId = Number(e.dataTransfer.getData("text/plain"));
+    const from = Number.isFinite(draggedId)
+      ? (items?.findIndex((it) => it.id === draggedId) ?? -1)
+      : (dragFrom ?? -1);
+    reorderPlaylistTracks(from, target, true);
   }
 
   async function doImport() {
@@ -315,7 +355,11 @@ export function MusicView() {
               tabIndex={0}
               onClick={() => setSelected(p.id)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") setSelected(p.id);
+                // Espace AUSSI (sinon scroll de page au clavier)
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelected(p.id);
+                }
               }}
               className={cn(
                 "group flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2 transition-colors outline-none",
@@ -557,7 +601,21 @@ export function MusicView() {
                 </div>
               </div>
 
-              {playlistTracks.length === 0 && (
+              {!items && (
+                <div role="status" className="space-y-1 py-2">
+                  <p className="sr-only">{t("Lecture de la playlist…")}</p>
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2.5 rounded-xl px-2.5 py-1.5"
+                    >
+                      <span className="size-10 shrink-0 animate-pulse rounded-lg bg-muted" />
+                      <span className="h-4 w-48 animate-pulse rounded bg-muted" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {items && playlistTracks.length === 0 && (
                 <div className="flex flex-col items-center gap-3 py-10 text-center">
                   <p className="text-sm text-muted-foreground">
                     {t(
@@ -574,8 +632,8 @@ export function MusicView() {
                   </Button>
                 </div>
               )}
-              <div className="space-y-1">
-                {(items ?? []).map((it, idx) => {
+              <div role="list" className="space-y-1">
+                {playlistItems.map((it, idx) => {
                   const isCurrent =
                     playingUrl === it.url &&
                     player.sourceKey === `playlist:${current.id}`;
@@ -583,9 +641,19 @@ export function MusicView() {
                     <div
                       key={it.id}
                       draggable
-                      onDragStart={() => setDragFrom(idx)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => dropReorder(idx)}
+                      onDragStart={(e) => {
+                        // setData obligatoire : sans lui, Firefox refuse
+                        // de démarrer le drag (et Chrome l'ignore parfois)
+                        e.dataTransfer.setData("text/plain", String(it.id));
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragFrom(idx);
+                      }}
+                      onDragEnd={() => setDragFrom(null)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(e) => dropReorder(idx, e)}
                       className={cn(
                         "group flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-colors",
                         isCurrent
@@ -604,18 +672,46 @@ export function MusicView() {
                       )}
                       <button
                         type="button"
-                        onClick={() =>
-                          isCurrent
-                            ? undefined
-                            : playQueue(
-                                playlistTracks,
-                                idx,
-                                `playlist:${current.id}`,
-                                current.name,
-                              )
+                        onClick={() => {
+                          // re-cliquer la piste en cours = pause/lecture
+                          // (avant : no-op, l'utilisateur pensait que c'était cassé)
+                          if (isCurrent) {
+                            setPlaying(!player.playing);
+                            return;
+                          }
+                          playQueue(
+                            playlistTracks,
+                            idx,
+                            `playlist:${current.id}`,
+                            current.name,
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          const dir =
+                            e.key === "ArrowLeft"
+                              ? -1
+                              : e.key === "ArrowRight"
+                                ? 1
+                                : 0;
+                          if (!e.ctrlKey || !e.shiftKey || dir === 0) return;
+                          e.preventDefault();
+                          const target = idx + dir;
+                          if (target < 0 || target >= playlistItems.length)
+                            return;
+                          reorderPlaylistTracks(idx, target);
+                        }}
+                        className="relative shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                        title={
+                          isCurrent && player.playing
+                            ? t("Pause")
+                            : t("Lecture")
                         }
-                        className="relative shrink-0"
-                        title={t("Lecture")}
+                        aria-label={
+                          isCurrent && player.playing
+                            ? t("Pause")
+                            : t("Lecture")
+                        }
+                        aria-pressed={isCurrent && player.playing}
                       >
                         {it.cover ? (
                           <img
@@ -629,7 +725,7 @@ export function MusicView() {
                             <Music2 className="size-4 text-muted-foreground" />
                           </span>
                         )}
-                        <span className="absolute inset-0 hidden items-center justify-center rounded-lg bg-black/55 text-white group-hover:flex">
+                        <span className="absolute inset-0 hidden items-center justify-center rounded-lg bg-black/55 text-white group-hover:flex group-focus-within:flex">
                           {isCurrent && player.playing ? (
                             <Pause className="size-4" />
                           ) : (
@@ -692,7 +788,7 @@ export function MusicView() {
                   variant="outline"
                   disabled={tracks.length === 0}
                   onClick={() =>
-                    playQueue(tracks.map(track), 0, "library", t("Vidéos"))
+                    playQueue(cardTracks, 0, "library", t("Vidéos"))
                   }
                 >
                   <Play />
@@ -714,7 +810,6 @@ export function MusicView() {
                 {tracks.map((r, idx) => {
                   const isSong = r.meta?.isSong === "1";
                   const isCurrent = playingUrl === r.url;
-                  const cardTracks = tracks.map(track);
                   return (
                     <div
                       key={r.id}
@@ -727,10 +822,22 @@ export function MusicView() {
                       <button
                         type="button"
                         onClick={() =>
-                          playQueue(cardTracks, idx, "library", t("Vidéos"))
+                          isCurrent
+                            ? setPlaying(!player.playing)
+                            : playQueue(cardTracks, idx, "library", t("Vidéos"))
                         }
-                        className="relative block aspect-video w-full overflow-hidden bg-black outline-none"
-                        title={t("Lecture")}
+                        className="relative block aspect-video w-full overflow-hidden bg-black outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+                        title={
+                          isCurrent && player.playing
+                            ? t("Pause")
+                            : t("Lecture")
+                        }
+                        aria-label={
+                          isCurrent && player.playing
+                            ? t("Pause")
+                            : t("Lecture")
+                        }
+                        aria-pressed={isCurrent && player.playing}
                       >
                         {r.favicon ? (
                           <img
@@ -744,9 +851,13 @@ export function MusicView() {
                             {r.title.slice(0, 2)}
                           </span>
                         )}
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/35 group-hover:opacity-100">
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/35 group-hover:opacity-100 group-focus-within:bg-black/35 group-focus-within:opacity-100">
                           <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl">
-                            <Play className="size-5" />
+                            {isCurrent && player.playing ? (
+                              <Pause className="size-5" />
+                            ) : (
+                              <Play className="size-5" />
+                            )}
                           </span>
                         </span>
                         {isCurrent && player.playing && (
@@ -792,24 +903,26 @@ export function MusicView() {
                             <Plus className="size-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="min-w-44">
-                            <DropdownMenuLabel>
-                              {t("Ajouter à la playlist")}
-                            </DropdownMenuLabel>
-                            {lists.map((p) => (
-                              <DropdownMenuItem
-                                key={p.id}
-                                onClick={() =>
-                                  void addTo(p.id, {
-                                    url: r.url,
-                                    title: r.title,
-                                    favicon: r.favicon,
-                                  })
-                                }
-                              >
-                                <ListMusic />
-                                {p.name}
-                              </DropdownMenuItem>
-                            ))}
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>
+                                {t("Ajouter à la playlist")}
+                              </DropdownMenuLabel>
+                              {lists.map((p) => (
+                                <DropdownMenuItem
+                                  key={p.id}
+                                  onClick={() =>
+                                    void addTo(p.id, {
+                                      url: r.url,
+                                      title: r.title,
+                                      favicon: r.favicon,
+                                    })
+                                  }
+                                >
+                                  <ListMusic />
+                                  {p.name}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuGroup>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() =>

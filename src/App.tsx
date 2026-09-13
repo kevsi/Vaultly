@@ -34,6 +34,7 @@ import {
   dueReminders,
   listTrash,
   openResourceById,
+  secretsPlaintext,
   startupNotice,
 } from "@/lib/api";
 import { tt, useI18n } from "@/lib/i18n";
@@ -406,6 +407,22 @@ export default function App() {
     void startupNotice()
       .then((msg) => {
         if (msg) toast.warning(msg, { duration: 15_000 });
+      })
+      .catch(() => {});
+  }, []);
+
+  // protection au repos défaillante : l'utilisateur doit le savoir, sinon
+  // les jetons/API restent silencieusement en clair (surtout sous Linux)
+  useEffect(() => {
+    void secretsPlaintext()
+      .then((hasPlaintext) => {
+        if (hasPlaintext)
+          toast.warning(
+            tt(
+              "Certains secrets sont stockés en clair : active le trousseau système puis régénère les jetons.",
+            ),
+            { duration: 30_000 },
+          );
       })
       .catch(() => {});
   }, []);

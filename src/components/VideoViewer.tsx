@@ -58,9 +58,10 @@ export function VideoViewer({ resource, onClose }: Props) {
   // nouvelle vidéo demandée → on repart du choix (pas de reprise de lecture) :
   // le composant est monté en permanence, des deps [] ne se déclencheraient
   // qu'une fois et toutes les vidéos suivantes sauteraient l'écran de choix
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resource?.id réinitialise l'écran de choix à chaque nouvelle vidéo
   useEffect(() => {
     setPlaying(false);
-  }, []);
+  }, [resource?.id]);
 
   function playInApp() {
     if (!resource) return;

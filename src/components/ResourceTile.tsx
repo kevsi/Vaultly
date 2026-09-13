@@ -97,6 +97,7 @@ export const ResourceTile = memo(function ResourceTile({
     try {
       await openResource(resource);
       void qc.invalidateQueries({ queryKey: ["resources"] });
+      void qc.invalidateQueries({ queryKey: ["stats"] });
     } catch (e) {
       toast.error(
         t("Ouverture impossible : {error}", { error: describeError(e) }),
@@ -331,7 +332,13 @@ export const ResourceTile = memo(function ResourceTile({
             onToggleSelect?.(resource);
           }}
         >
-          <Checkbox checked={selected} tabIndex={-1} />
+          <Checkbox
+            checked={selected}
+            tabIndex={-1}
+            aria-label={t("Sélectionner « {title} »", {
+              title: resource.title,
+            })}
+          />
         </div>
       ) : (
         resource.favorite && (

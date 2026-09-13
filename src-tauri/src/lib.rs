@@ -201,7 +201,22 @@ async fn recover_corrupt_db(
 /// Message de démarrage (récupération de base) à afficher une fois côté UI.
 #[tauri::command]
 fn startup_notice() -> Option<String> {
-    STARTUP_NOTICE.get().cloned()
+  STARTUP_NOTICE.get().cloned()
+}
+
+/// Vrai si au moins un secret est stocké en clair (protection au repos
+/// indisponible lors de sa dernière écriture). L'UI doit le signaler :
+/// ce repli ne peut pas rester invisible, surtout sous Linux.
+#[tauri::command]
+async fn secrets_plaintext(pool: tauri::State<'_, SqlitePool>) -> Result<bool, String> {
+    for key in ["mcp_token", "api_add_token", "webdav_pass"] {
+        if let Some(v) = db::get_setting(&pool, key).await {
+            if secret::plaintext_stored(&v) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 /// Ouvre le dossier des logs (%APPDATA%\com.kevsi.vaultly\logs) dans
@@ -814,6 +829,7 @@ pub fn run() {
             server::mcp_regenerate_token,
             server::api_regenerate_token,
             startup_notice,
+            secrets_plaintext,
             open_logs_folder,
         ])
         .run(tauri::generate_context!())

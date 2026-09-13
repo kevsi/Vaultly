@@ -256,6 +256,8 @@ interface ResourceListRowProps {
   onToggleSelect: (r: Resource) => void;
   /** ouvre la ligne (note → lecteur, sans lien → édition, sinon openResource) */
   onOpenRow: (r: Resource) => void;
+  /** réordonne au clavier (Ctrl+Maj+←/→, tri Placement — comme la grille) */
+  onMoveTile?: (dir: -1 | 1) => void;
   onDetails: (r: Resource) => void;
   onEdit: (r: Resource) => void;
   onDelete: (r: Resource) => void;
@@ -275,6 +277,7 @@ export function ResourceListRow({
   onDropOnTile,
   onToggleSelect,
   onOpenRow,
+  onMoveTile,
   onDetails,
   onEdit,
   onDelete,
@@ -328,6 +331,17 @@ export function ResourceListRow({
           e.preventDefault();
           if (selectMode) onToggleSelect(resource);
           else onOpenRow(resource);
+        } else if (
+          e.ctrlKey &&
+          e.shiftKey &&
+          !selectMode &&
+          onMoveTile &&
+          (e.key === "ArrowLeft" || e.key === "ArrowRight")
+        ) {
+          // réordonnancement clavier, même contrat que la grille
+          // (moveTileByKey bascule en tri « Placement » si besoin)
+          e.preventDefault();
+          onMoveTile(e.key === "ArrowLeft" ? -1 : 1);
         }
       }}
       className={cn(

@@ -144,7 +144,7 @@ export function CommandPalette({
       const m = await fetchMetadata(url).catch(() => null);
       await addResource({
         url,
-        title: m?.title || hostOf(url) || "Sans titre",
+        title: m?.title || hostOf(url) || t("Sans titre"),
         favicon: m?.favicon ?? "",
         resourceType: "site",
       });
@@ -215,7 +215,7 @@ export function CommandPalette({
             }}
           />
           <kbd className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            Échap
+            {t("Échap")}
           </kbd>
         </div>
         <div className="max-h-80 overflow-y-auto p-1.5">
@@ -247,7 +247,7 @@ export function CommandPalette({
                     })}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    Entrée ↵
+                    {t("Entrée ↵")}
                   </span>
                 </button>
               ) : (
@@ -285,7 +285,7 @@ export function CommandPalette({
                         )}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {typeLabel(r.resourceType)} · {hostOf(r.url)}
+                        {t(typeLabel(r.resourceType))} · {hostOf(r.url)}
                       </span>
                       {i === selected && (
                         <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />

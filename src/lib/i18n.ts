@@ -421,6 +421,8 @@ const en: Dict = {
   "settings.no-archive": "No archive found — backup request sent",
   // --- SettingsView: export/import toasts ---
   "settings.exported": "{count} resource(s) exported",
+  "Certains secrets sont stockés en clair : active le trousseau système puis régénère les jetons.":
+    "Some secrets are stored in plain text: enable the system keyring, then regenerate the tokens.",
 
   // --- conversion complète (clés = texte français) ---
   "Ouverture impossible : {error}": "Could not open: {error}",
@@ -599,6 +601,7 @@ const en: Dict = {
   Volume: "Volume",
   "Extraction audio impossible — lecture via le lecteur web.":
     "Audio extraction failed — playing through the web player.",
+  "Lecture impossible — réessaie.": "Playback failed — please retry.",
   "Aucun lecteur connu pour ce lien.": "No known player for this link.",
   "Moteur audio installé": "Audio engine installed",
   "Moteur audio installé — les liens vidéo ne livreront plus que le son.":
@@ -608,10 +611,13 @@ const en: Dict = {
     "Without the engine, the video plays hidden (audio only); with it you get a real audio stream.",
   // --- Section Musique ---
   "Ouvrir le lecteur": "Open the player",
+  "Agrandir la barre de lecture": "Expand the playback bar",
+  "Réduire en pastille": "Reduce to a floating button",
   "Piste ajoutée à « {name} »": 'Track added to "{name}"',
   "Cette piste est déjà dans la playlist.":
     "This track is already in the playlist.",
   "Playlist importée": "Imported playlist",
+  "Lecture de la playlist…": "Loading playlist…",
   "{count} piste(s) importée(s) dans « {name} »":
     '{count} track(s) imported into "{name}"',
   Playlists: "Playlists",
@@ -1030,6 +1036,8 @@ const en: Dict = {
   "Aucun résultat": "No results",
   "Tape pour rechercher": "Type to search",
   "Ajouter « {host} » à la bibliothèque": 'Add "{host}" to your library',
+  "Entrée ↵": "Enter ↵",
+  "Sans titre": "Untitled",
   "Donne un titre ou un contenu à la note":
     "Give the note a title or some content",
   "Note mise à jour": "Note updated",
