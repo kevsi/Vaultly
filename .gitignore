@@ -40,3 +40,6 @@ tauri-dev.log
 tauri-build.log
 # zip de publication Chrome Web Store (artefact, régénéré localement)
 vaultly-extension-*.zip
+
+# artefact généré par le déploiement Cloudflare Pages
+vaultly-landing/downloads/

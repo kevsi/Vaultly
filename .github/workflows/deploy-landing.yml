@@ -24,6 +24,26 @@ jobs:
         with:
           node-version: 22
 
+      - name: Build extension ZIP
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import zipfile
+
+          src = pathlib.Path("extension")
+          out = pathlib.Path("vaultly-landing/downloads/vaultly-extension.zip")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.unlink(missing_ok=True)
+
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(src.rglob("*")):
+                  if not path.is_file():
+                      continue
+                  if path.name == ".DS_Store":
+                      continue
+                  archive.write(path, path.relative_to(src))
+          PY
+
       - name: Ensure Pages project exists
         continue-on-error: true
         run: npx --yes wrangler@4 pages project create vaultly-landing --production-branch main
