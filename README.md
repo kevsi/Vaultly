@@ -6,6 +6,12 @@ vidéos au même endroit.
 Le but est simple : tu ouvres une ressource, tu la ranges, tu la retrouves, et
 tu peux la faire exploiter par une IA quand l’app est ouverte.
 
+![Accueil de Vaultly](vaultly-landing/images/accueil.png)
+
+![Lecteur de musique de Vaultly](vaultly-landing/images/musique.png)
+
+![Types de ressources disponibles dans Vaultly](vaultly-landing/images/types-ressources.png)
+
 ## C’est quoi, concrètement ?
 
 Vaultly, c’est une fenêtre avec des tuiles.
