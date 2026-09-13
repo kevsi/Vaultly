@@ -51,6 +51,18 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Configure Pages compatibility date
+        continue-on-error: true
+        run: |
+          curl -s -o /dev/null -w "%{http_code}\n" \
+            -X PATCH "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/vaultly-landing" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"deployment_configs":{"production":{"compatibility_date":"2026-09-13"},"preview":{"compatibility_date":"2026-09-13"}}}'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Configure idea endpoint secret
         continue-on-error: true
         run: printf '%s' "$GITHUB_ISSUE_TOKEN" | npx --yes wrangler@4 pages secret put GITHUB_ISSUE_TOKEN --project-name=vaultly-landing
