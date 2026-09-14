@@ -88,6 +88,8 @@
       background: var(--card);
     }
     .tile small { font-size: 0.62rem; color: var(--muted); max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tile img { width: 58%; height: 58%; object-fit: contain; }
+    .tile.note { gap: 0.35rem; }
     .tile.folder { background: oklch(0.9 0.05 80); }
     .tile.note { background: oklch(0.93 0.07 90); font-size: 1rem; padding: 0.5rem; text-align: center; font-weight: 600; }
     .tile.blue { background: oklch(0.92 0.04 250); }
@@ -180,12 +182,12 @@
       </div>
     </div>
     <div class="mock" aria-hidden="true">
-      <div class="tile folder">📂<small>Design</small></div>
-      <div class="tile">🎨<small>Canva</small></div>
-      <div class="tile note">Idée : palette chaude…</div>
-      <div class="tile blue">🐙<small>GitHub</small></div>
-      <div class="tile green">📁<small>Devis.pdf</small></div>
-      <div class="tile">🤖<small>Mon IA</small></div>
+      <div class="tile folder"><img src="../images/design.png" alt="" /><small>Design</small></div>
+      <div class="tile"><img src="../images/canva.png" alt="" /><small>Canva</small></div>
+      <div class="tile note"><img src="../images/palette.png" alt="" /><small>Idée</small></div>
+      <div class="tile blue"><img src="../images/github.png" alt="" /><small>GitHub</small></div>
+      <div class="tile green"><img src="../images/quote.png" alt="" /><small>Devis.pdf</small></div>
+      <div class="tile"><img src="../images/ai.png" alt="" /><small>Mon IA</small></div>
     </div>
   </div>
 
