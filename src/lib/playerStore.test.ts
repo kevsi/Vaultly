@@ -3,6 +3,7 @@ import {
   advance,
   getPlayerState,
   playQueue,
+  shouldReresolveStream,
   stop,
   syncQueue,
   toggleShuffle,
@@ -117,5 +118,25 @@ describe("playerStore", () => {
     const state = getPlayerState();
     expect(state.index).toBe(2);
     expect(state.queue[state.index]).toBe(state.track);
+  });
+});
+
+describe("shouldReresolveStream", () => {
+  it("première erreur sur une URL éphémère → re-résoudre la même piste", () => {
+    expect(shouldReresolveStream("https://redirector/expire=1?s=Y", null)).toBe(
+      true,
+    );
+  });
+
+  it("même URL déjà retentée → on n'insiste pas (sinon boucle)", () => {
+    expect(shouldReresolveStream("url-a", "url-a")).toBe(false);
+  });
+
+  it("URL vide → rien à résoudre", () => {
+    expect(shouldReresolveStream("", null)).toBe(false);
+  });
+
+  it("erreur sur une URL fraîche (différente de la dernière retentée) → autorisé", () => {
+    expect(shouldReresolveStream("url-b", "url-a")).toBe(true);
   });
 });

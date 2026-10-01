@@ -174,6 +174,21 @@ export function stop() {
   });
 }
 
+/**
+ * Une URL de flux audio est éphémère (résolution yt-dlp : expiration de
+ * quelques heures) : à la reprise d'une piste en pause depuis longtemps,
+ * l'erreur du `<audio>` doit déclencher UNE re-résolution de la même piste
+ * au lieu de sauter à la suivante. `retriedUrl` = URL déjà retentée pour
+ * cette piste ; au-delà d'une tentative l'extraction échoue
+ * systématiquement → comportement d'origine (piste suivante).
+ */
+export function shouldReresolveStream(
+  failedUrl: string,
+  retriedUrl: string | null,
+): boolean {
+  return failedUrl !== "" && failedUrl !== retriedUrl;
+}
+
 export function usePlayer(): PlayerState {
   return useSyncExternalStore(
     subscribe,

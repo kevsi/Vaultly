@@ -20,6 +20,7 @@ import {
   advance,
   previous,
   setPlaying,
+  shouldReresolveStream,
   stop,
   toggleShuffle,
   usePlayer,
@@ -91,6 +92,12 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
   const embedReadyRef = useRef(false);
   const track = player.track;
   const trackUrl = track?.url ?? "";
+  // garde-fous de re-résolution d'un flux éphémère (voir onError) : piste
+  // courante observée par l'async, URL déjà retentée, tentative en cours
+  const trackUrlRef = useRef(trackUrl);
+  trackUrlRef.current = trackUrl;
+  const retriedUrlRef = useRef<string | null>(null);
+  const retryingRef = useRef(false);
   // t lu via ref : la fonction de traduction change d'identité à chaque
   // render, la mettre dans les deps relancerait la résolution en boucle
   const tRef = useRef(t);
@@ -117,6 +124,8 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
       setAudioUrl((a) => (a === "" ? a : ""));
       setEmbedUrl((e) => (e === "" ? e : ""));
       embedReadyRef.current = false;
+      retriedUrlRef.current = null;
+      retryingRef.current = false;
       setResolving((r) => (r ? false : r));
       setPos((p) => (p.cur === 0 && p.dur === 0 ? p : { cur: 0, dur: 0 }));
       return;
@@ -129,6 +138,8 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
     setAudioUrl("");
     setEmbedUrl("");
     embedReadyRef.current = false;
+    retriedUrlRef.current = null;
+    retryingRef.current = false;
     setPos((p) => (p.cur === 0 && p.dur === 0 ? p : { cur: 0, dur: 0 }));
     void (async () => {
       let hasEngine = false;
@@ -179,6 +190,9 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
     if (mode !== "audio" || !audioRef.current) return;
     if (player.playing) {
       void audioRef.current.play().catch(() => {
+        // flux expiré en cours de re-résolution : on garde l'intention de
+        // lecture, le nouvel URL relancera la lecture
+        if (retryingRef.current) return;
         // autoplay refusé (politique navigateur, sortie audio) : on ne laisse
         // pas une UI « Pause » sur un silence
         setPlaying(false);
@@ -312,8 +326,33 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
             if (!advance()) setPlaying(false);
           }}
           onError={(e) => {
-            // un flux expiré (les URL sont temporaires) → piste suivante
             if (!isCurrentAudio(e.target)) return;
+            // flux éphémère expiré (URL temporaires, pause prolongée) →
+            // UNE re-résolution de la même piste ; au-delà d'une tentative
+            // (ou URL vide), comportement d'origine : piste suivante
+            if (shouldReresolveStream(audioUrl, retriedUrlRef.current)) {
+              retriedUrlRef.current = audioUrl;
+              retryingRef.current = true;
+              const wanted = trackUrl;
+              void (async () => {
+                try {
+                  const fresh = await audioResolve(wanted);
+                  retryingRef.current = false;
+                  // piste changée pendant la résolution : ignorer
+                  if (trackUrlRef.current !== wanted) return;
+                  setAudioUrl(fresh); // remonte <audio> → effet play relance
+                } catch (err) {
+                  retryingRef.current = false;
+                  if (trackUrlRef.current !== wanted) return;
+                  toast.error(
+                    tRef.current("Le flux audio a expiré — piste suivante."),
+                    { description: describeError(err) },
+                  );
+                  if (!advance()) setPlaying(false);
+                }
+              })();
+              return;
+            }
             toast.error(t("Le flux audio a expiré — piste suivante."));
             if (!advance()) setPlaying(false);
           }}
