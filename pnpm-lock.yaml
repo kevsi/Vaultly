@@ -88,8 +88,8 @@ importers:
         specifier: ^4.6.0
         version: 4.7.0(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0))
       '@vitest/coverage-v8':
-        specifier: ^5.0.3
-        version: 5.0.3(vitest@5.0.0)
+        specifier: 5.0.0
+        version: 5.0.0(vitest@5.0.0)
       typescript:
         specifier: ~5.8.3
         version: 5.8.3
@@ -98,7 +98,7 @@ importers:
         version: 7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)
       vitest:
         specifier: ^5.0.0
-        version: 5.0.0(@types/node@22.20.2)(@vitest/coverage-v8@5.0.3)(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0))
+        version: 5.0.0(@types/node@22.20.2)(@vitest/coverage-v8@5.0.0)(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0))
 
 packages:
 
@@ -846,11 +846,11 @@ packages:
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
 
-  '@vitest/coverage-v8@5.0.3':
-    resolution: {integrity: sha512-+klsyz7BvT1vCU28Zkfzms1Ia78XD0V41U3FUtRaa3S+vOr/EXvK1O6BvVD7l1RzEjm6SONR2aybOvDDf9u0mQ==}
+  '@vitest/coverage-v8@5.0.0':
+    resolution: {integrity: sha512-toMg6PZGCIa/lQNCDoASrfb1ly4hsUKXFtFYC9kD4t78o5Y6LyNJU7AENt8eHPr3quYdxaxK7hj2mnbFfUk9NA==}
     peerDependencies:
-      '@vitest/browser': 5.0.3
-      vitest: 5.0.3
+      '@vitest/browser': 5.0.0
+      vitest: 5.0.0
     peerDependenciesMeta:
       '@vitest/browser':
         optional: true
@@ -1880,7 +1880,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/coverage-v8@5.0.3(vitest@5.0.0)':
+  '@vitest/coverage-v8@5.0.0(vitest@5.0.0)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
       '@vitest/istanbul-lib-coverage': 1.0.2
@@ -1890,7 +1890,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.2.0
-      vitest: 5.0.0(@types/node@22.20.2)(@vitest/coverage-v8@5.0.3)(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0))
+      vitest: 5.0.0(@types/node@22.20.2)(@vitest/coverage-v8@5.0.0)(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0))
 
   '@vitest/istanbul-lib-coverage@1.0.2': {}
 
@@ -2222,7 +2222,7 @@ snapshots:
       jiti: 2.7.0
       lightningcss: 1.32.0
 
-  vitest@5.0.0(@types/node@22.20.2)(@vitest/coverage-v8@5.0.3)(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)):
+  vitest@5.0.0(@types/node@22.20.2)(@vitest/coverage-v8@5.0.0)(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.0(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0))
@@ -2240,7 +2240,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.20.2
-      '@vitest/coverage-v8': 5.0.3(vitest@5.0.0)
+      '@vitest/coverage-v8': 5.0.0(vitest@5.0.0)
     transitivePeerDependencies:
       - msw
 
