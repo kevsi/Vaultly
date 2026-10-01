@@ -6,12 +6,17 @@
 //! <audio> lit nativement — le vrai mode « song ». Sans lui, l'app retombe
 //! sur le lecteur web embarqué masqué (mode A).
 //!
+//! Emplacement du binaire : `%LOCALAPPDATA%\Vaultly\Moteur audio` (données
+//! locales — jamais synchronisé). Une install antérieure dans
+//! `Documents\Vaultly\Moteur audio` (known folder parfois redirigé vers
+//! OneDrive) est déplacée automatiquement à la première utilisation.
+//!
 //! Garde-fous : l'URL à résoudre doit passer `host_is_public` (le sidecar ne
 //! sonde jamais l'interne), l'exécution est bornée dans le temps, et la
 //! téléchargement se limite à GitHub Releases avec taille plafonnée.
 
 use std::io::Read as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 #[cfg(windows)]
@@ -32,12 +37,57 @@ const RESOLVE_TIMEOUT_MS: u64 = 30_000;
 /// être plus long qu'un resolve unique.
 const PLAYLIST_TIMEOUT_MS: u64 = 60_000;
 
-fn engine_dir(app: &tauri::AppHandle) -> PathBuf {
-    crate::commands::resources_root_dir(app).join("Moteur audio")
+/// Dossier du binaire moteur : données LOCALES de l'app. C'est un
+/// exécutable applicatif, pas du contenu utilisateur : ni dossier visible,
+/// ni synchronisation OneDrive (contrairement à `Documents\Vaultly`, qui
+/// suit le known folder redirigé sur les PC configurés avec OneDrive).
+fn engine_dir() -> PathBuf {
+    let base = directories::BaseDirs::new()
+        .map(|d| d.data_local_dir().to_path_buf())
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("Vaultly").join("Moteur audio")
+}
+
+/// Ancien emplacement (installs ≤ 1.2.2) : sous le dossier de ressources
+/// visible, lui-même dans le known folder « Documents ».
+fn legacy_engine_file(app: &tauri::AppHandle) -> PathBuf {
+    crate::commands::resources_root_dir(app)
+        .join("Moteur audio")
+        .join(ENGINE_FILE)
+}
+
+/// Localise le binaire : nouveau dossier d'abord ; s'il n'est qu'à l'ancien,
+/// migration immédiate (rename, puis copie si volume différent) — et si le
+/// déplacement échoue (fichier verrouillé, disque plein), on garde l'ancien
+/// plutôt que de casser une installation existante.
+fn locate_engine(new_file: &Path, legacy_file: &Path) -> PathBuf {
+    if new_file.is_file() {
+        return new_file.to_path_buf();
+    }
+    if !legacy_file.is_file() {
+        return new_file.to_path_buf();
+    }
+    if let Some(parent) = new_file.parent() {
+        if std::fs::create_dir_all(parent).is_ok() {
+            let moved = std::fs::rename(legacy_file, new_file).is_ok()
+                || std::fs::copy(legacy_file, new_file).is_ok();
+            if moved {
+                let _ = std::fs::remove_file(legacy_file); // no-op si rename
+                if let Some(legacy_parent) = legacy_file.parent() {
+                    let _ = std::fs::remove_dir(legacy_parent); // seulement si vide
+                }
+                return new_file.to_path_buf();
+            }
+        }
+    }
+    legacy_file.to_path_buf()
 }
 
 fn engine_path(app: &tauri::AppHandle) -> PathBuf {
-    engine_dir(app).join(ENGINE_FILE)
+    locate_engine(
+        &engine_dir().join(ENGINE_FILE),
+        &legacy_engine_file(app),
+    )
 }
 
 /// Première ligne http(s) d'une sortie yt-dlp (`-g` peut précéder des logs).
@@ -96,7 +146,7 @@ pub async fn audio_engine_installed(app: tauri::AppHandle) -> Result<bool, Strin
 /// Télécharge le binaire officiel (dernière release) — ~18 Mo.
 #[tauri::command]
 pub async fn audio_engine_install(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = engine_dir(&app);
+    let dir = engine_dir();
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| format!("création du dossier moteur impossible : {e}"))?;
@@ -308,5 +358,82 @@ mod tests {
         assert!(parse_flat_playlist("", 10).is_empty());
         assert!(parse_flat_playlist("{oops", 10).is_empty());
         assert!(parse_flat_playlist(r#"{"no_entries":1}"#, 10).is_empty());
+    }
+
+    // --- localisation du binaire moteur : données locales + migration ---
+
+    /// Dossier de test unique (nettoyé avant usage).
+    fn test_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "vaultly-engine-test-{}-{name}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn locate_engine_prefers_new_location() {
+        let root = test_dir("prefer-new");
+        let new_dir = root.join("local");
+        std::fs::create_dir_all(&new_dir).unwrap();
+        let new_file = new_dir.join(ENGINE_FILE);
+        std::fs::write(&new_file, "new").unwrap();
+        let legacy_file = root.join("legacy").join(ENGINE_FILE);
+        std::fs::create_dir_all(legacy_file.parent().unwrap()).unwrap();
+        std::fs::write(&legacy_file, "old").unwrap();
+
+        assert_eq!(locate_engine(&new_file, &legacy_file), new_file);
+        // déjà au bon endroit : l'ancien n'est pas touché (pas de double copie)
+        assert_eq!(std::fs::read_to_string(&legacy_file).unwrap(), "old");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn locate_engine_migrates_legacy_install() {
+        let root = test_dir("migrate");
+        let new_file = root.join("local").join(ENGINE_FILE);
+        let legacy_dir = root.join("legacy");
+        let legacy_file = legacy_dir.join(ENGINE_FILE);
+        std::fs::create_dir_all(&legacy_dir).unwrap();
+        std::fs::write(&legacy_file, "binaire-18Mo").unwrap();
+
+        assert_eq!(locate_engine(&new_file, &legacy_file), new_file);
+        assert_eq!(std::fs::read_to_string(&new_file).unwrap(), "binaire-18Mo");
+        assert!(!legacy_file.exists(), "ancien emplacement vidé");
+        assert!(!legacy_dir.exists(), "dossier legacy vide retiré");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn locate_engine_missing_returns_new_path() {
+        let root = test_dir("missing");
+        let new_file = root.join("local").join(ENGINE_FILE);
+        let legacy_file = root.join("legacy").join(ENGINE_FILE);
+
+        assert_eq!(locate_engine(&new_file, &legacy_file), new_file);
+        assert!(
+            !new_file.parent().unwrap().exists(),
+            "rien de créé tant que rien n'est installé"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn locate_engine_keeps_legacy_when_move_impossible() {
+        let root = test_dir("blocked");
+        // le futur dossier parent est occupé par un FICHIER : create_dir_all
+        // échoue (équivalent d'un fichier verrouillé par OneDrive)
+        let blocker = root.join("local");
+        std::fs::write(&blocker, "occupé").unwrap();
+        let new_file = blocker.join(ENGINE_FILE);
+        let legacy_file = root.join("legacy").join(ENGINE_FILE);
+        std::fs::create_dir_all(root.join("legacy")).unwrap();
+        std::fs::write(&legacy_file, "old").unwrap();
+
+        assert_eq!(locate_engine(&new_file, &legacy_file), legacy_file);
+        assert!(legacy_file.exists(), "l'ancien binaire reste utilisable");
+        let _ = std::fs::remove_dir_all(root);
     }
 }
