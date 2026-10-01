@@ -25,6 +25,12 @@ export default defineConfig(async () => ({
     include: ["src/**/*.test.ts"],
     // tests = fonctions pures sans état global : un worker partagé suffit
     isolate: false,
+    // couverture : provider v8, texte en sortie seule (pas de dossier
+    // coverage/ généré → rien à gitigner)
+    coverage: {
+      provider: "v8",
+      reporter: ["text"],
+    },
   },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
