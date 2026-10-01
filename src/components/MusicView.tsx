@@ -810,6 +810,12 @@ export function MusicView() {
                 {tracks.map((r, idx) => {
                   const isSong = r.meta?.isSong === "1";
                   const isCurrent = playingUrl === r.url;
+                  // lecture/pause partagée : vignette ET titre de carte
+                  // (le titre est la cible naturelle d'un clic)
+                  const togglePlay = () =>
+                    isCurrent
+                      ? setPlaying(!player.playing)
+                      : playQueue(cardTracks, idx, "library", t("Vidéos"));
                   return (
                     <div
                       key={r.id}
@@ -821,11 +827,7 @@ export function MusicView() {
                       {/* vignette 16:9 */}
                       <button
                         type="button"
-                        onClick={() =>
-                          isCurrent
-                            ? setPlaying(!player.playing)
-                            : playQueue(cardTracks, idx, "library", t("Vidéos"))
-                        }
+                        onClick={togglePlay}
                         className="relative block aspect-video w-full overflow-hidden bg-black outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
                         title={
                           isCurrent && player.playing
@@ -869,9 +871,14 @@ export function MusicView() {
                       {/* barre d'actions */}
                       <div className="flex items-center gap-1 px-2.5 py-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
+                          <button
+                            type="button"
+                            onClick={togglePlay}
+                            className="block w-full cursor-pointer truncate text-left text-sm font-medium hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                            title={r.title}
+                          >
                             {r.title}
-                          </p>
+                          </button>
                           <p className="truncate text-[11px] text-muted-foreground">
                             {hostOf(r.url)}
                           </p>
