@@ -26,7 +26,7 @@ import {
 } from "@/lib/playerStore";
 import { hostOf } from "@/lib/resources";
 import { cn, describeError } from "@/lib/utils";
-import { videoEmbedUrl } from "@/lib/videoEmbed";
+import { embedEnded, videoEmbedUrl } from "@/lib/videoEmbed";
 
 /** autoplay selon le lecteur embarqué (best-effort : sans geste utilisateur,
  *  certains ignorent le paramètre — l'utilisateur a déjà cliqué « Lancer ») */
@@ -80,6 +80,15 @@ function boundedDuration(seconds: number): number {
   return Number.isFinite(seconds) ? seconds : 0;
 }
 
+/** Décode un message postMessage JSON ; renvoie null si ce n'est pas du JSON. */
+function parseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -89,8 +98,8 @@ interface Props {
  * Barre lecteur Musique globale : pilotée par le store de file
  * (playerStore.ts), donc la vue Musique, le menu ⋯ des tuiles et cette
  * barre sont toujours synchronisés. Moteur yt-dlp dispo → vrai flux audio
- * (seek/volume/next) ; sinon lecteur web masqué (next sur YouTube via
- * onStateChange, contrôles basiques ailleurs). La lecture continue quand
+ * (seek/volume/next) ; sinon lecteur web masqué (next via événement de fin
+ * piste YouTube/Vimeo, contrôles basiques ailleurs). La lecture continue quand
  * la fenêtre est masquée dans le tray (WebView2).
  */
 export function MusicPlayer({ open, onOpenChange }: Props) {
@@ -204,22 +213,16 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
     } else audioRef.current.pause();
   }, [mode, player.playing, audioUrl]);
 
-  // — fin de piste YouTube (onStateChange 0) → piste suivante —
-  // l'origine ET la source sont vérifiées : n'importe quel iframe de la page
-  // (lecteur vidéo, TikTok…) pourrait sinon faire sauter la file
+  // — fin de piste (lecteur web) → piste suivante —
+  // l'origine ET la source sont vérifiées dans/avant embedEnded : n'importe
+  // quel iframe de la page (lecteur vidéo, TikTok…) pourrait sinon faire
+  // sauter la file
   useEffect(() => {
-    if (mode !== "embed" || !embedUrl.includes("youtube-nocookie")) return;
+    if (mode !== "embed") return;
     const onMsg = (e: MessageEvent) => {
-      if (e.origin !== "https://www.youtube-nocookie.com") return;
       if (e.source !== iframeRef.current?.contentWindow) return;
-      if (typeof e.data !== "string") return;
-      try {
-        const d = JSON.parse(e.data);
-        if (d?.event === "onStateChange" && d?.info?.playerState === 0)
-          advance();
-      } catch {
-        /* message non JSON : ignorer */
-      }
+      const data = typeof e.data === "string" ? parseJson(e.data) : e.data;
+      if (embedEnded(embedUrl, e.origin, data)) advance();
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
@@ -355,6 +358,14 @@ export function MusicPlayer({ open, onOpenChange }: Props) {
             // l'URL de l'iframe est résolue après le clic : le paramètre
             // autoplay est parfois ignoré, on aligne le lecteur une fois prêt
             embedReadyRef.current = true;
+            // Vimeo : aucun event (dont « finish ») n'est émis vers la page
+            // hôte tant que l'abonnement n'est pas fait à ce moment
+            if (embedUrl.includes("player.vimeo.com")) {
+              iframeRef.current?.contentWindow?.postMessage(
+                { method: "addEventListener", value: "finish" },
+                "https://player.vimeo.com",
+              );
+            }
             if (canRemoteControl)
               sendEmbedCommand(player.playing ? "play" : "pause");
           }}

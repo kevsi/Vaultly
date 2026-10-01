@@ -71,11 +71,15 @@ export function playQueue(
   sourceKey = "",
   sourceLabel = "",
 ) {
-  const t = tracks[startIndex] ?? tracks[0] ?? null;
+  // index calculé à la création — jamais `tracks.indexOf(t)` : sur une URL
+  // en double, indexOf rendrait toujours la première occurrence et le
+  // compteur « n/N » comme previous/next dériveraient
+  const index = startIndex >= 0 && startIndex < tracks.length ? startIndex : 0;
+  const t = tracks[index] ?? null;
   set({
     track: t,
     queue: tracks,
-    index: tracks.indexOf(t ?? undefined),
+    index: t === null ? -1 : index,
     playing: t !== null,
     source: sourceLabel,
     sourceKey,
@@ -86,17 +90,19 @@ export function playQueue(
 export function advance(): boolean {
   if (state.queue.length === 0) return false;
   if (state.shuffle) {
-    const rest = state.queue.filter((_, i) => i !== state.index);
+    // indices, pas objets : `indexOf` sur une URL en double sauterait
+    // toujours à la première occurrence
+    const rest = state.queue.map((_, i) => i).filter((i) => i !== state.index);
     if (rest.length === 0) {
       // file à 1 piste : rien à enchaîner → arrêt propre (sinon l'UI
       // « playing » ne peut que diverger : aucun re-mount ne rejouera)
       set({ playing: false });
       return false;
     }
-    const pick = rest[Math.floor(Math.random() * rest.length)];
+    const next = rest[Math.floor(Math.random() * rest.length)];
     set({
-      track: pick,
-      index: state.queue.indexOf(pick),
+      track: state.queue[next],
+      index: next,
       playing: true,
     });
     return true;
@@ -131,9 +137,16 @@ export function syncQueue(
     return;
   }
   const currentUrl = state.track?.url;
-  const i = currentUrl
-    ? tracks.findIndex((t) => t.url === currentUrl)
-    : state.index;
+  // sur une URL en double, rester à l'index courant si la même URL y est
+  // toujours (indexOf sauterait à la première occurrence et décalerait la file)
+  let i: number;
+  if (currentUrl === undefined) {
+    i = state.index;
+  } else if (tracks[state.index]?.url === currentUrl) {
+    i = state.index;
+  } else {
+    i = tracks.findIndex((t) => t.url === currentUrl);
+  }
   if (i === -1) {
     // la piste jouée n'est plus dans la playlist : on bascule sur la première
     set({ queue: tracks, index: 0, track: tracks[0], source: sourceLabel });

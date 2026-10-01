@@ -82,9 +82,9 @@ describe("embedEnded", () => {
   });
 
   it("détecte la fin Vimeo (event finish)", () => {
-    expect(embedEnded(vimeo, "https://player.vimeo.com", { event: "finish" })).toBe(
-      true,
-    );
+    expect(
+      embedEnded(vimeo, "https://player.vimeo.com", { event: "finish" }),
+    ).toBe(true);
   });
 
   it("refuse une origine qui ne correspond pas au lecteur", () => {
@@ -94,18 +94,20 @@ describe("embedEnded", () => {
         info: { playerState: 0 },
       }),
     ).toBe(false);
-    expect(
-      embedEnded(vimeo, "https://evil.example", { event: "finish" }),
-    ).toBe(false);
+    expect(embedEnded(vimeo, "https://evil.example", { event: "finish" })).toBe(
+      false,
+    );
   });
 
   it("refuse les messages non reconnus (Dailymotion/TikTok/Twitch : pas d'event de fin documenté, données non objet)", () => {
-    expect(embedEnded(dm, "https://www.dailymotion.com", { event: "end" })).toBe(
+    expect(
+      embedEnded(dm, "https://www.dailymotion.com", { event: "end" }),
+    ).toBe(false);
+    expect(
+      embedEnded(yt, "https://www.youtube-nocookie.com", "chaîne libre"),
+    ).toBe(false);
+    expect(embedEnded(yt, "https://www.youtube-nocookie.com", null)).toBe(
       false,
     );
-    expect(embedEnded(yt, "https://www.youtube-nocookie.com", "chaîne libre")).toBe(
-      false,
-    );
-    expect(embedEnded(yt, "https://www.youtube-nocookie.com", null)).toBe(false);
   });
 });

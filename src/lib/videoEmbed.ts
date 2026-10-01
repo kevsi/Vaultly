@@ -68,3 +68,41 @@ export function videoEmbedUrl(raw: string): string | null {
   }
   return null;
 }
+
+const YOUTUBE_ORIGIN = "https://www.youtube-nocookie.com";
+const VIMEO_ORIGIN = "https://player.vimeo.com";
+
+/**
+ * Un message postMessage du lecteur embarqué annonce-t-il la fin de la
+ * piste (→ enchaîner la suivante) ? Origine vérifiée : n'importe quel
+ * iframe de la page ne doit pas pouvoir faire sauter la file.
+ *
+ * Plateformes couvertes : YouTube (`onStateChange` état 0) et Vimeo
+ * (`finish`, après `addEventListener`). Dailymotion/TikTok/Twitch : aucun
+ * event « fin » documenté sans SDK chargé → toujours false (l'utilisateur
+ * enchaîne lui-même).
+ *
+ * @param embedUrl URL de l'iframe lecteur (telle que construite par `videoEmbedUrl`)
+ * @param origin `MessageEvent.origin` du message reçu
+ * @param data `MessageEvent.data` déjà décodé (objet) ou valeur non-objet
+ * @returns true si la piste est terminée
+ */
+export function embedEnded(
+  embedUrl: string,
+  origin: string,
+  data: unknown,
+): boolean {
+  if (typeof data !== "object" || data === null) return false;
+  const msg = data as { event?: unknown; info?: { playerState?: unknown } };
+  if (embedUrl.includes("youtube-nocookie.com")) {
+    return (
+      origin === YOUTUBE_ORIGIN &&
+      msg.event === "onStateChange" &&
+      msg.info?.playerState === 0
+    );
+  }
+  if (embedUrl.includes("player.vimeo.com")) {
+    return origin === VIMEO_ORIGIN && msg.event === "finish";
+  }
+  return false;
+}
