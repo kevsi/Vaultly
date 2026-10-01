@@ -73,6 +73,41 @@ const YOUTUBE_ORIGIN = "https://www.youtube-nocookie.com";
 const VIMEO_ORIGIN = "https://player.vimeo.com";
 
 /**
+ * Autoplay « à la demande » (l'utilisateur vient de cliquer) : paramètres
+ * par lecteur, avec les options d'API nécessaires aux commandes
+ * play/pause (postMessage) — une seule source de vérité partagée par la
+ * barre Musique et le visionneur vidéo.
+ *
+ * Best-effort : sans geste utilisateur, certains lecteurs ignorent
+ * autoplay. Hôte inconnu ou URL non décodable : retourné inchangé.
+ */
+export function withEmbedAutoplay(embed: string): string {
+  try {
+    const u = new URL(embed);
+    const h = u.hostname;
+    if (h.includes("youtube-nocookie")) {
+      u.searchParams.set("enablejsapi", "1");
+      u.searchParams.set("autoplay", "1");
+    } else if (h.includes("vimeo")) {
+      u.searchParams.set("autoplay", "1");
+      // la Player API rejette les messages postMessage sans cette origine
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      u.searchParams.set("origin", origin);
+    } else if (h.includes("dailymotion")) {
+      u.searchParams.set("autoplay", "1");
+      // nécessaire pour recevoir/émettre les commandes play/pause
+      u.searchParams.set("api", "postMessage");
+    } else if (h.includes("twitch")) {
+      u.searchParams.set("autoplay", "true");
+    }
+    return u.toString();
+  } catch {
+    return embed;
+  }
+}
+
+/**
  * Un message postMessage du lecteur embarqué annonce-t-il la fin de la
  * piste (→ enchaîner la suivante) ? Origine vérifiée : n'importe quel
  * iframe de la page ne doit pas pouvoir faire sauter la file.

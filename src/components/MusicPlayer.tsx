@@ -26,33 +26,7 @@ import {
 } from "@/lib/playerStore";
 import { hostOf } from "@/lib/resources";
 import { cn, describeError } from "@/lib/utils";
-import { embedEnded, videoEmbedUrl } from "@/lib/videoEmbed";
-
-/** autoplay selon le lecteur embarqué (best-effort : sans geste utilisateur,
- *  certains ignorent le paramètre — l'utilisateur a déjà cliqué « Lancer ») */
-function withEmbedAutoplay(embed: string): string {
-  try {
-    const u = new URL(embed);
-    const h = u.hostname;
-    if (h.includes("youtube-nocookie")) {
-      u.searchParams.set("enablejsapi", "1");
-      u.searchParams.set("autoplay", "1");
-    } else if (h.includes("vimeo")) {
-      u.searchParams.set("autoplay", "1");
-      // la Player API rejette les messages postMessage sans cette origine
-      u.searchParams.set("origin", window.location.origin);
-    } else if (h.includes("dailymotion")) {
-      u.searchParams.set("autoplay", "1");
-      // nécessaire pour recevoir/émettre les commandes play/pause
-      u.searchParams.set("api", "postMessage");
-    } else if (h.includes("twitch")) {
-      u.searchParams.set("autoplay", "true");
-    }
-    return u.toString();
-  } catch {
-    return embed;
-  }
-}
+import { embedEnded, videoEmbedUrl, withEmbedAutoplay } from "@/lib/videoEmbed";
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { embedEnded, videoEmbedUrl } from "./videoEmbed";
+import { embedEnded, videoEmbedUrl, withEmbedAutoplay } from "./videoEmbed";
 
 describe("videoEmbedUrl", () => {
   it("extrait l'id YouTube de tous les formats connus", () => {
@@ -108,6 +108,49 @@ describe("embedEnded", () => {
     ).toBe(false);
     expect(embedEnded(yt, "https://www.youtube-nocookie.com", null)).toBe(
       false,
+    );
+  });
+});
+
+describe("withEmbedAutoplay", () => {
+  const params = (s: string) => new URL(s).searchParams;
+
+  it("YouTube : autoplay + enablejsapi (commandes play/pause)", () => {
+    const u = params(
+      withEmbedAutoplay("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"),
+    );
+    expect(u.get("autoplay")).toBe("1");
+    expect(u.get("enablejsapi")).toBe("1");
+  });
+
+  it("Vimeo : autoplay + origin (l'API rejette les messages sans origine)", () => {
+    const u = params(
+      withEmbedAutoplay("https://player.vimeo.com/video/76979871"),
+    );
+    expect(u.get("autoplay")).toBe("1");
+    expect(u.has("origin")).toBe(true);
+  });
+
+  it("Dailymotion : autoplay + api=postMessage", () => {
+    const u = params(
+      withEmbedAutoplay("https://www.dailymotion.com/embed/video/x8abcde"),
+    );
+    expect(u.get("autoplay")).toBe("1");
+    expect(u.get("api")).toBe("postMessage");
+  });
+
+  it("Twitch : autoplay en valeur chaîne « true »", () => {
+    const u = params(withEmbedAutoplay("https://player.twitch.tv/?video=123"));
+    expect(u.get("autoplay")).toBe("true");
+  });
+
+  it("URL non décodable : retournée telle quelle", () => {
+    expect(withEmbedAutoplay("pas-une-url")).toBe("pas-une-url");
+  });
+
+  it("hôte inconnu : aucun paramètre ajouté", () => {
+    expect(withEmbedAutoplay("https://example.com/player")).toBe(
+      "https://example.com/player",
     );
   });
 });

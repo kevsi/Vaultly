@@ -13,35 +13,12 @@ import { openResourceById, recordOpen } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { Resource } from "@/lib/types";
 import { describeError } from "@/lib/utils";
-import { videoEmbedUrl } from "@/lib/videoEmbed";
+import { videoEmbedUrl, withEmbedAutoplay } from "@/lib/videoEmbed";
 
 interface Props {
   /** vidéo choisie ; null = fermé (iframe démontée, lecture stoppée) */
   resource: Resource | null;
   onClose: () => void;
-}
-
-/** Autoplay à la demande « Lire dans l'app » (paramètres par lecteur). */
-function withAutoplay(embed: string): string {
-  try {
-    const u = new URL(embed);
-    if (u.hostname.includes("youtube-nocookie")) {
-      u.searchParams.set("autoplay", "1");
-    } else if (
-      u.hostname === "player.vimeo.com" ||
-      u.hostname === "www.dailymotion.com"
-    ) {
-      u.searchParams.set("autoplay", "1");
-    } else if (
-      u.hostname === "player.twitch.tv" ||
-      u.hostname === "clips.twitch.tv"
-    ) {
-      u.searchParams.set("autoplay", "true");
-    }
-    return u.toString();
-  } catch {
-    return embed;
-  }
 }
 
 /**
@@ -110,7 +87,7 @@ export function VideoViewer({ resource, onClose }: Props) {
               {/* démonté à la fermeture : stoppe la lecture et libère le son */}
               <iframe
                 key={resource.id}
-                src={withAutoplay(embed)}
+                src={withEmbedAutoplay(embed)}
                 title={resource.title}
                 allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                 allowFullScreen
