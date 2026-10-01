@@ -61,3 +61,18 @@ describe("onboarding flags", () => {
     expect(seen).toContain(m.REPLAY_EVENT);
   });
 });
+
+describe("phaseAfterWelcome", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("diaporama terminé (CTA) → visite guidée", async () => {
+    const m = await fresh();
+    expect(m.phaseAfterWelcome("finish")).toBe("tour");
+  });
+
+  it("passé ou échappé → aucune visite (l'utilisateur a refusé la guidance)", async () => {
+    const m = await fresh();
+    expect(m.phaseAfterWelcome("skip")).toBe("done");
+  });
+});

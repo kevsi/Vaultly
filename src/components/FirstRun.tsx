@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { WelcomeSlides } from "@/components/WelcomeSlides";
 import { runGuidedTour } from "@/lib/guidedTour";
 import { useI18n } from "@/lib/i18n";
-import { isOnboarded, markOnboarded, REPLAY_EVENT } from "@/lib/onboarding";
+import {
+  isOnboarded,
+  markOnboarded,
+  phaseAfterWelcome,
+  REPLAY_EVENT,
+  type WelcomeOutcome,
+} from "@/lib/onboarding";
 
 type Phase = "welcome" | "tour" | "done";
 
 /**
  * Enchaîne le premier lancement : diaporama animé → visite guidée Driver.js.
+ * « Passer » ou Échap durant le diaporama sautent les deux (aucune visite).
  * Une seule fois (drapeau localStorage). Réglages peut relancer UNIQUEMENT la
  * visite via l'événement de rejeu.
  */
@@ -51,13 +58,12 @@ export function FirstRun() {
   }, []);
 
   if (phase === "welcome") {
+    const go = (outcome: WelcomeOutcome) => {
+      markOnboarded();
+      setPhase(phaseAfterWelcome(outcome));
+    };
     return (
-      <WelcomeSlides
-        onFinish={() => {
-          markOnboarded();
-          setPhase("tour");
-        }}
-      />
+      <WelcomeSlides onFinish={() => go("finish")} onSkip={() => go("skip")} />
     );
   }
   return null;

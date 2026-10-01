@@ -27,6 +27,15 @@ export function markOnboarded(): void {
   }
 }
 
+/** Issue du diaporama de bienvenue : « finish » = diaporama terminé via le
+ *  CTA → visite guidée ; « skip » = « Passer » ou Échap → aucune visite
+ *  (l'utilisateur a explicitement refusé la guidance). */
+export type WelcomeOutcome = "finish" | "skip";
+
+export function phaseAfterWelcome(outcome: WelcomeOutcome): "tour" | "done" {
+  return outcome === "finish" ? "tour" : "done";
+}
+
 /** Relance la visite guidée depuis un autre composant (Réglages). */
 export function replayTour(): void {
   // le tour cible la bibliothèque : on y revient d'abord (sinon ses étapes

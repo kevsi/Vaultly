@@ -29,8 +29,16 @@ function getSlides(t: (key: string) => string) {
   ];
 }
 
-/** Diaporama animé du tout premier lancement, puis relais vers la visite. */
-export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
+/** Diaporama animé du tout premier lancement. CTA de fin → `onFinish`
+ *  (relais vers la visite) ; « Passer » et Échap → `onSkip` (sortie directe,
+ *  sans visite : refus explicite de la guidance). */
+export function WelcomeSlides({
+  onFinish,
+  onSkip,
+}: {
+  onFinish: () => void;
+  onSkip: () => void;
+}) {
   const { t } = useI18n();
   const slides = getSlides(t);
   const [i, setI] = useState(0);
@@ -39,11 +47,11 @@ export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onFinish();
+      if (e.key === "Escape") onSkip();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onFinish]);
+  }, [onSkip]);
 
   const slide = slides[i];
   return (
@@ -81,7 +89,7 @@ export function WelcomeSlides({ onFinish }: { onFinish: () => void }) {
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" onClick={onFinish}>
+          <Button variant="ghost" size="sm" onClick={onSkip}>
             {t("common.skip")}
           </Button>
           <div className="flex items-center gap-2">
