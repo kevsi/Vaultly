@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   advance,
   getPlayerState,
@@ -62,6 +62,30 @@ describe("playerStore", () => {
     expect(getPlayerState().playing).toBe(false);
   });
 
+  it("playQueue garde l'index demandé sur une URL en double", () => {
+    const dup = [queue[0], queue[1], queue[0]];
+    playQueue(dup, 2, "library", "Vidéos");
+    const state = getPlayerState();
+    expect(state.index).toBe(2);
+    expect(state.queue[state.index]).toBe(state.track);
+  });
+
+  it("advance shuffle garde index et piste cohérents sur une URL en double", () => {
+    const dup = [queue[0], queue[1], queue[0]];
+    playQueue(dup, 0, "library", "Vidéos");
+    toggleShuffle();
+    // force le 2ᵉ candidat de `rest` ([1, 2]) → index 2 (l'URL double de A)
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    expect(advance()).toBe(true);
+    const state = getPlayerState();
+    expect(state.index).toBe(2);
+    expect(state.queue[state.index]).toBe(state.track);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("syncQueue ignore une source différente", () => {
     playQueue(queue, 1, "library", "Vidéos");
     syncQueue("playlist:1", [queue[2]], "Playlist");
@@ -84,5 +108,14 @@ describe("playerStore", () => {
     const state = getPlayerState();
     expect(state.track?.url).toBe("https://a.example");
     expect(state.index).toBe(0);
+  });
+
+  it("syncQueue garde la position courante sur une URL en double", () => {
+    const dup = [queue[0], queue[1], queue[0]];
+    playQueue(dup, 2, "playlist:1", "Playlist");
+    syncQueue("playlist:1", [queue[0], queue[1], queue[0]], "Playlist");
+    const state = getPlayerState();
+    expect(state.index).toBe(2);
+    expect(state.queue[state.index]).toBe(state.track);
   });
 });
