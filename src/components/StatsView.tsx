@@ -214,7 +214,9 @@ export function StatsView() {
                     </span>
                     <span className="min-w-0 flex-1 truncate">{r.title}</span>
                     <span className="tabular-nums text-xs text-muted-foreground">
-                      {t("{count} ouverture(s)", { count: r.openCount })}
+                      {r.openCount === 1
+                        ? t("{count} ouverture", { count: r.openCount })
+                        : t("{count} ouvertures", { count: r.openCount })}
                     </span>
                   </div>
                 ))}

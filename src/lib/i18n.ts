@@ -997,7 +997,8 @@ const en: Dict = {
   "Ajoute des tags à tes ressources pour voir la répartition.":
     "Add tags to your resources to see the breakdown.",
   "Top utilisation": "Most used",
-  "{count} ouverture(s)": "opened {count} time(s)",
+  "{count} ouverture": "opened {count} time",
+  "{count} ouvertures": "opened {count} times",
   "Ouvre des ressources pour voir le classement apparaître.":
     "Open some resources to see the ranking appear.",
   "Oubliées — jamais ouvertes": "Forgotten — never opened",
