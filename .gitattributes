@@ -1,0 +1,3 @@
+# Normalisation LF dans l'index, LF au checkout : plus de faux diff
+# CRLF↔LF induit par core.autocrlf côté Windows (biome/formats).
+* text=auto eol=lf
